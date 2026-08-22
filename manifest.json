@@ -20,7 +20,6 @@
   ],
   "screenshots": [
     { "src": "/screenshot-1.png", "sizes": "1170x2532", "type": "image/png", "form_factor": "narrow", "label": "Home page" },
-    { "src": "/screenshot-2.png", "sizes": "1170x2532", "type": "image/png", "form_factor": "narrow", "label": "Community portals" },
-    { "src": "/screenshot-3.png", "sizes": "1170x2532", "type": "image/png", "form_factor": "narrow", "label": "Member profile" }
+    { "src": "/screenshot-2.png", "sizes": "1170x2532", "type": "image/png", "form_factor": "narrow", "label": "Community portals" }
   ]
 }
