@@ -34,7 +34,6 @@
 </div>
 <div class="flex gap-2 items-center">
 <span id="userName" class="text-xs text-blue-100 hidden md:block"></span>
-<button onclick="openLogin()" id="loginBtn" class="bg-white text-blue-800 hover:bg-blue-50 px-3 py-2 rounded-full font-bold text-sm">👤 Login</button>
 <button onclick="askAdminLogin()" id="adminBtn" class="bg-red-600 hover:bg-red-700 px-3 py-2 rounded font-bold text-sm">⚙️</button>
 <button onclick="doLogout()" id="logoutBtn" class="hidden bg-gray-700 hover:bg-gray-800 px-3 py-2 rounded text-sm">🚪</button>
 </div>
@@ -48,49 +47,34 @@
 <!-- NAV -->
 <div class="bg-white border-b-2 border-gray-300 sticky top-[64px] z-30 shadow">
 <div class="max-w-7xl mx-auto px-3 py-2 flex gap-2 overflow-x-auto">
-<button onclick="goPage('home')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm" data-page="home">🏠 Home</button>
-<button onclick="goPage('community')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm" data-page="community">👥 Community</button>
-<button onclick="goPage('business')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm" data-page="business">🏪 Business</button>
-<button onclick="goPage('garba')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm" data-page="garba">🪩 Garba</button>
-<button onclick="goPage('cricket')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm" data-page="cricket">🏏 Cricket</button>
-<button onclick="goPage('blood')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm" data-page="blood">🩸 Blood</button>
-<button onclick="goPage('property')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm" data-page="property">🏠 मकान-किरायेदार</button>
-<button onclick="goPage('shaadi')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm" data-page="shaadi">💍 Shaadi</button>
-<button onclick="goPage('rozgaar')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm" data-page="rozgaar">💼 Rozgaar</button>
-<button onclick="goPage('olditems')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm" data-page="olditems">🛒 पुराना सामान</button>
-<button onclick="goPage('news')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm" data-page="news">📰 News</button>
-<button onclick="goPage('pratibha')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm" data-page="pratibha">🏆 प्रतिभा</button>
-<button onclick="goPage('events')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm" data-page="events">📅 Events</button>
-<button onclick="goPage('gallery')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm" data-page="gallery">🖼️ Gallery</button>
+<button onclick="goPage('home')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm border-2" data-page="home">🏠 Home</button>
+<button onclick="goPage('suggestions')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm border-2" data-page="suggestions">💡 अपनी सलाह दें</button>
+<button onclick="goPage('community')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm border-2" data-page="community">👥 Community</button>
+<button onclick="goPage('business')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm border-2" data-page="business">🏪 Business</button>
+<button onclick="goPage('garba')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm border-2" data-page="garba">🪩 Garba</button>
+<button onclick="goPage('cricket')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm border-2" data-page="cricket">🏏 Cricket</button>
+<button onclick="goPage('blood')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm border-2" data-page="blood">🩸 Blood</button>
+<button onclick="goPage('property')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm border-2" data-page="property">🏠 मकान-किरायेदार</button>
+<button onclick="goPage('shaadi')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm border-2" data-page="shaadi">💍 Shaadi</button>
+<button onclick="goPage('rozgaar')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm border-2" data-page="rozgaar">💼 Rozgaar</button>
+<button onclick="goPage('olditems')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm border-2" data-page="olditems">🛒 पुराना सामान</button>
+<button onclick="goPage('news')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm border-2" data-page="news">📰 News</button>
+<button onclick="goPage('pratibha')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm border-2" data-page="pratibha">🏆 प्रतिभा</button>
+<button onclick="goPage('events')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm border-2" data-page="events">📅 Events</button>
+<button onclick="goPage('gallery')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm border-2" data-page="gallery">🖼️ Gallery</button>
 </div>
 </div>
 
 <div id="loadingBar" class="hidden text-center py-2 bg-blue-100 text-blue-800 font-bold text-sm">⏳ Loading...</div>
 
-<!-- LOGIN MODAL (Phone OTP) -->
-<div id="loginModal" class="hidden fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
-<div class="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
- <div class="text-center mb-4">
-  <p class="text-4xl mb-2">📱</p>
-  <h2 class="text-2xl font-bold">Mobile से Login करो</h2>
-  <p class="text-sm text-gray-500">एक बार login = हमेशा login (logout तक)</p>
- </div>
- <div id="lmStep1">
-  <label class="text-xs font-bold text-gray-600">आपका 10 अंकों का Mobile Number</label>
-  <div class="flex items-center border-2 border-gray-300 rounded-lg overflow-hidden mt-1">
-   <span class="bg-gray-100 px-3 py-3 font-bold text-gray-600">+91</span>
-   <input type="tel" id="lm_phone" maxlength="10" placeholder="9876543210" class="flex-1 px-3 py-3 outline-none text-lg">
-  </div>
-  <button id="lm_send_btn" onclick="sendLoginOtp()" class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold text-lg">📲 OTP भेजो / Send OTP</button>
-  <button onclick="closeLogin()" class="w-full mt-2 bg-gray-200 text-gray-700 px-6 py-2 rounded-lg font-bold">बंद करो / Close</button>
- </div>
- <div id="lmStep2" class="hidden">
-  <p class="text-sm text-gray-600 mb-2">OTP भेजा गया / Sent to <b id="lm_phone_display"></b></p>
-  <input type="tel" id="lm_otp" maxlength="6" placeholder="6 अंकों का OTP" class="w-full border-2 border-gray-300 rounded-lg px-3 py-3 text-lg tracking-widest text-center">
-  <button onclick="verifyLoginOtp()" class="w-full mt-4 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold text-lg">✅ Verify / लॉगिन करो</button>
-  <button onclick="openLogin()" class="w-full mt-2 bg-gray-200 text-gray-700 px-6 py-2 rounded-lg font-bold text-sm">🔄 दोबारा number डालो</button>
- </div>
- <div id="recaptcha-container" class="mt-3"></div>
+<!-- REGISTER NOW PROMPT (shown wherever a guest tries a members-only feature) -->
+<div id="registerPromptModal" class="hidden fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
+<div class="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl text-center">
+ <p class="text-4xl mb-3">🔒</p>
+ <h2 class="text-xl font-bold mb-2">पाटीदार परिवार से जुड़ो</h2>
+ <p id="registerPromptMsg" class="text-sm text-gray-600 mb-5">यह सुविधा सिर्फ रजिस्टर्ड सदस्यों के लिए है — जुड़ने में सिर्फ एक मिनट लगता है।</p>
+ <button onclick="closeRegisterPrompt(); startRegister();" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold text-lg">📝 अभी Register करो</button>
+ <button onclick="closeRegisterPrompt()" class="w-full mt-2 bg-gray-200 text-gray-700 px-6 py-2 rounded-lg font-bold">बंद करो / Close</button>
 </div>
 </div>
 
@@ -113,6 +97,20 @@
 <!-- BUSINESS DETAIL MODAL -->
 <div id="bizModal" class="hidden fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4" onclick="closeBiz(event)">
  <div id="bizModalBox" class="bg-white rounded-2xl max-w-lg w-full max-h-[88vh] overflow-y-auto shadow-2xl" onclick="event.stopPropagation()"></div>
+</div>
+
+<!-- SWIPE / DISCOVER OVERLAY (full-screen, auto-rotating profile carousel) -->
+<div id="swipeOverlay" class="hidden fixed inset-0 bg-white z-[60] flex flex-col">
+ <div class="flex justify-between items-center px-4 py-3 border-b-2 bg-gray-50">
+  <button onclick="swipeGoBack()" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold">← वापस / Go Back</button>
+  <span id="swipeCounter" class="text-sm font-bold text-gray-500"></span>
+ </div>
+ <div id="swipeCardBox" class="flex-1 overflow-y-auto p-4 flex items-center justify-center"></div>
+ <div class="flex justify-between items-center px-4 py-3 border-t-2 bg-gray-50 gap-3">
+  <button onclick="swipeManualNav(-1)" class="flex-1 bg-blue-600 text-white px-4 py-3 rounded-lg font-bold text-lg">◀ Prev</button>
+  <button onclick="swipeToggleAuto()" id="swipeAutoBtn" class="bg-purple-600 text-white px-4 py-3 rounded-lg font-bold">⏸️</button>
+  <button onclick="swipeManualNav(1)" class="flex-1 bg-blue-600 text-white px-4 py-3 rounded-lg font-bold text-lg">Next ▶</button>
+ </div>
 </div>
 
 <div id="mainContent" class="max-w-7xl mx-auto px-3 py-6"></div>
