@@ -72,7 +72,63 @@ function askAdminLogin(){
   if(at && at.length) adminTab = at.includes(adminTab) ? adminTab : at[0];
   location.hash='admin'; return;
  }
- alert('📱 पहले अपना number OTP से verify करो / Register करो।\n(Admin/Sub-admin numbers अपने आप पहचाने जाएंगे — कोई अलग password नहीं है)');
+ openAdminLoginModal();
+}
+// ===== ADMIN LOGIN MODAL (phone + OTP — Admin/Sub-admin numbers auto-recognized) =====
+let _adminConfirmation = null, _adminRecaptcha = null;
+function ensureAdminRecaptcha(){
+ if(!_adminRecaptcha){
+  _adminRecaptcha = new firebase.auth.RecaptchaVerifier('recaptcha-container-adminlogin', { size: 'invisible' });
+ }
+ return _adminRecaptcha;
+}
+function openAdminLoginModal(){
+ const box = document.getElementById('bizModalBox');
+ box.innerHTML = '<div class="p-6">'+
+  '<div class="flex justify-between items-center mb-4"><h3 class="text-xl font-bold text-blue-800">🏛️ Admin Login</h3><button onclick="closeBizForce()" class="text-gray-500 hover:text-gray-700 text-2xl font-bold">✕</button></div>'+
+  '<p class="text-xs text-gray-500 mb-3">Admin/Sub-admin Mobile Number डालो — OTP से सीधे Admin Panel खुलेगा</p>'+
+  '<div class="flex items-center border-2 border-blue-300 rounded overflow-hidden mb-3"><span class="bg-blue-100 px-3 py-2 font-bold text-blue-700 text-sm">+91</span><input type="tel" id="al_phone" maxlength="10" inputmode="numeric" placeholder="Mobile Number" class="flex-1 px-3 py-2 outline-none"></div>'+
+  '<button onclick="sendAdminLoginOtp()" id="alOtpSendBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold">📲 OTP भेजो</button>'+
+  '<div id="alOtpBox" class="hidden mt-3"><input type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" oninput="this.value=this.value.replace(/[^0-9]/g,\'\'); if(this.value.length===6) verifyAdminLoginOtp();" id="alOtpCode" maxlength="6" placeholder="OTP डालें" class="w-full px-3 py-2 border-2 border-blue-300 rounded mb-2 text-center text-2xl font-bold tracking-widest"><button onclick="verifyAdminLoginOtp()" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold">✅ Login करो</button><div id="alResendArea" class="mt-2 text-center"></div></div>'+
+  '<div id="recaptcha-container-adminlogin" class="mt-2 flex justify-center"></div>'+
+  '</div>';
+ document.getElementById('bizModal').classList.remove('hidden');
+}
+async function sendAdminLoginOtp(){
+ const phone = fmtPhone(document.getElementById('al_phone').value);
+ if(phone.length!==10){ alert('❌ सही 10 अंकों का Mobile Number भरो'); return; }
+ if((siteMeta.blocked||[]).includes(phone)){ alert('🚫 यह number block है। Admin से contact: '+CONTACT_PHONE); return; }
+ const btn = document.getElementById('alOtpSendBtn');
+ btn.disabled = true; btn.textContent = '📲 OTP भेज रहे हैं...';
+ try{
+  _adminConfirmation = await auth.signInWithPhoneNumber('+91'+phone, ensureAdminRecaptcha());
+  document.getElementById('alOtpBox').classList.remove('hidden');
+  tryWebOtpAutofillInto('alOtpCode', verifyAdminLoginOtp);
+  startOtpResendCooldown('admin', 'alResendArea', 30, 'sendAdminLoginOtp');
+ } catch(err){
+  alert('❌ OTP भेजने में समस्या: '+err.message);
+ }
+ btn.disabled = false; btn.textContent = '📲 OTP भेजो';
+}
+async function verifyAdminLoginOtp(){
+ const code = document.getElementById('alOtpCode').value.trim();
+ if(code.length!==6){ alert('❌ 6 अंकों का OTP डालो'); return; }
+ if(!_adminConfirmation){ alert('❌ पहले OTP भेजो'); return; }
+ let verifiedPhone;
+ try{ const res = await _adminConfirmation.confirm(code); verifiedPhone = phoneFromFirebase(res.user.phoneNumber); }
+ catch(e){ alert('❌ गलत OTP - दोबारा देखो'); return; }
+ _adminConfirmation = null;
+ currentUser = verifiedPhone;
+ localStorage.setItem('psLastPhone', verifiedPhone);
+ closeBizForce();
+ if(isAdmin()){
+  const at = allowedTabs();
+  if(at && at.length) adminTab = at.includes(adminTab) ? adminTab : at[0];
+  location.hash = 'admin';
+ } else {
+  alert('❌ यह number Admin/Sub-admin नहीं है।\nआप सामान्य member की तरह login हो गए।');
+  goPage('community');
+ }
 }
 function doLogout(){
  if(!confirm('Logout करें? (दोबारा OTP लगेगा)')) return;
