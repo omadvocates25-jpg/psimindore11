@@ -1393,6 +1393,11 @@ function openMyAccountMenu(){
   '<button onclick="myAcc_jobs()" class="bg-green-50 hover:bg-green-100 border-2 border-green-300 rounded-lg p-4 text-center font-bold text-green-800"><span class="text-2xl block mb-1">💼</span>मेरे Jobs</button>'+
   '<button onclick="myAcc_rishtedaar()" class="bg-indigo-50 hover:bg-indigo-100 border-2 border-indigo-300 rounded-lg p-4 text-center font-bold text-indigo-800"><span class="text-2xl block mb-1">👨‍👩‍👧</span>मेरे रिश्तेदार</button>'+
   '<button onclick="myAcc_mitra()" class="bg-pink-50 hover:bg-pink-100 border-2 border-pink-300 rounded-lg p-4 text-center font-bold text-pink-800"><span class="text-2xl block mb-1">🙋</span>मेरे मित्र</button>'+
+  '</div>'+
+  '<div class="border-t-2 mt-4 pt-4 grid grid-cols-1 gap-2">'+
+  '<button onclick="closeBizForce();openEditProfile()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg font-bold text-sm">✏️ Edit My Profile</button>'+
+  '<button onclick="closeBizForce();askAdminLogin()" class="bg-gray-700 hover:bg-gray-800 text-white px-4 py-3 rounded-lg font-bold text-sm">🏛️ Admin / Sub-admin Login</button>'+
+  '<button onclick="closeBizForce();doLogout()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-lg font-bold text-sm">🚪 Sign Out</button>'+
   '</div></div>';
  document.getElementById('bizModal').classList.remove('hidden');
 }
