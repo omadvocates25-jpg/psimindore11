@@ -22,10 +22,6 @@
 <body class="bg-gray-50">
 
 <!-- REGISTER YOURSELF (सबसे ऊपर) -->
-<div id="registerBar" class="bg-gradient-to-r from-orange-500 via-red-500 to-pink-600 text-white text-center py-3 px-3">
- <p id="registerBarTagline" class="font-bold text-sm md:text-base mb-1.5">🌟 पाटीदार परिवार का हिस्सा बनो!</p>
- <button onclick="startRegister()" class="bg-white text-red-600 px-7 py-2.5 rounded-full font-bold text-sm md:text-lg shadow-lg hover:bg-red-50"><span id="registerBarBtn">आपकी पहचान, आपका समाज — अभी जुड़ो! →</span></button>
-</div>
 
 <!-- HEADER -->
 <div class="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-700 text-white sticky top-0 z-40 shadow-xl">
@@ -40,6 +36,7 @@
 </div>
 <div class="flex gap-2 items-center">
 <span id="userName" class="text-xs text-blue-100 hidden md:block"></span>
+<button onclick="openMyAccountMenu()" id="myAccBtn" class="bg-white/10 hover:bg-white/20 px-3 py-2 rounded font-bold text-sm" title="मेरा अकाउंट">☰</button>
 <button onclick="askAdminLogin()" id="adminBtn" class="bg-red-600 hover:bg-red-700 px-3 py-2 rounded font-bold text-sm">⚙️</button>
 <button onclick="doLogout()" id="logoutBtn" class="hidden bg-gray-700 hover:bg-gray-800 px-3 py-2 rounded text-sm">🚪</button>
 </div>
