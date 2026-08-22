@@ -68,7 +68,7 @@ function askAdminLogin(){
   location.hash='admin'; return;
  }
  if(!currentUser){
-  alert('📱 पहले OTP से Login करो।\n(Admin/Sub-admin numbers अपने आप पहचाने जाएंगे)\n\nEmergency: password से भी जा सकते हो - OK दबाओ');
+  alert('📱 पहले Register करो / अपना number verify करो।\n(Admin/Sub-admin numbers अपने आप पहचाने जाएंगे)\n\nEmergency: password से भी जा सकते हो - OK दबाओ');
  }
  const pass = prompt('🔒 Backup Admin Password (सिर्फ emergency):');
  if(pass === null) return;
@@ -135,12 +135,16 @@ async function saveMeta(){ await db.collection('meta').doc('site').set(siteMeta)
 // ================= ROUTING (login-gated) =================
 // बिना login दिखने वाले pages — सिर्फ Community (members directory), Business, Profession (member contact list) lock हैं
 const OPEN_PAGES = ['home','news','register','events','gallery','pratibha','garba','cricket','blood','property','shaadi','rozgaar','olditems'];
+const LOCKED_PAGES = ['community','business'];
 function goPage(p){
- 
+ if(!currentUser && LOCKED_PAGES.includes(p)){
+  showRegisterPrompt('यह सुविधा सिर्फ रजिस्टर्ड सदस्यों के लिए है — Community से जुड़ने के लिए Register करो।');
+  return;
+ }
  location.hash = p;
 }
 function goProfession(i){
- if(_authResolved && !currentUser){ openLogin(); return; }
+ if(_authResolved && !currentUser){ showRegisterPrompt('इस profession के members की list देखने के लिए Register करो।'); return; }
  selectedProfession = professionsList()[i]; location.hash = 'profession';
 }
 function route(){
@@ -172,23 +176,13 @@ const cloudWidget = cloudinary.createUploadWidget(
  });
 function openCloudUpload(fieldId){ _cloudTarget = fieldId; cloudWidget.open(); }
 
-// ================= OTP LOGIN =================
-let _loginConfirmation = null;
-let _loginRecaptcha = null;
-function ensureLoginRecaptcha(){
- if(!_loginRecaptcha){
-  _loginRecaptcha = new firebase.auth.RecaptchaVerifier('recaptcha-container', { size: 'invisible' });
- }
- return _loginRecaptcha;
+// ================= REGISTER-NOW PROMPT (shown wherever a guest hits a members-only feature) =================
+function showRegisterPrompt(msg){
+ const m = document.getElementById('registerPromptMsg');
+ if(m) m.textContent = msg || 'यह सुविधा सिर्फ रजिस्टर्ड सदस्यों के लिए है — जुड़ने में सिर्फ एक मिनट लगता है।';
+ document.getElementById('registerPromptModal').classList.remove('hidden');
 }
-function openLogin(){
- document.getElementById('lmStep1').classList.remove('hidden');
- document.getElementById('lmStep2').classList.add('hidden');
- document.getElementById('lm_phone').value = '';
- document.getElementById('lm_otp').value = '';
- document.getElementById('loginModal').classList.remove('hidden');
-}
-function closeLogin(){ document.getElementById('loginModal').classList.add('hidden'); }
+function closeRegisterPrompt(){ document.getElementById('registerPromptModal').classList.add('hidden'); }
 
 // ================= OPTIONAL FIELDS MODAL =================
 function openOptionalFieldsModal(){
@@ -211,34 +205,6 @@ function saveOptionalFieldsAndClose(){
  renderApp();
 }
 
-function sendLoginOtp(){
- const phone = fmtPhone(document.getElementById('lm_phone').value);
- if(phone.length!==10){ alert('❌ सही 10 अंकों का number डालो'); return; }
- if((siteMeta.blocked||[]).includes(phone)){ alert('🚫 यह number block है। Admin से contact: '+CONTACT_PHONE); return; }
- const btn = document.getElementById('lm_send_btn');
- btn.disabled = true; btn.textContent = '📲 OTP भेज रहे हैं......';
- auth.signInWithPhoneNumber('+91'+phone, ensureLoginRecaptcha()).then(result => {
-  _loginConfirmation = result;
-  document.getElementById('lm_phone_display').textContent = '+91'+phone;
-  document.getElementById('lmStep1').classList.add('hidden');
-  document.getElementById('lmStep2').classList.remove('hidden');
- }).catch(err => {
-  alert('❌ OTP भेजने में समस्या: '+err.message);
- }).finally(() => {
-  btn.disabled = false; btn.textContent = '📲 OTP भेजो / Send OTP';
- });
-}
-async function verifyLoginOtp(){
- const code = document.getElementById('lm_otp').value.trim();
- if(code.length!==6){ alert('❌ 6 अंकों का OTP डालो'); return; }
- if(!_loginConfirmation){ alert('❌ पहले OTP भेजो'); return; }
- try{ await _loginConfirmation.confirm(code); }
- catch(e){ alert('❌ गलत OTP - दोबारा देखो'); return; }
- _pendingRegisterRedirect = true;
- closeLogin();
-}
-// Login के तुरंत बाद: अगर member नहीं है तो सीधे registration form पर ले जाओ
-let _pendingRegisterRedirect = false;
 function startRegister(){
  if(currentUser && myMember()){ alert('✅ आप पहले से registered हैं! आपकी profile Community page पर है।'); goPage('community'); return; }
  regStep = 0;
@@ -480,7 +446,6 @@ async function sendRegOtp(){
  const phone = fmtPhone(draftGet('phone'));
  if(phone.length!==10){ alert('❌ सही 10 अंकों का Mobile Number भरो'); return; }
  if((siteMeta.blocked||[]).includes(phone)){ alert('🚫 यह number block है। Admin से contact: '+CONTACT_PHONE); return; }
- if(membersData.find(m => m.phone === phone)){ alert('❌ यह number पहले से registered है! सीधे Login करो।'); return; }
  const btn = document.getElementById('regOtpSendBtn');
  btn.disabled = true; btn.textContent = '📲 OTP भेज रहे हैं...';
  try{
@@ -495,8 +460,18 @@ async function verifyRegOtp(){
  const code = document.getElementById('regOtpCode').value.trim();
  if(code.length!==6){ alert('❌ 6 अंकों का OTP डालो'); return; }
  if(!_regConfirmation){ alert('❌ पहले OTP भेजो'); return; }
- try{ await _regConfirmation.confirm(code); }
+ let verifiedPhone;
+ try{ const res = await _regConfirmation.confirm(code); verifiedPhone = phoneFromFirebase(res.user.phoneNumber); }
  catch(e){ alert('❌ गलत OTP - दोबारा देखो'); return; }
+ _regConfirmation = null;
+ currentUser = verifiedPhone; // Firebase का onAuthStateChanged थोड़ी देर से फायर होता है — यहीं तुरंत set कर दो ताकि आगे का redirect सही चले
+ const existing = membersData.find(m => m.phone === verifiedPhone);
+ if(existing){
+  draftClear(); regStep=0;
+  alert('✅ वापसी पर स्वागत है, '+esc(existing.name)+'! आप पहले से registered हो — आपकी profile Community page पर मिलेगी।');
+  goPage('community');
+  return;
+ }
  await submitSelfRegistration();
 }
 async function submitSelfRegistration(){
@@ -674,7 +649,7 @@ function relOf(m){
 }
 function renderRandProfile(){
  const box = document.getElementById('randProfileBox'); if(!box) return;
- if(!currentUser){ box.innerHTML='<div class="text-center py-6"><p class="text-5xl mb-3">🔒</p><p class="font-bold text-gray-600">Profiles देखने के लिए Login करो</p><button onclick="openLogin()" class="mt-3 bg-blue-600 text-white px-6 py-2 rounded-lg font-bold">📱 LOGIN</button></div>'; return; }
+ if(!currentUser){ box.innerHTML='<div class="text-center py-6"><p class="text-5xl mb-3">🔒</p><p class="font-bold text-gray-600">Profiles देखने के लिए पहले Register करो</p><button onclick="showRegisterPrompt(\'Business profiles देखने के लिए पहले Register करो।\')" class="mt-3 bg-blue-600 text-white px-6 py-2 rounded-lg font-bold">📝 REGISTER करो</button></div>'; return; }
  const mems = publicMembers();
  if(!mems.length){ box.innerHTML='<p class="text-center text-gray-400 py-6">अभी members नहीं हैं</p>'; return; }
  if(!randOrder.length || randOrder.length!==mems.length) shuffleRand();
@@ -757,7 +732,7 @@ function renderMemberGrid(){
 function toggleRelForm(){ showRelForm=!showRelForm; renderApp(); }
 async function sendRelRequest(toId){
  const me = myMember();
- if(!me || me.status!=='approved'){ alert('❌ पहले Community में register होना जरूरी है। Admin approval के बाद यह feature unlock होगा।'); return; }
+ if(!me || me.status!=='approved'){ showRegisterPrompt('रिश्तेदार जोड़ने के लिए पहले Community में register होना जरूरी है। Admin approval के बाद यह feature unlock होगा।'); return; }
  const to = membersData.find(m=>m.id===toId); if(!to) return;
  const relation = document.getElementById('relSel_'+toId).value;
  if(!relation){ alert('❌ रिश्ता चुनो'); return; }
@@ -825,7 +800,7 @@ async function deleteMyData(){
 }
 // 🩸 अपना Blood Group खुद भरो => Blood page की उसी group list में अपने आप नाम आ जाएगा
 async function setMyBlood(){
- const me = myMember(); if(!me){ alert('❌ पहले Community में register करो'); return; }
+ const me = myMember(); if(!me){ showRegisterPrompt('Blood Group भरने के लिए पहले Community में register करो।'); return; }
  const gr = document.getElementById('myBloodGroup').value;
  const dn = document.getElementById('myBloodDonor').value;
  if(!gr){ alert('❌ Blood Group चुनो'); return; }
@@ -980,7 +955,7 @@ function renderBusinessPage(){
 // ================= GARBA =================
 async function submitGarba(){
  const me = myMember();
- if(!me || me.status!=='approved'){ alert('❌ पहले Community member बनो (registered + approved)। Community page पर details भरो।'); return; }
+ if(!me || me.status!=='approved'){ showRegisterPrompt('Garba में register करने के लिए पहले Community member बनो।'); return; }
  const nm=fmtName(document.getElementById('gb_name').value) || (me.name+' '+me.surname);
  const age=document.getElementById('gb_age').value.trim() || (me.age||'');
  const area=document.getElementById('gb_area').value.trim();
@@ -1027,7 +1002,7 @@ function renderGarbaPage(){
 // ================= CRICKET =================
 async function joinCricket(){
  const me = myMember();
- if(!me || me.status!=='approved'){ alert('❌ पहले Community member बनो (registered + approved)।'); return; }
+ if(!me || me.status!=='approved'){ showRegisterPrompt('Cricket list में जुड़ने के लिए पहले Community member बनो।'); return; }
  if(cricketData.find(c=>c.phone===me.phone)){ alert('❌ आप पहले से list में हो!'); return; }
  busy(true);
  await db.collection('cricket').add({name:me.name+' '+me.surname, age:me.age||'', area:me.present_city||me.home_village||'', phone:me.phone, createdAt:today()});
@@ -1679,17 +1654,30 @@ async function toggleGarbaForm(){
 
 // Sub-admins
 const SUBADMIN_TABS = [['members','👥 Members'],['relatives','👨‍👩‍👧 Relatives'],['professions','🔧 Professions'],['garba','🪩 Garba'],['cricket','🏏 Cricket'],['property','🏠 Property'],['blood','🩸 Blood'],['shaadi','💍 Shaadi'],['rozgaar','💼 Jobs'],['olditems','🛒 सामान'],['events','📅 Events'],['news','📰 News'],['pratibha','🏆 प्रतिभा'],['gallery','🖼️ Gallery']];
+let saSearchQ = '', saSelectedPhone = '', saTabs = [];
+function saSearch(v){ saSearchQ = v; saSelectedPhone = ''; renderApp(); }
+function saPick(phone){ saSelectedPhone = phone; renderApp(); }
+function saToggleTab(key){ saTabs = saTabs.includes(key) ? saTabs.filter(t=>t!==key) : saTabs.concat([key]); renderApp(); }
+function saMatches(){
+ const q = saSearchQ.trim().toLowerCase();
+ if(!q) return [];
+ const subAdminPhones = (siteMeta.subAdmins||[]).map(s=>fmtPhone(s.phone));
+ return approvedMembers().filter(m =>
+  m.phone !== ADMIN_PHONE && !subAdminPhones.includes(m.phone) &&
+  ((m.name+' '+m.surname).toLowerCase().includes(q) || m.phone.includes(q))
+ ).slice(0,8);
+}
 async function addSubAdmin(){
- const nm = fmtName(document.getElementById('sa_name').value);
- const ph = fmtPhone(document.getElementById('sa_phone').value);
- const tabs = SUBADMIN_TABS.filter(t => document.getElementById('sa_tab_'+t[0]).checked).map(t=>t[0]);
- if(!nm || ph.length!==10){ alert('❌ Name और सही 10-digit Number जरूरी!'); return; }
- if(ph === ADMIN_PHONE){ alert('❌ यह आपका Super Admin number है - यह पहले से full access है!'); return; }
- if(!tabs.length){ alert('❌ कम से कम 1 portal चुनो!'); return; }
- if((siteMeta.subAdmins||[]).find(s=>fmtPhone(s.phone)===ph)){ alert('❌ यह number पहले से sub-admin है!'); return; }
- siteMeta.subAdmins = (siteMeta.subAdmins||[]).concat([{name:nm, phone:ph, tabs:tabs, createdAt:today()}]);
+ const m = membersData.find(x => x.phone === saSelectedPhone);
+ if(!m){ alert('❌ पहले Community search से एक member चुनो'); return; }
+ if(!saTabs.length){ alert('❌ कम से कम 1 portal चुनो!'); return; }
+ if((siteMeta.subAdmins||[]).find(s=>fmtPhone(s.phone)===m.phone)){ alert('❌ यह member पहले से sub-admin है!'); return; }
+ const nm = fmtName(m.name+' '+m.surname);
+ const tabsUsed = saTabs.slice();
+ siteMeta.subAdmins = (siteMeta.subAdmins||[]).concat([{name:nm, phone:m.phone, tabs:tabsUsed, createdAt:today()}]);
  await saveMeta();
- alert('✅ Sub-Admin बन गया!\n\n👤 '+nm+'\n📱 '+ph+'\n📂 Portals: '+tabs.join(', ')+'\n\nउसको बोलो: website पर अपने इसी number से OTP LOGIN करे\n→ ⚙️ button अपने आप दिखेगा → उसके portals खुलेंगे।');
+ saSearchQ=''; saSelectedPhone=''; saTabs=[];
+ alert('✅ Sub-Admin बन गया!\n\n👤 '+nm+'\n📱 '+m.phone+'\n📂 Portals: '+tabsUsed.join(', ')+'\n\nउनको बोलो: website पर अपने इसी number से Register/Login करें\n→ ⚙️ button अपने आप दिखेगा → उनके portals खुलेंगे।');
  renderApp();
 }
 async function delSubAdmin(i){
@@ -1946,12 +1934,18 @@ function renderAdmin(){
   h += '</div>';
 
   h += '<div class="border-t-2 pt-4"><p class="font-bold text-lg mb-2">🔑 SUB-ADMINS (अलग-अलग portals के लिए अलग log)</p>'+
-  '<div class="bg-gray-50 border rounded-lg p-4 mb-3"><div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">'+
-  '<input id="sa_name" placeholder="Name (जैसे: Rahul Patidar)" class="px-3 py-2 border-2 rounded">'+
-  '<input id="sa_phone" maxlength="10" placeholder="उसका Mobile Number (10 digit)" class="px-3 py-2 border-2 rounded"></div>'+
-  '<p class="text-xs text-gray-500 mb-2">💡 वो person अपने इस number से OTP login करेगा = admin option अपने आप मिलेगा</p>'+
+  '<div class="bg-gray-50 border rounded-lg p-4 mb-3">'+
+  '<label class="text-xs font-bold text-gray-600">Community Member खोजो (नाम या Mobile Number से)</label>'+
+  '<input id="sa_search" value="'+esc(saSearchQ)+'" oninput="saSearch(this.value)" placeholder="🔍 नाम या number टाइप करो..." class="w-full px-3 py-2 border-2 rounded mt-1 mb-2">'+
+  (saSearchQ.trim() ? (saMatches().length ?
+   '<div class="border-2 border-indigo-200 rounded-lg divide-y mb-3 max-h-56 overflow-y-auto">'+
+   saMatches().map(m=>'<div onclick="saPick(\''+m.phone+'\')" class="px-3 py-2 hover:bg-indigo-50 cursor-pointer flex justify-between items-center '+(saSelectedPhone===m.phone?'bg-indigo-100':'')+'"><span class="text-sm font-bold">'+esc(m.name)+' '+esc(m.surname)+'</span><span class="text-xs text-gray-500">📱 '+esc(m.phone)+'</span></div>').join('')+
+   '</div>'
+   : '<p class="text-sm text-gray-400 mb-3">कोई matching approved member नहीं मिला</p>')
+   : '')+
+  (saSelectedPhone ? (function(){ const m=membersData.find(x=>x.phone===saSelectedPhone); return m ? '<div class="bg-white border-2 border-indigo-400 rounded-lg p-3 mb-3 flex justify-between items-center"><span class="text-sm"><b>✅ चुना गया:</b> '+esc(m.name)+' '+esc(m.surname)+' | 📱 '+esc(m.phone)+'</span></div>' : ''; })() : '')+
   '<p class="text-xs font-bold mb-2">कौन-कौन से portals दिखें:</p><div class="flex flex-wrap gap-3 mb-3">'+
-  SUBADMIN_TABS.map(t=>'<label class="flex items-center gap-1 text-sm bg-white border rounded px-2 py-1"><input type="checkbox" id="sa_tab_'+t[0]+'" class="h-4 w-4"> '+t[1]+'</label>').join('')+'</div>'+
+  SUBADMIN_TABS.map(t=>'<label class="flex items-center gap-1 text-sm bg-white border rounded px-2 py-1"><input type="checkbox" onchange="saToggleTab(\''+t[0]+'\')" '+(saTabs.includes(t[0])?'checked':'')+' class="h-4 w-4"> '+t[1]+'</label>').join('')+'</div>'+
   '<button onclick="addSubAdmin()" class="bg-indigo-600 text-white px-6 py-2 rounded font-bold">➕ CREATE SUB-ADMIN</button></div>'+
   '<div class="space-y-2 mb-4">'+(siteMeta.subAdmins||[]).map((s,i)=>'<div class="flex justify-between items-center bg-indigo-50 rounded-lg px-3 py-2 flex-wrap gap-2"><span class="text-sm"><b>'+esc(s.name)+'</b> | 📱 '+esc(s.phone||s.contact||'-')+' | '+(s.tabs||[]).join(', ')+'</span><button onclick="delSubAdmin('+i+')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div>').join('')+'</div></div>';
 
@@ -2009,7 +2003,6 @@ function renderApp(){
 }
 function updateUI(){
  const loggedIn = !!currentUser;
- document.getElementById('loginBtn').classList.toggle('hidden', loggedIn);
  document.getElementById('logoutBtn').classList.toggle('hidden', !loggedIn && !localStorage.getItem('psim_admin_ok'));
  document.getElementById('adminBtn').classList.toggle('hidden', !isAdmin() && loggedIn);
  const me = loggedIn ? myMember() : null;
@@ -2018,19 +2011,15 @@ function updateUI(){
  // "REGISTER YOURSELF" bar - सिर्फ तब तक जब तक member नहीं बना
  const rb = document.getElementById('registerBar');
  if(rb) rb.classList.toggle('hidden', !!(loggedIn && me));
- // Login के तुरंत बाद नया user => सीधे registration form
- if(_pendingRegisterRedirect && loggedIn){
-  _pendingRegisterRedirect = false;
-  if(!me){
-   setTimeout(()=>{ goPage('community'); setTimeout(()=>{ const el=document.getElementById('addSection'); if(el) el.scrollIntoView({behavior:'smooth'}); },500); },200);
-  }
- }
  const tb = document.getElementById('tickerBar');
  if(siteMeta.ticker){ tb.classList.remove('hidden'); document.getElementById('tickerText').textContent = '🔔 '+siteMeta.ticker+'  •  🔔 '+siteMeta.ticker; }
  else tb.classList.add('hidden');
  document.querySelectorAll('.nav-btn').forEach(b=>{
   b.classList.toggle('bg-blue-500', b.dataset.page===currentPage);
   b.classList.toggle('text-white', b.dataset.page===currentPage);
+  const locked = LOCKED_PAGES.includes(b.dataset.page);
+  b.classList.toggle('border-red-500', locked);
+  b.classList.toggle('border-green-500', !locked);
  });
  renderApp();
 }
