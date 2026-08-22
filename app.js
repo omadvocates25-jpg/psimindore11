@@ -302,6 +302,9 @@ const OPTIONAL_FIELDS = [
 function fieldHTML(prefix, f, val){
  val = val || '';
  const fid = prefix + f[0];
+ // Registration form में हर field type करते ही draft में save — कहीं भी navigate कर दो, data नहीं उड़ेगा
+ const onInputSave = prefix==='reg_' ? " oninput=\"draftSet('"+f[0]+"',this.value)\"" : '';
+ const onChangeSave = prefix==='reg_' ? " draftSet('"+f[0]+"',this.value);" : '';
  if(f[2] === 'photo'){
   return '<div><label class="text-xs font-bold text-gray-600">'+f[1]+'</label>'+
    '<input type="hidden" id="'+fid+'" value="'+esc(val)+'">'+
@@ -309,17 +312,17 @@ function fieldHTML(prefix, f, val){
    '<img id="'+fid+'_prev" src="'+esc(val)+'" class="'+(val?'':'hidden ')+'mt-2 h-20 w-full object-cover rounded border-2 border-gray-300"></div>';
  }
  if(f[2] === 'textarea'){
-  return '<div class="md:col-span-2 lg:col-span-3"><label class="text-xs font-bold text-gray-600">'+f[1]+'</label><textarea id="'+fid+'" rows="2" class="w-full px-3 py-2 border-2 border-gray-300 rounded">'+String(val).replace(/</g,'&lt;')+'</textarea></div>';
+  return '<div class="md:col-span-2 lg:col-span-3"><label class="text-xs font-bold text-gray-600">'+f[1]+'</label><textarea id="'+fid+'" rows="2"'+onInputSave+' class="w-full px-3 py-2 border-2 border-gray-300 rounded">'+String(val).replace(/</g,'&lt;')+'</textarea></div>';
  }
  if(f[2] === 'gender'){
   const opts = ['Male / पुरुष','Female / महिला','Other / अन्य'].map(o=>'<option '+(o===val?'selected':'')+'>'+o+'</option>').join('');
-  return '<div><label class="text-xs font-bold text-gray-600">'+f[1]+' *</label><select id="'+fid+'" onchange="togglePrivacyBox(this.value,\''+prefix+'\')" class="w-full px-3 py-2 border-2 border-gray-300 rounded"><option value="">--Select--</option>'+opts+'</select></div>';
+  return '<div><label class="text-xs font-bold text-gray-600">'+f[1]+' *</label><select id="'+fid+'" onchange="togglePrivacyBox(this.value,\''+prefix+'\');'+onChangeSave+'" class="w-full px-3 py-2 border-2 border-gray-300 rounded"><option value="">--Select--</option>'+opts+'</select></div>';
  }
  if(f[2] === 'privacy'){
   return '<div id="'+prefix+'privacyBox" class="hidden md:col-span-2 bg-red-50 border-2 border-red-400 rounded-lg p-4 mt-1">'+
    '<label class="text-sm font-bold text-red-700 flex items-center gap-1">🔒 आपकी Privacy, आपकी पसंद *</label>'+
    '<p class="text-xs text-red-600 mt-1 mb-2">आपकी सुरक्षा हमारे लिए ज़रूरी है — कृपया चुनें कि आपकी प्रोफाइल सबको दिखाई दे, या सिर्फ PSIM Team को।</p>'+
-   '<select id="'+fid+'" class="w-full px-3 py-2 border-2 border-red-300 rounded bg-white font-bold text-red-800">'+
+   '<select id="'+fid+'" onchange="'+onChangeSave+'" class="w-full px-3 py-2 border-2 border-red-300 rounded bg-white font-bold text-red-800">'+
    '<option value="">-- चुनें / Please Select --</option>'+
    '<option value="Public / सबको दिखे" '+(val==='Public / सबको दिखे'?'selected':'')+'>👁️ मेरी प्रोफाइल सबको दिखे / Public</option>'+
    '<option value="Secret / सिर्फ PSIM Team को" '+(val==='Secret / सिर्फ PSIM Team को'?'selected':'')+'>🔒 सिर्फ PSIM Team को दिखे / Secret</option>'+
@@ -335,11 +338,11 @@ function fieldHTML(prefix, f, val){
   if(f[0]==='business_type'){
    // टाइप करके खोजो (जैसे "Dr" लिखते ही "Doctor" जैसे matching options ऊपर दिखेंगे) — या नीचे तीर दबाकर पूरी list भी देख सकते हो
    return '<div><label class="text-xs font-bold text-gray-600">'+f[1]+' / Profession 🔍</label>'+
-    '<input type="text" id="'+fid+'" list="'+fid+'_dl" value="'+esc(val)+'" placeholder="टाइप करो या नीचे तीर से पूरी list देखो..." class="w-full px-3 py-2 border-2 border-gray-300 rounded">'+
+    '<input type="text" id="'+fid+'" list="'+fid+'_dl" value="'+esc(val)+'"'+onInputSave+' placeholder="टाइप करो या नीचे तीर से पूरी list देखो..." class="w-full px-3 py-2 border-2 border-gray-300 rounded">'+
     '<datalist id="'+fid+'_dl">'+src.map(o=>'<option value="'+esc(o)+'">').join('')+'</datalist></div>';
   }
   const opts = src.map(o => '<option '+(o===val?'selected':'')+'>'+o+'</option>').join('');
-  return '<div><label class="text-xs font-bold text-gray-600">'+f[1]+'</label><select id="'+fid+'" class="w-full px-3 py-2 border-2 border-gray-300 rounded"><option value="">--Select--</option>'+opts+'</select></div>';
+  return '<div><label class="text-xs font-bold text-gray-600">'+f[1]+'</label><select id="'+fid+'" onchange="'+onChangeSave+'" class="w-full px-3 py-2 border-2 border-gray-300 rounded"><option value="">--Select--</option>'+opts+'</select></div>';
  }
  if(f[0]==='phone' && prefix==='reg_' && currentUser){
   return '<div><label class="text-xs font-bold text-gray-600">'+f[1]+' (आपका login number - automatic)</label><input type="tel" id="'+fid+'" value="'+esc(currentUser)+'" readonly class="w-full px-3 py-2 border-2 border-gray-300 rounded bg-gray-100 text-gray-600"></div>';
@@ -348,14 +351,14 @@ function fieldHTML(prefix, f, val){
   return '<div><label class="text-xs font-bold text-gray-600">'+f[1]+' (बदला नहीं जा सकता)</label><input type="tel" id="'+fid+'" value="'+esc(val)+'" readonly class="w-full px-3 py-2 border-2 border-gray-300 rounded bg-gray-100 text-gray-600"></div>';
  }
  if(f[0]==='phone' && prefix==='reg_'){
-  return '<div><label class="text-xs font-bold text-gray-600">'+f[1]+'</label><div class="flex items-center border-2 border-gray-300 rounded overflow-hidden"><span class="bg-gray-100 px-3 py-2 font-bold text-gray-600 text-sm">+91</span><input type="tel" id="'+fid+'" maxlength="10" value="'+esc(val)+'" class="flex-1 px-3 py-2 outline-none"></div></div>';
+  return '<div><label class="text-xs font-bold text-gray-600">'+f[1]+'</label><div class="flex items-center border-2 border-gray-300 rounded overflow-hidden"><span class="bg-gray-100 px-3 py-2 font-bold text-gray-600 text-sm">+91</span><input type="tel" id="'+fid+'" maxlength="10" value="'+esc(val)+'"'+onInputSave+' class="flex-1 px-3 py-2 outline-none"></div></div>';
  }
  let listAttr='';
  if(f[0].includes('village')) listAttr=' list="dl_villages"';
  else if(f[0].includes('tehsil')) listAttr=' list="dl_tehsils"';
  else if(f[0].includes('city')) listAttr=' list="dl_cities"';
  else if(f[0].includes('police')) listAttr=' list="dl_police"';
- return '<div><label class="text-xs font-bold text-gray-600">'+f[1]+'</label><input type="'+f[2]+'" id="'+fid+'"'+listAttr+' value="'+esc(val)+'" class="w-full px-3 py-2 border-2 border-gray-300 rounded"></div>';
+ return '<div><label class="text-xs font-bold text-gray-600">'+f[1]+'</label><input type="'+f[2]+'" id="'+fid+'"'+listAttr+' value="'+esc(val)+'"'+onInputSave+' class="w-full px-3 py-2 border-2 border-gray-300 rounded"></div>';
 }
 function togglePrivacyBox(val, prefix){
  const box = document.getElementById(prefix+'privacyBox');
@@ -396,7 +399,7 @@ function stepFormHTML(m){
   } else {
    h += '<p class="text-center mb-4">आपकी सभी जानकारी दर्ज हो गई है।</p>';
    h += '<button onclick="sendRegOtp()" id="regOtpSendBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold">📲 OTP भेजो</button>';
-   h += '<div id="regOtpBox" class="hidden mt-4"><input type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" oninput="this.value=this.value.replace(/[^0-9]/g,\'\'); if(this.value.length===6) verifyRegOtp();" id="regOtpCode" maxlength="6" placeholder="OTP डालें (SMS से auto-fill होगा)" class="w-full px-3 py-2 border-2 border-gray-300 rounded mb-2 text-center text-2xl font-bold tracking-widest"><button onclick="verifyRegOtp()" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold">✅ सत्यापित करें</button></div>';
+   h += '<div id="regOtpBox" class="hidden mt-4"><input type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" oninput="this.value=this.value.replace(/[^0-9]/g,\'\'); if(this.value.length===6) verifyRegOtp();" id="regOtpCode" maxlength="6" placeholder="OTP डालें (SMS से auto-fill होगा)" class="w-full px-3 py-2 border-2 border-gray-300 rounded mb-2 text-center text-2xl font-bold tracking-widest"><button onclick="verifyRegOtp()" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold">✅ सत्यापित करें</button><div id="regResendArea" class="mt-2 text-center"></div></div>';
    h += '<div id="recaptcha-container-reg" class="mt-3"></div>';
   }
  }
@@ -643,15 +646,83 @@ function ensureRegRecaptcha(){
  return _regRecaptcha;
 }
 // SMS aate hi Android Chrome par bina type kiye OTP auto-fill + auto-verify (support na ho to chup-chaap skip)
-function tryWebOtpAutofill(){
+function tryWebOtpAutofillInto(inputId, verifyFn){
  if(!('OTPCredential' in window)) return;
  const ac = new AbortController();
  setTimeout(()=>ac.abort(), 60000);
  navigator.credentials.get({ otp: { transport:['sms'] }, signal: ac.signal }).then(otp => {
   const code = (otp.code||'').replace(/[^0-9]/g,'');
-  const el = document.getElementById('regOtpCode');
-  if(el && code.length===6){ el.value = code; verifyRegOtp(); }
+  const el = document.getElementById(inputId);
+  if(el && code.length===6){ el.value = code; verifyFn(); }
  }).catch(()=>{});
+}
+function tryWebOtpAutofill(){ tryWebOtpAutofillInto('regOtpCode', verifyRegOtp); }
+// OTP नहीं मिला? आसान/बड़ा "Resend OTP" — बार-बार तेज़ी से click से Firebase abuse-warning ना आए इसलिए हल्का सा cooldown
+let _otpResendTimers = {};
+function startOtpResendCooldown(key, elId, seconds, resendFn){
+ const el = document.getElementById(elId);
+ if(!el) return;
+ let remaining = seconds;
+ const render = () => {
+  el.innerHTML = remaining>0
+   ? '<span class="text-xs text-gray-400">OTP नहीं मिला? '+remaining+'s में दोबारा भेज सकते हो</span>'
+   : '<button onclick="'+resendFn+'()" class="text-sm font-bold text-blue-600 underline">🔄 OTP दोबारा भेजो / Resend OTP</button>';
+ };
+ render();
+ if(_otpResendTimers[key]) clearInterval(_otpResendTimers[key]);
+ _otpResendTimers[key] = setInterval(()=>{
+  remaining--;
+  if(remaining<=0) clearInterval(_otpResendTimers[key]);
+  render();
+ }, 1000);
+}
+// ===== QUICK LOGIN (पहले से Member हो? सिर्फ Phone + OTP — पूरा form दोबारा नहीं भरना) =====
+let quickLoginPhone = localStorage.getItem('psLastPhone') || '';
+let showQuickLoginBox = false;
+function toggleQuickLoginBox(){ showQuickLoginBox = !showQuickLoginBox; renderApp(); }
+let _quickConfirmation = null, _quickRecaptcha = null;
+function ensureQuickRecaptcha(){
+ if(!_quickRecaptcha){
+  _quickRecaptcha = new firebase.auth.RecaptchaVerifier('recaptcha-container-quicklogin', { size: 'invisible' });
+ }
+ return _quickRecaptcha;
+}
+async function sendQuickLoginOtp(){
+ const phone = fmtPhone(document.getElementById('ql_phone').value);
+ if(phone.length!==10){ alert('❌ सही 10 अंकों का Mobile Number भरो'); return; }
+ if((siteMeta.blocked||[]).includes(phone)){ alert('🚫 यह number block है। Admin से contact: '+CONTACT_PHONE); return; }
+ quickLoginPhone = phone;
+ const btn = document.getElementById('qlOtpSendBtn');
+ btn.disabled = true; btn.textContent = '📲 OTP भेज रहे हैं...';
+ try{
+  _quickConfirmation = await auth.signInWithPhoneNumber('+91'+phone, ensureQuickRecaptcha());
+  document.getElementById('qlOtpBox').classList.remove('hidden');
+  tryWebOtpAutofillInto('qlOtpCode', verifyQuickLoginOtp);
+  startOtpResendCooldown('quicklogin', 'qlResendArea', 30, 'sendQuickLoginOtp');
+ } catch(err){
+  alert('❌ OTP भेजने में समस्या: '+err.message);
+ }
+ btn.disabled = false; btn.textContent = '📲 OTP भेजो';
+}
+async function verifyQuickLoginOtp(){
+ const code = document.getElementById('qlOtpCode').value.trim();
+ if(code.length!==6){ alert('❌ 6 अंकों का OTP डालो'); return; }
+ if(!_quickConfirmation){ alert('❌ पहले OTP भेजो'); return; }
+ let verifiedPhone;
+ try{ const res = await _quickConfirmation.confirm(code); verifiedPhone = phoneFromFirebase(res.user.phoneNumber); }
+ catch(e){ alert('❌ गलत OTP - दोबारा देखो'); return; }
+ _quickConfirmation = null;
+ currentUser = verifiedPhone;
+ localStorage.setItem('psLastPhone', verifiedPhone);
+ const existing = membersData.find(m => m.phone === verifiedPhone);
+ if(existing){
+  alert('✅ वापसी पर स्वागत है, '+esc(existing.name)+'! आप login हो गए।');
+  goPage('community');
+  return;
+ }
+ draftSet('phone', verifiedPhone);
+ alert('ℹ️ यह number अभी तक registered नहीं है — नीचे नया registration form भरो, phone already verified है तो OTP दोबारा नहीं माँगेगा।');
+ renderApp();
 }
 async function sendRegOtp(){
  const phone = fmtPhone(draftGet('phone'));
@@ -663,6 +734,7 @@ async function sendRegOtp(){
   _regConfirmation = await auth.signInWithPhoneNumber('+91'+phone, ensureRegRecaptcha());
   document.getElementById('regOtpBox').classList.remove('hidden');
   tryWebOtpAutofill();
+  startOtpResendCooldown('reg', 'regResendArea', 30, 'sendRegOtp');
  } catch(err){
   alert('❌ OTP भेजने में समस्या: '+err.message);
  }
@@ -803,7 +875,15 @@ function portalTile(p){
  return '<div class="relative bg-gradient-to-br from-'+p[1]+'-500 to-'+p[1]+'-600 text-white rounded-2xl p-3 md:p-4 text-center cursor-pointer shadow-md hover:shadow-2xl transform hover:scale-105 transition-all '+ring+'" onclick="goPage(\''+p[0]+'\')">'+badge+'<div class="h-10 w-10 md:h-12 md:w-12 mx-auto mb-1.5 rounded-full bg-white/25 flex items-center justify-center text-xl md:text-2xl">'+p[2]+'</div><p class="font-bold text-[11px] md:text-xs leading-tight">'+p[3]+'</p><p class="text-[9px] md:text-[10px] mt-1 text-'+p[1]+'-100">'+p[4]+'</p></div>';
 }
 function renderHome(){
- let h = '<div class="text-center mb-8"><h2 class="text-4xl md:text-5xl font-bold mb-3">स्वागत है / Welcome</h2><p class="text-xl md:text-2xl text-gray-600">समाज की सेवा है हमारा लक्ष्य</p><p class="text-sm text-gray-400">Service to Society is Our Goal</p></div>';
+ let h = '<div class="text-center mb-5"><h2 class="text-3xl md:text-5xl font-bold">🙏 पाटीदार परिवार में आपका स्वागत है</h2><p class="text-lg text-gray-500">Welcome to Patidar Family</p></div>';
+ if(!currentUser){
+  h += '<div class="grid grid-cols-4 gap-3 mb-2">';
+  h += '<div class="col-span-3 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-2xl p-6 md:p-8 text-center cursor-pointer shadow-lg hover:shadow-2xl transform hover:scale-[1.02] transition-all flex items-center justify-center" onclick="startRegister()"><p class="text-xl md:text-3xl font-bold">📝 Register Now</p></div>';
+  h += '<div class="col-span-1 bg-gradient-to-r from-blue-700 to-indigo-700 text-white rounded-2xl p-3 md:p-6 text-center cursor-pointer shadow-lg hover:shadow-2xl transform hover:scale-[1.02] transition-all flex items-center justify-center" onclick="toggleQuickLoginBox()"><p class="text-xs md:text-lg font-bold">🔑 Already Member</p></div>';
+  h += '</div>';
+  if(showQuickLoginBox) h += quickLoginBoxHTML();
+  h += '<p class="text-center text-gray-300 text-xs mb-4">•</p>';
+ }
  h += '<div class="bg-gradient-to-r from-blue-900 via-indigo-800 to-orange-600 rounded-2xl shadow-xl p-6 md:p-8 mb-6"><div class="flex flex-col md:flex-row items-center gap-5 md:gap-8"><img src="data:image/webp;base64,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" class="h-28 w-28 md:h-36 md:w-36 rounded-full border-4 border-yellow-400 shadow-2xl object-cover flex-shrink-0"><div class="text-center md:text-left"><p class="text-xs md:text-sm uppercase tracking-widest text-yellow-300 font-bold mb-1">हमारे आदर्श / Our Inspiration</p><h3 class="text-2xl md:text-3xl font-bold text-white mb-1">सरदार वल्लभभाई पटेल</h3><p class="text-blue-100 text-sm md:text-base">लौह पुरुष — Iron Man of India</p></div></div></div>';
 
  if(!currentUser){
@@ -1130,6 +1210,17 @@ async function togglePrivacySelf(){
  alert('✅ Privacy बदल गई: '+newP);
 }
 
+function quickLoginBoxHTML(){
+ let h = '<div class="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-400 rounded-lg p-5 max-w-2xl mx-auto mb-2 text-center">';
+ h += '<div class="flex flex-col sm:flex-row gap-2 justify-center max-w-sm mx-auto">';
+ h += '<div class="flex items-center border-2 border-blue-300 rounded overflow-hidden flex-1"><span class="bg-blue-100 px-3 py-2 font-bold text-blue-700 text-sm">+91</span><input type="tel" id="ql_phone" maxlength="10" inputmode="numeric" value="'+esc(quickLoginPhone)+'" placeholder="Mobile Number" class="flex-1 px-3 py-2 outline-none"></div>';
+ h += '<button onclick="sendQuickLoginOtp()" id="qlOtpSendBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg font-bold whitespace-nowrap">📲 OTP भेजो</button>';
+ h += '</div>';
+ h += '<div id="qlOtpBox" class="hidden mt-3 max-w-sm mx-auto"><input type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" oninput="this.value=this.value.replace(/[^0-9]/g,\'\'); if(this.value.length===6) verifyQuickLoginOtp();" id="qlOtpCode" maxlength="6" placeholder="OTP डालें (SMS से auto-fill होगा)" class="w-full px-3 py-2 border-2 border-blue-300 rounded mb-2 text-center text-2xl font-bold tracking-widest"><button onclick="verifyQuickLoginOtp()" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold">✅ Login करो</button><div id="qlResendArea" class="mt-2"></div></div>';
+ h += '<div id="recaptcha-container-quicklogin" class="mt-2 flex justify-center"></div>';
+ h += '</div>';
+ return h;
+}
 function renderRegisterPage(){
  if(currentUser && myMember()){
   return '<div class="bg-white rounded-lg shadow-lg p-6 text-center"><p class="text-4xl mb-3">✅</p><p class="text-lg font-bold text-gray-700">आप पहले से registered हैं!</p><button onclick="goPage(\'community\')" class="mt-4 bg-blue-600 text-white px-6 py-3 rounded-lg font-bold">Community Page पर जाओ →</button></div>';
