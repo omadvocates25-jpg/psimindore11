@@ -33,11 +33,12 @@ let selectedNewsId = '';
 let randIdx = 0, randOrder = [];
 let searchQ = '', searchBy = 'name';
 let adminTab = 'members';
-let showAddForm=false, showItemForm=false, showPratForm=false, showJobForm=false, showRelForm=false, showGarbaForm=false, showPropForm=false, showManageProp=false;
+let showAddForm=false, showItemForm=false, showPratForm=false, showJobForm=false, showRelForm=false, showFriendForm=false, showGarbaForm=false, showPropForm=false, showManageProp=false;
 let regStep = 0;
 let relSearchQ = '';
+let friendSearchQ = '';
 
-let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], committeeData=[], garbaRegs=[], garbaTeam=[], cricketData=[], propertyData=[], bloodData=[];
+let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], cricketData=[], propertyData=[], bloodData=[];
 let siteMeta = { ticker:'', aboutUs:'', fb:'', insta:'', youtube:'', committee:'', expiryDays:30, propertyValidityDays:365, propertyFee:'500', razorpayButtonId:'', razorpayMakan:'', razorpayDukan:'', shaadiFee:'', razorpayShaadi:'', professions: DEFAULT_PROFESSIONS.slice(), blocked:[], garbaFormOpen:true, ads:[{},{},{},{},{}], subAdmins:[] };
 function professionsList(){ return (siteMeta.professions && siteMeta.professions.length) ? siteMeta.professions : DEFAULT_PROFESSIONS; }
 
@@ -116,6 +117,7 @@ function setupRealtimeListeners(){
  watch('jobs', d => jobsData = d);
  watch('shaadi', d => shaadiData = d);
  watch('relatives', d => relativesData = d);
+ watch('friends', d => friendsData = d);
  watch('committee', d => committeeData = d);
  watch('garba_regs', d => garbaRegs = d);
  watch('garba_team', d => garbaTeam = d);
@@ -323,6 +325,9 @@ function fieldHTML(prefix, f, val){
  if(f[0]==='phone' && prefix==='reg_' && currentUser){
   return '<div><label class="text-xs font-bold text-gray-600">'+f[1]+' (आपका login number - automatic)</label><input type="tel" id="'+fid+'" value="'+esc(currentUser)+'" readonly class="w-full px-3 py-2 border-2 border-gray-300 rounded bg-gray-100 text-gray-600"></div>';
  }
+ if(f[0]==='phone' && prefix==='edit_'){
+  return '<div><label class="text-xs font-bold text-gray-600">'+f[1]+' (बदला नहीं जा सकता)</label><input type="tel" id="'+fid+'" value="'+esc(val)+'" readonly class="w-full px-3 py-2 border-2 border-gray-300 rounded bg-gray-100 text-gray-600"></div>';
+ }
  if(f[0]==='phone' && prefix==='reg_'){
   return '<div><label class="text-xs font-bold text-gray-600">'+f[1]+'</label><div class="flex items-center border-2 border-gray-300 rounded overflow-hidden"><span class="bg-gray-100 px-3 py-2 font-bold text-gray-600 text-sm">+91</span><input type="tel" id="'+fid+'" maxlength="10" value="'+esc(val)+'" class="flex-1 px-3 py-2 outline-none"></div></div>';
  }
@@ -433,6 +438,42 @@ function readMemberForm(prefix){
  obj.home_village = fmtName(obj.home_village); obj.present_city = fmtName(obj.present_city);
  obj.phone = fmtPhone(obj.phone); obj.business_phone = fmtPhone(obj.business_phone);
  return obj;
+}
+
+// ===== EDIT MY PROFILE (member self-service, re-approval required) =====
+function openEditProfile(){
+ const me = myMember(); if(!me) return;
+ const box = document.getElementById('bizModalBox');
+ let h = '<div class="p-6">';
+ h += '<div class="flex justify-between items-center mb-4"><h3 class="text-2xl font-bold text-blue-800">✏️ अपनी Profile Edit करो</h3><button onclick="closeBizForce()" class="text-gray-500 hover:text-gray-700 text-2xl font-bold">✕</button></div>';
+ h += STEP_GROUPS.slice(0,2).map(g =>
+  '<div class="mt-3 bg-'+g.color+'-50 border-2 border-'+g.color+'-400 rounded-lg p-4">'+
+  '<h4 class="text-md font-bold text-'+g.color+'-800 mb-3">'+g.title+'</h4>'+
+  '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+grpFields(g.keys).map(f => fieldHTML('edit_', f, me[f[0]])).join('')+'</div></div>'
+ ).join('');
+ const optFields = grpFields(OPTIONAL_FIELDS[0].keys);
+ if(optFields.length) h += '<div class="mt-3 bg-purple-50 border-2 border-purple-400 rounded-lg p-4"><h4 class="text-md font-bold text-purple-800 mb-3">👤 और जानकारी</h4><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+optFields.map(f=>fieldHTML('edit_', f, me[f[0]])).join('')+'</div></div>';
+ h += '<button onclick="saveMyProfile()" class="mt-5 w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold text-lg">✅ SAVE — Update करो</button>';
+ h += '<p class="text-xs text-gray-400 mt-2 text-center">⚠️ Save करने पर आपकी profile दोबारा Admin approval में जाएगी</p>';
+ h += '</div>';
+ box.innerHTML = h;
+ document.getElementById('bizModal').classList.remove('hidden');
+ setTimeout(()=>{
+  document.querySelectorAll('select[id$="gender"]').forEach(sel=>{ const prefix = sel.id.slice(0,-6); togglePrivacyBox(sel.value, prefix); });
+ },30);
+}
+async function saveMyProfile(){
+ const me = myMember(); if(!me) return;
+ const d = readMemberForm('edit_');
+ if(!d.name || !d.surname){ alert('❌ Name और Surname दोनों भरो'); return; }
+ d.phone = me.phone;
+ d.status = 'pending';
+ busy(true);
+ await db.collection('members').doc(me.id).update(d);
+ busy(false);
+ closeBizForce();
+ alert('✅ आपकी details update हो गईं! दोबारा Admin approval के बाद फिर से live होंगी।');
+ renderApp();
 }
 let _regConfirmation = null;
 let _regRecaptcha = null;
@@ -647,6 +688,10 @@ function relOf(m){
  const rels = relativesData.filter(r => r.status==='approved' && (r.fromPhone===m.phone || r.toPhone===m.phone));
  return rels.map(r => r.fromPhone===m.phone ? (r.toName+' ('+r.relation.split('/')[0].trim()+')') : (r.fromName+' ('+r.relation.split('/')[0].trim()+')'));
 }
+function friendsOf(m){
+ const frs = friendsData.filter(f => f.status==='approved' && (f.fromPhone===m.phone || f.toPhone===m.phone));
+ return frs.map(f => f.fromPhone===m.phone ? f.toName : f.fromName);
+}
 function renderRandProfile(){
  const box = document.getElementById('randProfileBox'); if(!box) return;
  if(!currentUser){ box.innerHTML='<div class="text-center py-6"><p class="text-5xl mb-3">🔒</p><p class="font-bold text-gray-600">Profiles देखने के लिए पहले Register करो</p><button onclick="showRegisterPrompt(\'Business profiles देखने के लिए पहले Register करो।\')" class="mt-3 bg-blue-600 text-white px-6 py-2 rounded-lg font-bold">📝 REGISTER करो</button></div>'; return; }
@@ -699,7 +744,7 @@ function setSearch(by){ searchBy=by; renderApp(); }
 function doSearch(v){ searchQ=v.toLowerCase(); renderMemberGrid(); }
 function memberCard(m){
  const rels = relOf(m);
- return '<div class="bg-white border-2 border-blue-300 rounded-lg p-5 shadow-md hover:shadow-lg">'+
+ return '<div class="w-72 shrink-0 bg-white border-2 border-blue-300 rounded-lg p-5 shadow-md hover:shadow-lg">'+
  (m.profile_pic?'<img src="'+m.profile_pic+'" class="h-24 w-24 object-cover rounded-full border-2 border-blue-300 mb-3">':'')+
  '<p class="font-bold text-xl text-blue-700">'+esc(m.name)+' '+esc(m.surname)+'</p>'+
  '<p class="text-xs bg-blue-100 inline-block px-2 py-1 rounded mt-1">'+esc(profOf(m)||'')+'</p>'+
@@ -711,7 +756,15 @@ function memberCard(m){
  (m.blood_group?'<p>🩸 Blood Group: <b class="text-red-600">'+esc(m.blood_group)+'</b>'+((m.blood_donor||'').indexOf('हाँ')===0?' <span class="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold">रक्तदाता ✅</span>':'')+'</p>':'')+
  (m.business_name?'<p class="cursor-pointer text-yellow-700 font-bold" onclick="openBiz(\''+m.id+'\')">🏪 '+esc(m.business_name)+' ▸</p>':'')+
  (rels.length?'<p class="bg-indigo-50 rounded p-2 mt-2 text-xs">👨‍👩‍👧‍👦 <b>परिवार:</b> '+rels.join(', ')+'</p>':'')+
- '</div></div>';
+ '</div>'+
+ (currentUser && currentUser!==m.phone ?
+  '<div class="mt-3 flex gap-2 flex-wrap">'+
+  '<button onclick="sendFriendRequest(\''+m.id+'\')" class="bg-purple-100 text-purple-700 border border-purple-300 px-3 py-1.5 rounded-lg text-xs font-bold">➕ मित्र</button>'+
+  '<button onclick="openRelPicker(\''+m.id+'\')" class="bg-indigo-100 text-indigo-700 border border-indigo-300 px-3 py-1.5 rounded-lg text-xs font-bold">👨‍👩‍👧 रिश्तेदार</button>'+
+  '<button onclick="openMemberProfile(\''+m.id+'\')" class="bg-blue-100 text-blue-700 border border-blue-300 px-3 py-1.5 rounded-lg text-xs font-bold">👁️ पूरी प्रोफाइल</button>'+
+  '</div>' :
+  '<div class="mt-3"><button onclick="openMemberProfile(\''+m.id+'\')" class="bg-blue-100 text-blue-700 border border-blue-300 px-3 py-1.5 rounded-lg text-xs font-bold">👁️ पूरी प्रोफाइल</button></div>')+
+ '</div>';
 }
 function renderMemberGrid(){
  const el = document.getElementById('memberGrid'); if(!el) return;
@@ -724,12 +777,13 @@ function renderMemberGrid(){
   if(searchBy==='state') return ((m.home_state||'')+' '+(m.present_state||'')).toLowerCase().includes(searchQ);
   return true;
  });
- el.innerHTML = filtered.length ? '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">'+filtered.map(memberCard).join('')+'</div>' : '<p class="text-gray-500 text-lg text-center py-8">कोई member नहीं मिला</p>';
+ el.innerHTML = filtered.length ? '<div class="flex gap-5 overflow-x-auto pb-3 noscroll">'+filtered.map(memberCard).join('')+'</div>' : '<p class="text-gray-500 text-lg text-center py-8">कोई member नहीं मिला</p>';
  const cnt = document.getElementById('memberCount'); if(cnt) cnt.textContent = filtered.length;
 }
 
-// ===== RELATIVES (peer-approval - logged-in users) =====
+// ===== RELATIVES + FRIENDS (peer-approval - logged-in users) =====
 function toggleRelForm(){ showRelForm=!showRelForm; renderApp(); }
+function toggleFriendForm(){ showFriendForm=!showFriendForm; renderApp(); }
 async function sendRelRequest(toId){
  const me = myMember();
  if(!me || me.status!=='approved'){ showRegisterPrompt('रिश्तेदार जोड़ने के लिए पहले Community में register होना जरूरी है। Admin approval के बाद यह feature unlock होगा।'); return; }
@@ -739,7 +793,7 @@ async function sendRelRequest(toId){
  if(relativesData.find(r => (r.fromPhone===me.phone&&r.toPhone===to.phone)||(r.fromPhone===to.phone&&r.toPhone===me.phone))){ alert('❌ Request पहले से है!'); return; }
  busy(true);
  await db.collection('relatives').add({fromPhone:me.phone, fromName:me.name+' '+me.surname, toPhone:to.phone, toName:to.name+' '+to.surname, relation:relation, status:'pending', createdAt:today()});
- alert('✅ Request भेज दी! '+to.name+' के approve करने पर दोनों profile में दिखेगा।'); showRelForm=false; busy(false); renderApp();
+ alert('✅ Request भेज दी! '+to.name+' के approve करने पर दोनों profile में दिखेगा।'); showRelForm=false; relSearchQ=''; busy(false); renderApp();
 }
 async function respondRel(id, accept){
  busy(true);
@@ -747,27 +801,60 @@ async function respondRel(id, accept){
  else await db.collection('relatives').doc(id).delete();
  busy(false); renderApp();
 }
-function renderRelSection(){
+async function sendFriendRequest(toId){
  const me = myMember();
- let h = '';
- if(me && me.status==='approved'){
-  const pend = relativesData.filter(r => r.toPhone===me.phone && r.status==='pending');
-  if(pend.length){
-   h += '<div class="bg-indigo-100 border-2 border-indigo-400 rounded-lg p-4 mb-6"><p class="font-bold text-indigo-800 mb-3">🔔 Relative Requests ('+pend.length+')</p>';
-   pend.forEach(r => {
-    h += '<div class="bg-white rounded-lg p-3 mb-2 flex flex-wrap justify-between items-center gap-2"><p class="text-sm"><b>'+esc(r.fromName)+'</b> ने आपको <b>'+esc(r.relation)+'</b> बताया है</p>'+
-    '<div class="flex gap-2"><button onclick="respondRel(\''+r.id+'\',true)" class="bg-green-600 text-white px-4 py-1 rounded font-bold text-sm">✅ APPROVE</button><button onclick="respondRel(\''+r.id+'\',false)" class="bg-red-500 text-white px-4 py-1 rounded font-bold text-sm">❌</button></div></div>';
-   });
-   h += '</div>';
-  }
+ if(!me || me.status!=='approved'){ showRegisterPrompt('मित्र जोड़ने के लिए पहले Community में register होना जरूरी है। Admin approval के बाद यह feature unlock होगा।'); return; }
+ const to = membersData.find(m=>m.id===toId); if(!to) return;
+ if(to.phone===me.phone) return;
+ if(friendsData.find(f => (f.fromPhone===me.phone&&f.toPhone===to.phone)||(f.fromPhone===to.phone&&f.toPhone===me.phone))){ alert('❌ Request पहले से है!'); return; }
+ busy(true);
+ await db.collection('friends').add({fromPhone:me.phone, fromName:me.name+' '+me.surname, toPhone:to.phone, toName:to.name+' '+to.surname, status:'pending', createdAt:today()});
+ alert('✅ Friend Request भेज दी! '+to.name+' के approve करने पर दोनों की Friends list में दिखेगा।'); showFriendForm=false; friendSearchQ=''; busy(false); renderApp();
+}
+async function respondFriend(id, accept){
+ busy(true);
+ if(accept) await db.collection('friends').doc(id).update({status:'approved'});
+ else await db.collection('friends').doc(id).delete();
+ busy(false); renderApp();
+}
+function connectSearchResults(q, excludePhone){
+ return approvedMembers().filter(m => m.phone!==excludePhone && ((m.name+' '+m.surname).toLowerCase().includes(q) || (m.phone||'').includes(q) || (m.home_village||'').toLowerCase().includes(q))).slice(0,5);
+}
+function renderMyConnections(){
+ const me = myMember();
+ if(!me || me.status!=='approved') return '';
+ let h = '<div class="border-t-2 pt-4 mt-4">';
+ h += '<h4 class="font-bold text-lg mb-3">🤝 मित्र और रिश्तेदार</h4>';
+ const pendRel = relativesData.filter(r => r.toPhone===me.phone && r.status==='pending');
+ const pendFr = friendsData.filter(f => f.toPhone===me.phone && f.status==='pending');
+ if(pendRel.length || pendFr.length){
+  h += '<div class="bg-indigo-100 border-2 border-indigo-400 rounded-lg p-4 mb-4">';
+  h += '<p class="font-bold text-indigo-800 mb-3">🔔 Pending Requests</p>';
+  pendRel.forEach(r => {
+   h += '<div class="bg-white rounded-lg p-3 mb-2 flex flex-wrap justify-between items-center gap-2"><p class="text-sm">👨‍👩‍👧 <b>'+esc(r.fromName)+'</b> ने आपको <b>'+esc(r.relation)+'</b> बताया है</p>'+
+   '<div class="flex gap-2"><button onclick="respondRel(\''+r.id+'\',true)" title="Approve" class="bg-green-600 text-white w-9 h-9 rounded-full font-bold">✔️</button><button onclick="respondRel(\''+r.id+'\',false)" title="Reject" class="bg-red-500 text-white w-9 h-9 rounded-full font-bold">✖️</button></div></div>';
+  });
+  pendFr.forEach(f => {
+   h += '<div class="bg-white rounded-lg p-3 mb-2 flex flex-wrap justify-between items-center gap-2"><p class="text-sm">🙋 <b>'+esc(f.fromName)+'</b> ने आपको Friend Request भेजी है</p>'+
+   '<div class="flex gap-2"><button onclick="respondFriend(\''+f.id+'\',true)" title="Approve" class="bg-green-600 text-white w-9 h-9 rounded-full font-bold">✔️</button><button onclick="respondFriend(\''+f.id+'\',false)" title="Reject" class="bg-red-500 text-white w-9 h-9 rounded-full font-bold">✖️</button></div></div>';
+  });
+  h += '</div>';
  }
- h += '<button onclick="toggleRelForm()" class="mb-4 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-bold">➕ रिश्तेदार जोड़ें / Add Relative</button>';
+ const myRels = relOf(me), myFriends = friendsOf(me);
+ h += '<p class="text-sm font-bold text-gray-700 mb-1">👨‍👩‍👧 मेरे रिश्तेदार ('+myRels.length+')</p>';
+ h += myRels.length ? '<p class="text-sm text-gray-600 mb-3">'+myRels.map(esc).join(', ')+'</p>' : '<p class="text-xs text-gray-400 mb-3">अभी कोई नहीं</p>';
+ h += '<p class="text-sm font-bold text-gray-700 mb-1">🙋 मेरे मित्र ('+myFriends.length+')</p>';
+ h += myFriends.length ? '<p class="text-sm text-gray-600 mb-3">'+myFriends.map(esc).join(', ')+'</p>' : '<p class="text-xs text-gray-400 mb-3">अभी कोई नहीं</p>';
+ h += '<div class="flex flex-wrap gap-3 mt-2">';
+ h += '<button onclick="toggleRelForm()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg font-bold text-sm">➕ रिश्तेदार जोड़ें</button>';
+ h += '<button onclick="toggleFriendForm()" class="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2 rounded-lg font-bold text-sm">➕ मित्र जोड़ें</button>';
+ h += '</div>';
  if(showRelForm){
-  h += '<div class="bg-indigo-50 border-2 border-indigo-400 rounded-lg p-5 mb-6">';
+  h += '<div class="bg-indigo-50 border-2 border-indigo-400 rounded-lg p-5 mt-4">';
   h += '<p class="font-bold mb-2">🔍 Community में से खोजो / Search relative:</p>';
   h += '<input type="text" oninput="relSearchQ=this.value.toLowerCase();renderApp()" value="'+esc(relSearchQ)+'" placeholder="Name / गाँव / Number..." class="w-full px-4 py-2 border-2 border-indigo-300 rounded-lg mb-3">';
   if(relSearchQ){
-   const results = approvedMembers().filter(m => ((m.name+' '+m.surname).toLowerCase().includes(relSearchQ) || (m.phone||'').includes(relSearchQ) || (m.home_village||'').toLowerCase().includes(relSearchQ))).slice(0,5);
+   const results = connectSearchResults(relSearchQ, me.phone);
    if(results.length){
     results.forEach(m => {
      h += '<div class="bg-white rounded-lg p-3 mb-2 flex flex-wrap justify-between items-center gap-2"><p class="text-sm font-bold">'+esc(m.name)+' '+esc(m.surname)+' <span class="text-gray-500 font-normal">('+esc(m.home_village||'-')+')</span></p>'+
@@ -776,16 +863,31 @@ function renderRelSection(){
     });
    } else h += '<p class="text-gray-500 text-sm">कोई नहीं मिला</p>';
   }
-  h += '<p class="text-xs text-gray-400 mt-2">⚠️ सामने वाला member approve करेगा तब दोनों profile में रिश्ता दिखेगा</p>';
   h += '</div>';
  }
+ if(showFriendForm){
+  h += '<div class="bg-purple-50 border-2 border-purple-400 rounded-lg p-5 mt-4">';
+  h += '<p class="font-bold mb-2">🔍 Community में से खोजो / Search friend:</p>';
+  h += '<input type="text" oninput="friendSearchQ=this.value.toLowerCase();renderApp()" value="'+esc(friendSearchQ)+'" placeholder="Name / गाँव / Number..." class="w-full px-4 py-2 border-2 border-purple-300 rounded-lg mb-3">';
+  if(friendSearchQ){
+   const results = connectSearchResults(friendSearchQ, me.phone);
+   if(results.length){
+    results.forEach(m => {
+     h += '<div class="bg-white rounded-lg p-3 mb-2 flex flex-wrap justify-between items-center gap-2"><p class="text-sm font-bold">'+esc(m.name)+' '+esc(m.surname)+' <span class="text-gray-500 font-normal">('+esc(m.home_village||'-')+')</span></p>'+
+     '<button onclick="sendFriendRequest(\''+m.id+'\')" class="bg-purple-600 text-white px-3 py-1 rounded font-bold text-sm">📤 REQUEST</button></div>';
+    });
+   } else h += '<p class="text-gray-500 text-sm">कोई नहीं मिला</p>';
+  }
+  h += '</div>';
+ }
+ h += '</div>';
  return h;
 }
 
 // ===== MY PROFILE / DELETE MY DATA / PRIVACY TOGGLE =====
 async function deleteMyData(){
  const me = myMember(); if(!me) return;
- if(!confirm('⚠️ आपका पूरा DATA delete हो जाएगा (Profile + Cricket + Garba + Relatives)।\nवापस नहीं आएगा! पक्का?')) return;
+ if(!confirm('⚠️ आपका पूरा DATA delete हो जाएगा (Profile + Cricket + Garba + Relatives + Friends)।\nवापस नहीं आएगा! पक्का?')) return;
  if(!confirm('Confirm दोबारा - DELETE करना है?')) return;
  busy(true);
  const batch = db.batch();
@@ -793,6 +895,7 @@ async function deleteMyData(){
  cricketData.filter(c=>c.phone===me.phone).forEach(c=>batch.delete(db.collection('cricket').doc(c.id)));
  garbaRegs.filter(g=>g.phone===me.phone).forEach(g=>batch.delete(db.collection('garba_regs').doc(g.id)));
  relativesData.filter(r=>r.fromPhone===me.phone||r.toPhone===me.phone).forEach(r=>batch.delete(db.collection('relatives').doc(r.id)));
+ friendsData.filter(f=>f.fromPhone===me.phone||f.toPhone===me.phone).forEach(f=>batch.delete(db.collection('friends').doc(f.id)));
  await batch.commit();
  busy(false);
  alert('✅ आपका पूरा data delete हो गया।');
@@ -831,8 +934,6 @@ function renderCommunity(){
  top += '<div class="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl p-6 cursor-pointer hover:shadow-xl" onclick="document.getElementById(\'searchSection\').scrollIntoView({behavior:\'smooth\'})"><p class="text-3xl mb-1">🔍</p><p class="font-bold text-xl">SEARCH MEMBERS</p><p class="text-sm text-blue-100">Name, Number, Village, District, State से</p></div>';
  top += '<div class="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-xl p-6 cursor-pointer hover:shadow-xl" onclick="document.getElementById(\'addSection\').scrollIntoView({behavior:\'smooth\'})"><p class="text-3xl mb-1">➕</p><p class="font-bold text-xl">ADD YOUR DETAILS</p><p class="text-sm text-green-100">Admin approval के बाद live</p></div></div>';
 
- top += renderRelSection();
-
  let searchSec = '<div id="searchSection" class="bg-white rounded-lg shadow-lg p-6 mb-8">';
  searchSec += '<h3 class="text-2xl font-bold mb-4">🔍 SEARCH (<span id="memberCount"></span>)</h3>';
  searchSec += '<div class="flex flex-wrap gap-2 mb-4">'+[['name','By Name'],['phone','By Number'],['village','By Village'],['district','By District'],['state','By State']].map(b=>'<button onclick="setSearch(\''+b[0]+'\')" class="px-3 py-2 rounded font-bold text-sm '+(searchBy===b[0]?'bg-blue-600 text-white':'bg-gray-200')+'">'+b[1]+'</button>').join('')+'</div>';
@@ -859,8 +960,12 @@ function renderCommunity(){
    '<button onclick="setMyBlood()" class="bg-red-600 text-white px-4 py-2 rounded font-bold">✅ SAVE</button></div>'+
    (me.blood_group?'<p class="text-sm text-green-700 font-bold mt-2">अभी: '+esc(me.blood_group)+' '+((me.blood_donor||'').indexOf('हाँ')===0?'(रक्तदान के लिए तैयार ✅)':'(रक्तदान: नहीं)')+'</p>':'')+
    '</div>';
-  addSec += '<p class="text-xs text-gray-500 mb-3">अन्य जानकारी में बदलाव के लिए Admin से संपर्क करो: '+CONTACT_PHONE+'</p>';
-  addSec += '<div class="border-t-2 pt-4"><button onclick="deleteMyData()" class="bg-red-100 text-red-700 border-2 border-red-300 px-5 py-2 rounded-lg font-bold text-sm hover:bg-red-200">🗑️ Delete My Data / मेरा पूरा data delete करो</button></div>';
+  addSec += '<div class="flex flex-wrap gap-3 my-4">'+
+   '<button onclick="openEditProfile()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg font-bold text-sm">✏️ Edit Profile</button>'+
+   '<button onclick="doLogout()" class="bg-gray-700 hover:bg-gray-800 text-white px-5 py-2 rounded-lg font-bold text-sm">🚪 Logout</button>'+
+   '</div>';
+  addSec += renderMyConnections();
+  addSec += '<div class="border-t-2 pt-4 mt-4"><button onclick="deleteMyData()" class="bg-red-100 text-red-700 border-2 border-red-300 px-5 py-2 rounded-lg font-bold text-sm hover:bg-red-200">🗑️ Delete My Data / मेरा पूरा data delete करो</button></div>';
  } else {
   addSec += '<h3 class="text-2xl font-bold mb-2">➕ ADD YOUR DETAILS / अपनी जानकारी जोड़ें</h3>';
   addSec += '<p class="text-sm text-red-600 font-bold mb-4">⚠️ Subject to Admin Approval | सिर्फ 3 चीज़ें जरूरी - बाकी optional</p>';
@@ -904,6 +1009,8 @@ function openBiz(id){
   (b.village?'<p>🏡 गाँव: '+esc(b.village)+'</p>':'')+
   '<p>📱 '+esc(b.phone)+'</p></div>'+
   (b.description?'<p class="text-sm text-gray-700 mt-3 bg-gray-50 rounded-lg p-3 whitespace-pre-line">'+esc(b.description)+'</p>':'')+
+  (currentUser && currentUser!==b.ownerPhone && membersData.find(x=>x.id===b.id) ?
+   '<div class="flex gap-2 flex-wrap mt-4"><button onclick="sendFriendRequest(\''+b.id+'\')" class="bg-purple-100 text-purple-700 border border-purple-300 px-3 py-1.5 rounded-lg text-xs font-bold">➕ मित्र</button><button onclick="openRelPicker(\''+b.id+'\')" class="bg-indigo-100 text-indigo-700 border border-indigo-300 px-3 py-1.5 rounded-lg text-xs font-bold">👨‍👩‍👧 रिश्तेदार</button></div>' : '')+
   '<div class="grid grid-cols-1 gap-2 mt-5">'+
   '<a href="tel:'+esc(b.phone)+'" class="text-center bg-green-600 text-white px-4 py-3 rounded-lg font-bold">📞 Call करो</a>'+
   '<a href="https://wa.me/91'+esc(b.phone)+'" target="_blank" class="text-center bg-green-500 text-white px-4 py-3 rounded-lg font-bold">💬 WhatsApp</a>'+
@@ -914,6 +1021,48 @@ function openBiz(id){
 }
 function closeBizForce(){ document.getElementById('bizModal').classList.add('hidden'); }
 function closeBiz(e){ if(e && e.target && e.target.id==='bizModal') closeBizForce(); }
+function openRelPicker(toId){
+ const to = membersData.find(m=>m.id===toId); if(!to) return;
+ const box = document.getElementById('bizModalBox');
+ box.innerHTML = '<div class="p-6">'+
+  '<div class="flex justify-between items-center mb-4"><h3 class="text-xl font-bold text-indigo-800">👨‍👩‍👧 रिश्तेदार जोड़ो</h3><button onclick="closeBizForce()" class="text-gray-500 hover:text-gray-700 text-2xl font-bold">✕</button></div>'+
+  '<p class="font-bold mb-3">'+esc(to.name)+' '+esc(to.surname)+' <span class="text-gray-500 font-normal text-sm">('+esc(to.home_village||'-')+')</span></p>'+
+  '<label class="text-xs font-bold text-gray-600">रिश्ता चुनो</label>'+
+  '<select id="relSel_'+to.id+'" class="w-full px-3 py-2 border-2 rounded mb-4"><option value="">-- चुनो --</option>'+RELATIONS.map(r=>'<option>'+r+'</option>').join('')+'</select>'+
+  '<button onclick="sendRelRequest(\''+to.id+'\'); closeBizForce();" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-bold">📤 REQUEST भेजो</button>'+
+  '</div>';
+ document.getElementById('bizModal').classList.remove('hidden');
+}
+function openMemberProfile(id){
+ const m = membersData.find(x=>x.id===id); if(!m) return;
+ const box = document.getElementById('bizModalBox');
+ const rels = relOf(m), frs = friendsOf(m);
+ const isMe = currentUser===m.phone;
+ box.innerHTML =
+  (m.profile_pic?'<img src="'+m.profile_pic+'" class="w-full h-56 object-cover rounded-t-2xl">':'<div class="w-full h-28 bg-blue-100 flex items-center justify-center text-6xl rounded-t-2xl">👤</div>')+
+  '<div class="p-6">'+
+  '<p class="text-2xl font-bold text-blue-800">'+esc(m.name)+' '+esc(m.surname)+'</p>'+
+  (profOf(m)?'<p class="inline-block bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-bold mt-2">'+esc(profOf(m))+'</p>':'')+
+  '<div class="mt-4 space-y-1 text-gray-700 text-sm">'+
+  '<p>📱 '+esc(m.phone)+'</p>'+
+  '<p>🏡 गाँव: '+esc(m.home_village||'-')+', '+esc(distOf(m,'home')||'-')+'</p>'+
+  '<p>📍 वर्तमान: '+esc(m.present_city||'-')+', '+esc(distOf(m,'present')||'-')+'</p>'+
+  (m.marital_status?'<p>💍 '+esc(m.marital_status)+' | Age: '+esc(m.age||'-')+'</p>':'')+
+  (m.blood_group?'<p>🩸 Blood Group: <b class="text-red-600">'+esc(m.blood_group)+'</b></p>':'')+
+  (m.work_details?'<p>💼 '+esc(m.work_details)+'</p>':'')+
+  '</div>'+
+  (m.business_name?'<p class="cursor-pointer text-yellow-700 font-bold mt-3" onclick="openBiz(\''+m.id+'\')">🏪 '+esc(m.business_name)+' ▸</p>':'')+
+  (!isMe && currentUser ? '<div class="flex gap-2 flex-wrap mt-4"><button onclick="sendFriendRequest(\''+m.id+'\')" class="bg-purple-100 text-purple-700 border border-purple-300 px-3 py-1.5 rounded-lg text-xs font-bold">➕ मित्र</button><button onclick="openRelPicker(\''+m.id+'\')" class="bg-indigo-100 text-indigo-700 border border-indigo-300 px-3 py-1.5 rounded-lg text-xs font-bold">👨‍👩‍👧 रिश्तेदार</button></div>' : '')+
+  '<div class="border-t-2 pt-3 mt-4">'+
+  '<p class="text-sm font-bold text-gray-700 mb-1">🙋 मित्र ('+frs.length+')</p>'+
+  (frs.length?'<p class="text-sm text-gray-600 mb-3">'+frs.map(esc).join(', ')+'</p>':'<p class="text-xs text-gray-400 mb-3">अभी कोई नहीं</p>')+
+  '<p class="text-sm font-bold text-gray-700 mb-1">👨‍👩‍👧 रिश्तेदार ('+rels.length+')</p>'+
+  (rels.length?'<p class="text-sm text-gray-600">'+rels.map(esc).join(', ')+'</p>':'<p class="text-xs text-gray-400">अभी कोई नहीं</p>')+
+  '</div>'+
+  '<button onclick="closeBizForce()" class="w-full mt-5 bg-gray-200 text-gray-700 px-4 py-3 rounded-lg font-bold">बंद करो / Close</button>'+
+  '</div>';
+ document.getElementById('bizModal').classList.remove('hidden');
+}
 function bizMiniCard(b){
  return '<div onclick="openBiz(\''+b.id+'\')" class="w-56 shrink-0 bg-white border-2 border-yellow-300 rounded-xl overflow-hidden shadow cursor-pointer hover:shadow-xl">'+
   (b.pic?'<img src="'+b.pic+'" class="w-full h-28 object-cover">':'<div class="w-full h-20 bg-yellow-100 flex items-center justify-center text-4xl">🏪</div>')+
@@ -939,8 +1088,9 @@ function renderBusinessPage(){
  const list = allBusinesses();
  return '<h2 class="text-3xl font-bold mb-2">🏪 BUSINESS / व्यापार ('+list.length+')</h2>'+
  '<p class="text-gray-500 mb-6">Members की business details automatic दिखती हैं</p>'+
- '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">'+
- list.map(b => '<div onclick="openBiz(\''+b.id+'\')" class="bg-white border-2 border-yellow-300 rounded-lg overflow-hidden shadow-md hover:shadow-xl cursor-pointer transform hover:scale-[1.02] transition-all">'+
+ '<div class="flex gap-5 overflow-x-auto pb-3 noscroll">'+
+ list.map(b => '<div class="w-72 shrink-0 bg-white border-2 border-yellow-300 rounded-lg overflow-hidden shadow-md hover:shadow-xl">'+
+  '<div onclick="openBiz(\''+b.id+'\')" class="cursor-pointer transform hover:scale-[1.01] transition-all">'+
   (b.pic?'<img src="'+b.pic+'" class="w-full h-44 object-cover">':'')+
   '<div class="p-5"><p class="font-bold text-xl text-yellow-700">'+esc(b.name)+'</p>'+
   '<p class="inline-block bg-yellow-200 text-yellow-900 px-2 py-1 rounded text-xs font-bold mt-2">'+esc(b.type)+'</p>'+
@@ -949,7 +1099,10 @@ function renderBusinessPage(){
   (b.description?'<p class="text-sm text-gray-600 mt-2 bg-gray-50 rounded p-2">'+esc(b.description)+'</p>':'')+
   (b.gmap?'<a href="'+esc(b.gmap)+'" target="_blank" onclick="event.stopPropagation()" class="block text-center mt-3 bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-sm">📍 Location देखो</a>':'')+
   '<p class="text-center text-xs text-yellow-700 font-bold mt-3">👆 पूरी details के लिए click करो</p>'+
- '</div></div>').join('')+'</div>';
+  '</div></div>'+
+  (currentUser && currentUser!==b.ownerPhone && membersData.find(x=>x.id===b.id) ?
+   '<div class="px-5 pb-4 flex gap-2 flex-wrap"><button onclick="sendFriendRequest(\''+b.id+'\')" class="bg-purple-100 text-purple-700 border border-purple-300 px-3 py-1.5 rounded-lg text-xs font-bold">➕ मित्र</button><button onclick="openRelPicker(\''+b.id+'\')" class="bg-indigo-100 text-indigo-700 border border-indigo-300 px-3 py-1.5 rounded-lg text-xs font-bold">👨‍👩‍👧 रिश्तेदार</button></div>' : '')+
+ '</div>').join('')+'</div>';
 }
 
 // ================= GARBA =================
@@ -1007,7 +1160,7 @@ async function joinCricket(){
  busy(true);
  await db.collection('cricket').add({name:me.name+' '+me.surname, age:me.age||'', area:me.present_city||me.home_village||'', phone:me.phone, createdAt:today()});
  busy(false);
- alert('✅ आप Cricket interested list में add हो गए! 🏏');
+ alert('🏏 Hello '+esc(me.name)+'!\n\nआपका नाम Cricket टीम तक पहुंच गया है। जब भी Cricket का आयोजन होगा, आपको सूचना मिल जाएगी।\n\nThank you 🙏');
  renderApp();
 }
 function renderCricketPage(){
