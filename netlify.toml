@@ -1,26 +1,24 @@
-# ========== CACHING STRATEGY (Reduce Netlify bandwidth) ==========
-# Cache assets for 1 year (they have hash/version in name if needed)
+# ========== CACHING STRATEGY ==========
+# app.js/index.html/styles.css have no hash in their filename (they're always
+# served from the same URL), so long "immutable"/1-year caching meant browsers
+# that had visited once would NEVER pick up new deploys. "no-cache" still lets
+# browsers/CDN keep a local copy for speed, but forces a revalidation check
+# (cheap 304 response when unchanged) on every load, so fixes always land
+# immediately instead of being stuck behind old cached files.
 [[headers]]
   for = "/styles.css"
   [headers.values]
-    Cache-Control = "public, immutable, max-age=31536000"
+    Cache-Control = "no-cache"
 
 [[headers]]
   for = "/app.js"
   [headers.values]
-    Cache-Control = "public, immutable, max-age=31536000"
+    Cache-Control = "no-cache"
 
-# Cache external libraries
-[[headers]]
-  for = "/*.js"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000"
-
-# Refresh HTML every hour (catches content updates but leverages browser cache)
 [[headers]]
   for = "/index.html"
   [headers.values]
-    Cache-Control = "public, max-age=3600"
+    Cache-Control = "no-cache"
 
 # Gzip compression (enabled by default on Netlify)
 [[headers]]
