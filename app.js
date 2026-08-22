@@ -643,15 +643,61 @@ function ensureRegRecaptcha(){
  return _regRecaptcha;
 }
 // SMS aate hi Android Chrome par bina type kiye OTP auto-fill + auto-verify (support na ho to chup-chaap skip)
-function tryWebOtpAutofill(){
+function tryWebOtpAutofillInto(inputId, verifyFn){
  if(!('OTPCredential' in window)) return;
  const ac = new AbortController();
  setTimeout(()=>ac.abort(), 60000);
  navigator.credentials.get({ otp: { transport:['sms'] }, signal: ac.signal }).then(otp => {
   const code = (otp.code||'').replace(/[^0-9]/g,'');
-  const el = document.getElementById('regOtpCode');
-  if(el && code.length===6){ el.value = code; verifyRegOtp(); }
+  const el = document.getElementById(inputId);
+  if(el && code.length===6){ el.value = code; verifyFn(); }
  }).catch(()=>{});
+}
+function tryWebOtpAutofill(){ tryWebOtpAutofillInto('regOtpCode', verifyRegOtp); }
+// ===== QUICK LOGIN (पहले से Member हो? सिर्फ Phone + OTP — पूरा form दोबारा नहीं भरना) =====
+let quickLoginPhone = localStorage.getItem('psLastPhone') || '';
+let _quickConfirmation = null, _quickRecaptcha = null;
+function ensureQuickRecaptcha(){
+ if(!_quickRecaptcha){
+  _quickRecaptcha = new firebase.auth.RecaptchaVerifier('recaptcha-container-quicklogin', { size: 'invisible' });
+ }
+ return _quickRecaptcha;
+}
+async function sendQuickLoginOtp(){
+ const phone = fmtPhone(document.getElementById('ql_phone').value);
+ if(phone.length!==10){ alert('❌ सही 10 अंकों का Mobile Number भरो'); return; }
+ if((siteMeta.blocked||[]).includes(phone)){ alert('🚫 यह number block है। Admin से contact: '+CONTACT_PHONE); return; }
+ quickLoginPhone = phone;
+ const btn = document.getElementById('qlOtpSendBtn');
+ btn.disabled = true; btn.textContent = '📲 OTP भेज रहे हैं...';
+ try{
+  _quickConfirmation = await auth.signInWithPhoneNumber('+91'+phone, ensureQuickRecaptcha());
+  document.getElementById('qlOtpBox').classList.remove('hidden');
+  tryWebOtpAutofillInto('qlOtpCode', verifyQuickLoginOtp);
+ } catch(err){
+  alert('❌ OTP भेजने में समस्या: '+err.message);
+ }
+ btn.disabled = false; btn.textContent = '📲 OTP भेजो';
+}
+async function verifyQuickLoginOtp(){
+ const code = document.getElementById('qlOtpCode').value.trim();
+ if(code.length!==6){ alert('❌ 6 अंकों का OTP डालो'); return; }
+ if(!_quickConfirmation){ alert('❌ पहले OTP भेजो'); return; }
+ let verifiedPhone;
+ try{ const res = await _quickConfirmation.confirm(code); verifiedPhone = phoneFromFirebase(res.user.phoneNumber); }
+ catch(e){ alert('❌ गलत OTP - दोबारा देखो'); return; }
+ _quickConfirmation = null;
+ currentUser = verifiedPhone;
+ localStorage.setItem('psLastPhone', verifiedPhone);
+ const existing = membersData.find(m => m.phone === verifiedPhone);
+ if(existing){
+  alert('✅ वापसी पर स्वागत है, '+esc(existing.name)+'! आप login हो गए।');
+  goPage('community');
+  return;
+ }
+ draftSet('phone', verifiedPhone);
+ alert('ℹ️ यह number अभी तक registered नहीं है — नीचे नया registration form भरो, phone already verified है तो OTP दोबारा नहीं माँगेगा।');
+ renderApp();
 }
 async function sendRegOtp(){
  const phone = fmtPhone(draftGet('phone'));
@@ -1134,7 +1180,21 @@ function renderRegisterPage(){
  if(currentUser && myMember()){
   return '<div class="bg-white rounded-lg shadow-lg p-6 text-center"><p class="text-4xl mb-3">✅</p><p class="text-lg font-bold text-gray-700">आप पहले से registered हैं!</p><button onclick="goPage(\'community\')" class="mt-4 bg-blue-600 text-white px-6 py-3 rounded-lg font-bold">Community Page पर जाओ →</button></div>';
  }
- let h = '<div class="bg-white rounded-lg shadow-lg p-6 max-w-2xl mx-auto">';
+ let h = '';
+ if(!currentUser){
+  h += '<div class="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-400 rounded-lg p-5 max-w-2xl mx-auto mb-5 text-center">';
+  h += '<p class="font-bold text-blue-800 mb-1">🔑 पहले से Member हो?</p>';
+  h += '<p class="text-xs text-gray-600 mb-3">दोबारा details भरने की जरूरत नहीं — सिर्फ अपना Mobile Number डालो, OTP से सीधे Login हो जाओगे</p>';
+  h += '<div class="flex flex-col sm:flex-row gap-2 justify-center max-w-sm mx-auto">';
+  h += '<div class="flex items-center border-2 border-blue-300 rounded overflow-hidden flex-1"><span class="bg-blue-100 px-3 py-2 font-bold text-blue-700 text-sm">+91</span><input type="tel" id="ql_phone" maxlength="10" inputmode="numeric" value="'+esc(quickLoginPhone)+'" placeholder="Mobile Number" class="flex-1 px-3 py-2 outline-none"></div>';
+  h += '<button onclick="sendQuickLoginOtp()" id="qlOtpSendBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg font-bold whitespace-nowrap">📲 OTP भेजो</button>';
+  h += '</div>';
+  h += '<div id="qlOtpBox" class="hidden mt-3 max-w-sm mx-auto"><input type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" oninput="this.value=this.value.replace(/[^0-9]/g,\'\'); if(this.value.length===6) verifyQuickLoginOtp();" id="qlOtpCode" maxlength="6" placeholder="OTP डालें (SMS से auto-fill होगा)" class="w-full px-3 py-2 border-2 border-blue-300 rounded mb-2 text-center text-2xl font-bold tracking-widest"><button onclick="verifyQuickLoginOtp()" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold">✅ Login करो</button></div>';
+  h += '<div id="recaptcha-container-quicklogin" class="mt-2 flex justify-center"></div>';
+  h += '</div>';
+  h += '<p class="text-center text-gray-400 text-sm mb-5">— या नया registration शुरू करो —</p>';
+ }
+ h += '<div class="bg-white rounded-lg shadow-lg p-6 max-w-2xl mx-auto">';
  h += '<h2 class="text-2xl md:text-3xl font-bold mb-2 text-center">📝 पाटीदार परिवार से जुड़ो</h2>';
  h += '<p class="text-sm text-red-600 font-bold mb-4 text-center">⚠️ Subject to Admin Approval | सिर्फ जरूरी चीज़ें भरो - बाकी optional</p>';
  h += stepFormHTML({});
