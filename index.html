@@ -6,8 +6,8 @@
 <meta name="theme-color" content="#1e3a8a">
 <title>PATIDAR SAMAJ INDORE MAHANAGAR | पाटीदार समाज इंदौर महानगर</title>
 <link rel="manifest" href="/manifest.json">
-<link rel="icon" href="/icon-192.jpg" type="image/jpeg">
-<link rel="apple-touch-icon" href="/apple-touch-icon.jpg">
+<link rel="icon" href="/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="PSIM">
@@ -124,5 +124,10 @@
 <a href="https://wa.me/918103179376" target="_blank" class="fixed bottom-5 right-5 bg-green-500 hover:bg-green-600 text-white h-14 w-14 rounded-full shadow-2xl flex items-center justify-center text-3xl z-40">💬</a>
 
 <script src="app.js?v=4"></script>
+<script>
+if ('serviceWorker' in navigator) {
+ navigator.serviceWorker.register('/sw.js');
+}
+</script>
 </body>
 </html>
