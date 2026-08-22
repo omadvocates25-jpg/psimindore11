@@ -11,14 +11,14 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<link rel="stylesheet" href="styles.css?v=2">
+<link rel="stylesheet" href="styles.css?v=3">
 </head>
 <body class="bg-gray-50">
 
 <!-- REGISTER YOURSELF (सबसे ऊपर) -->
-<div id="registerBar" class="bg-gradient-to-r from-green-600 via-emerald-600 to-green-700 text-white text-center py-3 px-3">
- <button onclick="startRegister()" class="bg-white text-green-700 px-7 py-2.5 rounded-full font-bold text-sm md:text-lg shadow-lg hover:bg-green-50">📝 REGISTER YOURSELF / अभी रजिस्टर करें →</button>
- <p class="text-[10px] md:text-xs text-green-100 mt-1.5">सिर्फ Mobile Number + OTP — 1 मिनट में समाज से जुड़ो</p>
+<div id="registerBar" class="bg-gradient-to-r from-orange-500 via-red-500 to-pink-600 text-white text-center py-3 px-3">
+ <p id="registerBarTagline" class="font-bold text-sm md:text-base mb-1.5">🌟 पाटीदार परिवार का हिस्सा बनो!</p>
+ <button onclick="startRegister()" class="bg-white text-red-600 px-7 py-2.5 rounded-full font-bold text-sm md:text-lg shadow-lg hover:bg-red-50"><span id="registerBarBtn">आपकी पहचान, आपका समाज — अभी जुड़ो! →</span></button>
 </div>
 
 <!-- HEADER -->
@@ -57,7 +57,7 @@
 <button onclick="goPage('property')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm border-2" data-page="property">🏠 मकान-किरायेदार</button>
 <button onclick="goPage('shaadi')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm border-2" data-page="shaadi">💍 Shaadi</button>
 <button onclick="goPage('rozgaar')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm border-2" data-page="rozgaar">💼 Rozgaar</button>
-<button onclick="goPage('olditems')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm border-2" data-page="olditems">🛒 पुराना सामान</button>
+<button onclick="goPage('olditems')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm border-2" data-page="olditems">🛒 अपना OLX</button>
 <button onclick="goPage('news')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm border-2" data-page="news">📰 News</button>
 <button onclick="goPage('pratibha')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm border-2" data-page="pratibha">🏆 प्रतिभा</button>
 <button onclick="goPage('events')" class="nav-btn px-3 py-2 rounded font-bold whitespace-nowrap text-sm border-2" data-page="events">📅 Events</button>
@@ -117,6 +117,6 @@
 
 <a href="https://wa.me/918103179376" target="_blank" class="fixed bottom-5 right-5 bg-green-500 hover:bg-green-600 text-white h-14 w-14 rounded-full shadow-2xl flex items-center justify-center text-3xl z-40">💬</a>
 
-<script src="app.js?v=2"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>
