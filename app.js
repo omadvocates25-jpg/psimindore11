@@ -133,7 +133,8 @@ function setupRealtimeListeners(){
 async function saveMeta(){ await db.collection('meta').doc('site').set(siteMeta); }
 
 // ================= ROUTING (login-gated) =================
-const OPEN_PAGES = ['home','news','register']; // बिना login दिखने वाले pages
+// बिना login दिखने वाले pages — सिर्फ Community (members directory), Business, Profession (member contact list) lock हैं
+const OPEN_PAGES = ['home','news','register','events','gallery','pratibha','garba','cricket','blood','property','shaadi','rozgaar','olditems'];
 function goPage(p){
  
  location.hash = p;
@@ -713,7 +714,7 @@ function renderProfessionPage(){
  return h;
 }
 
-// ================= COMMUNITY (open, no login) =================
+// ================= COMMUNITY (members directory — login required) =================
 function setSearch(by){ searchBy=by; renderApp(); }
 function doSearch(v){ searchQ=v.toLowerCase(); renderMemberGrid(); }
 function memberCard(m){
