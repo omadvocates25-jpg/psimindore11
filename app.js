@@ -305,13 +305,13 @@ const MEMBER_FIELDS = [
  ['business_details','Business Details','textarea']
 ];
 const STEP_GROUPS = [
- {title:'📝 बेसिक जानकारी / Basic Info', color:'blue', keys:['name','surname','phone','email','home_village','home_district','present_city']},
+ {title:'📝 बेसिक जानकारी / Basic Info', color:'blue', keys:['name','surname','phone','email','gender','privacy','home_village','home_district','present_city']},
  {title:'🏪 क्या आपका भी व्यापार है? / Do You Have a Business?', color:'yellow', keys:['has_business','business_name','business_type','business_place','business_phone','business_pic1','business_details']},
  {title:'🔐 सत्यापन / Verification', color:'green', keys:['otp_verify']}
 ];
 
 const OPTIONAL_FIELDS = [
- {title:'👤 और जानकारी / More Details', color:'purple', keys:['profile_pic','gender','age','marital_status','profession','profession_other','work_details','blood_group','blood_donor','home_tehsil','home_pincode','home_police_station','present_address','present_tehsil','present_pincode','present_police_station','privacy']}
+ {title:'👤 और जानकारी / More Details', color:'purple', keys:['profile_pic','age','marital_status','profession','profession_other','work_details','blood_group','blood_donor','home_tehsil','home_pincode','home_police_station','present_address','present_tehsil','present_pincode','present_police_station']}
 ];
 
 function fieldHTML(prefix, f, val){
@@ -328,15 +328,18 @@ function fieldHTML(prefix, f, val){
  }
  if(f[2] === 'gender'){
   const opts = ['Male / पुरुष','Female / महिला','Other / अन्य'].map(o=>'<option '+(o===val?'selected':'')+'>'+o+'</option>').join('');
-  return '<div><label class="text-xs font-bold text-gray-600">'+f[1]+'</label><select id="'+fid+'" onchange="togglePrivacyBox(this.value,\''+prefix+'\')" class="w-full px-3 py-2 border-2 border-gray-300 rounded"><option value="">--Select--</option>'+opts+'</select></div>';
+  return '<div><label class="text-xs font-bold text-gray-600">'+f[1]+' *</label><select id="'+fid+'" onchange="togglePrivacyBox(this.value,\''+prefix+'\')" class="w-full px-3 py-2 border-2 border-gray-300 rounded"><option value="">--Select--</option>'+opts+'</select></div>';
  }
  if(f[2] === 'privacy'){
-  const show = val || (val==='' && false);
-  return '<div id="'+prefix+'privacyBox" class="'+(String(val).indexOf('Female')===0 || (val && val.length) ? '' : '')+'"><label class="text-xs font-bold text-gray-600">'+f[1]+' 🔒</label>'+
-   '<select id="'+fid+'" class="w-full px-3 py-2 border-2 border-gray-300 rounded">'+
-   '<option value="Public / सबको दिखे" '+(val==='Public / सबको दिखे'?'selected':'')+'>मेरी profile सबको दिखे / Public</option>'+
-   '<option value="Secret / सिर्फ PSIM Team को" '+(val==='Secret / सिर्फ PSIM Team को'?'selected':'')+'>सिर्फ PSIM Team को दिखे / Secret</option>'+
-   '</select><p class="text-[10px] text-gray-400 mt-0.5">Secret चुनने पर भी सारी सुविधाएँ मिलेंगी, बस आपकी profile directory में नहीं दिखेगी</p></div>';
+  return '<div id="'+prefix+'privacyBox" class="hidden md:col-span-2 bg-red-50 border-2 border-red-400 rounded-lg p-4 mt-1">'+
+   '<label class="text-sm font-bold text-red-700 flex items-center gap-1">🔒 आपकी Privacy, आपकी पसंद *</label>'+
+   '<p class="text-xs text-red-600 mt-1 mb-2">आपकी सुरक्षा हमारे लिए ज़रूरी है — कृपया चुनें कि आपकी प्रोफाइल सबको दिखाई दे, या सिर्फ PSIM Team को।</p>'+
+   '<select id="'+fid+'" class="w-full px-3 py-2 border-2 border-red-300 rounded bg-white font-bold text-red-800">'+
+   '<option value="">-- चुनें / Please Select --</option>'+
+   '<option value="Public / सबको दिखे" '+(val==='Public / सबको दिखे'?'selected':'')+'>👁️ मेरी प्रोफाइल सबको दिखे / Public</option>'+
+   '<option value="Secret / सिर्फ PSIM Team को" '+(val==='Secret / सिर्फ PSIM Team को'?'selected':'')+'>🔒 सिर्फ PSIM Team को दिखे / Secret</option>'+
+   '</select>'+
+   '<p class="text-[11px] text-red-500 mt-1">"Secret" चुनने पर भी आपको समाज की सारी सुविधाएँ मिलती रहेंगी — बस आपकी प्रोफाइल सार्वजनिक Community list में नहीं दिखेगी।</p></div>';
  }
  if(f[2] === 'profselect'){
   const opts = professionsList().map(o => '<option '+(o===val?'selected':'')+'>'+o+'</option>').join('');
@@ -366,7 +369,7 @@ function fieldHTML(prefix, f, val){
 }
 function togglePrivacyBox(val, prefix){
  const box = document.getElementById(prefix+'privacyBox');
- if(box) box.style.display = (val && val.indexOf('Female')===0) ? '' : 'none';
+ if(box) box.classList.toggle('hidden', !(val && val.indexOf('Female')===0));
 }
 function grpFields(keys){ return MEMBER_FIELDS.filter(f => keys.includes(f[0])); }
 
@@ -433,6 +436,8 @@ function stepNext(){
  if(regStep===0){
   if(!draftGet('name')||!draftGet('surname')||!draftGet('home_village')||!draftGet('home_district')||!draftGet('present_city')){ alert('❌ नाम, Surname, गाँव, जिला, और शहर सब भरो'); return; }
   if(!currentUser && fmtPhone(draftGet('phone')).length!==10){ alert('❌ सही 10 अंकों का Mobile Number भरो'); return; }
+  if(!draftGet('gender')){ alert('❌ कृपया Gender चुनें'); return; }
+  if(draftGet('gender').indexOf('Female')===0 && !draftGet('privacy')){ alert('❌ कृपया अपनी Profile Privacy चुनें — Public या Secret'); return; }
  }
  regStep++; renderApp();
 }
