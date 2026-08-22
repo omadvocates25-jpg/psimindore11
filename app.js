@@ -16,6 +16,7 @@ const auth = firebase.auth();
 const ADMIN_PASSWORD = "PatidarSamaj@2026"; // backup password
 const ADMIN_PHONE = "8103179376"; // Super Admin ka number - OTP login se auto-admin
 const CONTACT_PHONE = "81031-79376";
+const ADMIN_CONTACTS = ["8103179376","7974994436"];
 const MP_DISTRICTS = ["Agar Malwa","Alirajpur","Anuppur","Ashoknagar","Balaghat","Barwani","Betul","Bhind","Bhopal","Burhanpur","Chhatarpur","Chhindwara","Damoh","Datia","Dewas","Dhar","Dindori","Guna","Gwalior","Harda","Hoshangabad (Narmadapuram)","Indore","Jabalpur","Jhabua","Katni","Khandwa","Khargone","Maihar","Mandla","Mandsaur","Mauganj","Morena","Narsinghpur","Neemuch","Niwari","Pandhurna","Panna","Raisen","Rajgarh","Ratlam","Rewa","Sagar","Satna","Sehore","Seoni","Shahdol","Shajapur","Sheopur","Shivpuri","Sidhi","Singrauli","Tikamgarh","Ujjain","Umaria","Vidisha","Other (MP से बाहर)"];
 const STATES = ["Madhya Pradesh","Maharashtra","Gujarat","Rajasthan","Uttar Pradesh","Chhattisgarh","Delhi","Punjab","Haryana","Bihar","Karnataka","Tamil Nadu","Telangana","Andhra Pradesh","West Bengal","Odisha","Jharkhand","Assam","Kerala","Goa","Himachal Pradesh","Uttarakhand","Jammu & Kashmir","Other / विदेश"];
 const RELATIONS = ["पिता / Father","माता / Mother","भाई / Brother","बहन / Sister","बेटा / Son","बेटी / Daughter","पति / Husband","पत्नी / Wife","चाचा / Uncle","मामा / Mama","दादा / Grandfather","अन्य / Other"];
@@ -40,7 +41,7 @@ let relSearchQ = '';
 let friendSearchQ = '';
 let whomQuery = '';
 
-let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[];
+let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[], teamJoinData=[];
 let siteMeta = { ticker:'', aboutUs:'', fb:'', insta:'', youtube:'', committee:'', expiryDays:30, propertyValidityDays:365, propertyFee:'500', razorpayButtonId:'', razorpayMakan:'', razorpayDukan:'', shaadiFee:'', razorpayShaadi:'', blocked:[], garbaFormOpen:true, ads:[{},{},{},{},{}], subAdmins:[] };
 
 function isSuperAdmin(){ return currentUser === ADMIN_PHONE || localStorage.getItem('psim_admin_ok') === 'true'; }
@@ -120,6 +121,7 @@ function setupRealtimeListeners(){
  watch('relatives', d => relativesData = d);
  watch('friends', d => friendsData = d);
  watch('suggestions', d => suggestionsData = d);
+ watch('team_join', d => teamJoinData = d);
  watch('committee', d => committeeData = d);
  watch('garba_regs', d => garbaRegs = d);
  watch('garba_team', d => garbaTeam = d);
@@ -473,6 +475,147 @@ async function saveMyProfile(){
  alert('✅ आपकी details update हो गईं! दोबारा Admin approval के बाद फिर से live होंगी।');
  renderApp();
 }
+
+// ===== JOIN US → "TEAM से जुड़ें" (सिर्फ registered members) =====
+function joinUsClick(){
+ const me = myMember();
+ if(currentUser && me && me.status==='approved'){ openJoinTeamPrompt(); return; }
+ goPage('community');
+}
+function openJoinTeamPrompt(){
+ const me = myMember(); if(!me) return;
+ if(teamJoinData.find(t=>t.phone===me.phone)){
+  alert('✅ आप पहले से टीम से जुड़ चुके हो! धन्यवाद 🙏');
+  return;
+ }
+ const box = document.getElementById('bizModalBox');
+ box.innerHTML = '<div class="p-6 text-center">'+
+  '<p class="text-4xl mb-3">🤝</p>'+
+  '<h3 class="text-xl font-bold mb-4">क्या आप पाटीदार समाज इंदौर महानगर की टीम से जुड़ना चाहते हैं?</h3>'+
+  '<button onclick="confirmJoinTeam()" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold text-lg">✅ हाँ, जुड़ना है</button>'+
+  '<button onclick="closeBizForce()" class="w-full mt-2 bg-gray-200 text-gray-700 px-6 py-2 rounded-lg font-bold">वापस जाएं / Go Back</button>'+
+  '</div>';
+ document.getElementById('bizModal').classList.remove('hidden');
+}
+async function confirmJoinTeam(){
+ const me = myMember(); if(!me) return;
+ busy(true);
+ await db.collection('team_join').add({name:me.name+' '+me.surname, phone:me.phone, createdAt:today()});
+ busy(false);
+ const box = document.getElementById('bizModalBox');
+ box.innerHTML = '<div class="p-6 text-center">'+
+  '<p class="text-4xl mb-3">🙏</p>'+
+  '<h3 class="text-xl font-bold mb-2">Thank you, '+esc(me.name)+'!</h3>'+
+  '<p class="text-gray-600 mb-4">आपका नाम टीम के पास चला गया है।</p>'+
+  '<button onclick="closeBizForce()" class="w-full bg-gray-200 text-gray-700 px-6 py-3 rounded-lg font-bold">वापस जाएं / Go Back</button>'+
+  '</div>';
+}
+
+// ===== SWIPE / DISCOVER — full-screen, auto-rotating profile carousel (Community + Business) =====
+let swipeMode = null; // 'community' | 'business'
+let swipeParentMode = null;
+let swipeList = [];
+let swipeIndex = 0;
+let swipeTimer = null;
+let swipeAutoOn = true;
+function rebuildSwipeList(){
+ swipeList = swipeMode==='business' ? allBusinesses() : publicMembers();
+ if(swipeIndex>=swipeList.length) swipeIndex=0;
+}
+function openSwipeView(mode){
+ if(!currentUser){ showRegisterPrompt('Profiles घुमा कर देखने के लिए पहले Register करो।'); return; }
+ swipeMode = mode; swipeParentMode = null; swipeIndex = 0; swipeAutoOn = true;
+ rebuildSwipeList();
+ document.getElementById('swipeOverlay').classList.remove('hidden');
+ renderSwipeCard();
+ startSwipeAuto();
+}
+function closeSwipeView(){
+ stopSwipeAuto();
+ document.getElementById('swipeOverlay').classList.add('hidden');
+ swipeMode=null; swipeParentMode=null; swipeList=[]; swipeIndex=0;
+}
+function swipeGoBack(){
+ if(swipeParentMode){
+  swipeMode = swipeParentMode; swipeParentMode = null; swipeIndex = 0;
+  rebuildSwipeList(); renderSwipeCard(); startSwipeAuto();
+ } else closeSwipeView();
+}
+function swipeNext(){ if(!swipeList.length) return; swipeIndex=(swipeIndex+1)%swipeList.length; renderSwipeCard(); }
+function swipePrev(){ if(!swipeList.length) return; swipeIndex=(swipeIndex-1+swipeList.length)%swipeList.length; renderSwipeCard(); }
+function swipeManualNav(dir){ stopSwipeAuto(); if(dir>0) swipeNext(); else swipePrev(); startSwipeAuto(); }
+function startSwipeAuto(){ stopSwipeAuto(); if(swipeAutoOn) swipeTimer = setInterval(swipeNext, 4500); updateSwipeAutoBtn(); }
+function stopSwipeAuto(){ if(swipeTimer) clearInterval(swipeTimer); swipeTimer=null; }
+function swipeToggleAuto(){ swipeAutoOn=!swipeAutoOn; if(swipeAutoOn) startSwipeAuto(); else stopSwipeAuto(); updateSwipeAutoBtn(); }
+function updateSwipeAutoBtn(){ const b=document.getElementById('swipeAutoBtn'); if(b) b.textContent = swipeAutoOn?'⏸️':'▶️'; }
+function swipeToBusiness(memberId){
+ swipeParentMode = swipeMode; swipeMode = 'business';
+ rebuildSwipeList();
+ const idx = swipeList.findIndex(b=>b.id===memberId);
+ swipeIndex = idx>=0?idx:0;
+ renderSwipeCard(); startSwipeAuto();
+}
+function renderSwipeCard(){
+ const box = document.getElementById('swipeCardBox');
+ const counter = document.getElementById('swipeCounter');
+ if(!box) return;
+ if(!swipeList.length){
+  box.innerHTML = '<p class="text-gray-400 text-lg">अभी कोई profile उपलब्ध नहीं है</p>';
+  if(counter) counter.textContent='';
+  return;
+ }
+ if(counter) counter.textContent = (swipeIndex+1)+' / '+swipeList.length+(swipeMode==='business'?' 🏪 Businesses':' 👥 Community');
+ if(swipeMode==='business'){
+  const b = swipeList[swipeIndex];
+  box.innerHTML = '<div class="max-w-md w-full bg-white border-2 border-yellow-300 rounded-2xl shadow-xl overflow-hidden">'+
+   (b.pic?'<img src="'+b.pic+'" class="w-full h-64 object-cover">':'<div class="w-full h-40 bg-yellow-100 flex items-center justify-center text-6xl">🏪</div>')+
+   '<div class="p-6 text-center">'+
+   '<p class="text-2xl font-bold text-yellow-700">'+esc(b.name)+'</p>'+
+   '<p class="inline-block bg-yellow-200 text-yellow-900 px-3 py-1 rounded-full text-xs font-bold mt-2">'+esc(b.type)+'</p>'+
+   '<div class="mt-4 space-y-1 text-gray-700 text-left">'+
+   '<p>👤 '+esc(b.owner)+'</p>'+
+   (b.place?'<p>📍 '+esc(b.place)+'</p>':'')+
+   '<p>📱 '+esc(b.phone)+'</p></div>'+
+   (b.description?'<p class="text-sm text-gray-600 mt-3 bg-gray-50 rounded p-3">'+esc(b.description)+'</p>':'')+
+   '<div class="grid grid-cols-2 gap-2 mt-5">'+
+   '<a href="tel:'+esc(b.phone)+'" class="bg-green-600 text-white px-4 py-3 rounded-lg font-bold">📞 Call</a>'+
+   '<a href="https://wa.me/91'+esc(b.phone)+'" target="_blank" class="bg-green-500 text-white px-4 py-3 rounded-lg font-bold">💬 WhatsApp</a>'+
+   '</div></div></div>';
+ } else {
+  const m = swipeList[swipeIndex];
+  const rels = relOf(m), frs = friendsOf(m);
+  box.innerHTML = '<div class="max-w-md w-full bg-white border-2 border-blue-300 rounded-2xl shadow-xl overflow-hidden">'+
+   (m.profile_pic?'<img src="'+m.profile_pic+'" class="w-full h-64 object-cover">':'<div class="w-full h-40 bg-blue-100 flex items-center justify-center text-6xl">👤</div>')+
+   '<div class="p-6 text-center">'+
+   '<p class="text-2xl font-bold text-blue-800">'+esc(m.name)+' '+esc(m.surname)+'</p>'+
+   (profOf(m)?'<p class="inline-block bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-bold mt-2">'+esc(profOf(m))+'</p>':'')+
+   '<div class="mt-4 space-y-1 text-gray-700 text-sm text-left">'+
+   '<p>📱 '+esc(m.phone)+'</p>'+
+   '<p>🏡 गाँव: '+esc(m.home_village||'-')+', '+esc(distOf(m,'home')||'-')+'</p>'+
+   '<p>📍 वर्तमान: '+esc(m.present_city||'-')+', '+esc(distOf(m,'present')||'-')+'</p>'+
+   (m.blood_group?'<p>🩸 Blood Group: <b class="text-red-600">'+esc(m.blood_group)+'</b></p>':'')+
+   '</div>'+
+   (frs.length?'<p class="text-xs text-gray-500 mt-3">🙋 मित्र: '+frs.map(esc).join(', ')+'</p>':'')+
+   (rels.length?'<p class="text-xs text-gray-500 mt-1">👨‍👩‍👧 रिश्तेदार: '+rels.map(esc).join(', ')+'</p>':'')+
+   (m.business_name?'<button onclick="swipeToBusiness(\''+m.id+'\')" class="w-full bg-red-600 hover:bg-red-700 text-white px-3 py-3 rounded-lg font-bold mt-4">🏪 इनका Business देखें: '+esc(m.business_name)+'</button>':'')+
+   (currentUser && currentUser!==m.phone ? '<div class="flex gap-2 mt-3"><button onclick="sendFriendRequest(\''+m.id+'\')" class="flex-1 bg-purple-100 text-purple-700 border border-purple-300 px-3 py-2 rounded-lg text-xs font-bold">➕ मित्र</button><button onclick="openRelPicker(\''+m.id+'\')" class="flex-1 bg-indigo-100 text-indigo-700 border border-indigo-300 px-3 py-2 rounded-lg text-xs font-bold">👨‍👩‍👧 रिश्तेदार</button></div>' : '')+
+   '</div></div>';
+ }
+}
+let _swipeTouchStartX = null;
+document.addEventListener('touchstart', e => {
+ const ov = document.getElementById('swipeOverlay');
+ if(!ov || ov.classList.contains('hidden')) return;
+ _swipeTouchStartX = e.touches[0].clientX;
+});
+document.addEventListener('touchend', e => {
+ if(_swipeTouchStartX===null) return;
+ const dx = e.changedTouches[0].clientX - _swipeTouchStartX;
+ _swipeTouchStartX = null;
+ if(Math.abs(dx) < 50) return;
+ if(dx < 0) swipeManualNav(1); else swipeManualNav(-1);
+});
+
 let _regConfirmation = null;
 let _regRecaptcha = null;
 function ensureRegRecaptcha(){
@@ -551,6 +694,47 @@ function adBanner(idx){
   (ad.link ? '<a href="'+esc(ad.link)+'" target="_blank">'+inner+'</a>' : inner)+'</div>';
 }
 
+// ================= SEARCH SYNONYMS/SHORTCUTS — लोग जो भी छोटा/टूटा-फूटा टाइप करें, सही चीज़ मिल जाए =================
+const SEARCH_SYNONYMS = {
+ 'dr':'doctor', 'doc':'doctor', 'adv':'advocate lawyer', 'lawyer':'advocate legal',
+ 'ca':'accountant', 'cs':'accountant', 'eng':'engineer', 'engg':'engineer',
+ 'govt':'government', 'sarkari':'government job', 'kisan':'farmer agriculture',
+ 'elec':'electrician electronics', 'electric':'electrician electronics',
+ 'plum':'plumber', 'carp':'carpenter', 'mistri':'mason carpenter',
+ 'raj':'mason', 'darji':'tailor', 'nai':'barber salon',
+ 'cook':'cook caterer restaurant food', 'catering':'cook caterer food',
+ 'med':'medical pharmacy', 'medicine':'medical pharmacy', 'pharma':'medical pharmacy',
+ 'mobile':'mobile electronics', 'phone':'mobile electronics',
+ 'photo':'photographer', 'video':'videographer', 'camera':'photographer videographer',
+ 'comp':'computer it', 'computer':'computer it', 'it':'computer it work',
+ 'gym':'fitness gym trainer', 'fitness':'gym fitness trainer',
+ 'property':'property dealer real estate', 'dealer':'property dealer',
+ 'kirana':'kirana general store', 'grocery':'kirana general store',
+ 'sabji':'vegetable fruit sabji', 'fruit':'sabji fruit vendor',
+ 'jewel':'jewellery jeweller', 'sona':'jewellery jeweller',
+ 'cloth':'textiles garments cloth', 'kapda':'textiles garments cloth',
+ 'shoe':'footwear', 'chappal':'footwear',
+ 'weld':'welder fabricator', 'tent':'tent house event',
+ 'dairy':'dairy milk', 'doodh':'dairy milk',
+ 'restaurant':'restaurant food hotel', 'hotel':'restaurant food hotel',
+ 'legal':'legal advocate ca consultant', 'consultant':'legal consultant',
+ 'teacher':'teacher coaching education', 'coach':'coaching teacher education tuition',
+ 'tuition':'teacher coaching education', 'school':'teacher education coaching',
+ 'transport':'transport logistics driver', 'logistics':'transport logistics',
+ 'construction':'construction builder', 'builder':'construction builder real estate',
+ 'beauty':'beauty salon', 'parlour':'beauty salon', 'salon':'beauty salon',
+ 'import':'import export trading', 'export':'import export trading',
+ 'factory':'manufacturing factory', 'manufacturing':'manufacturing factory',
+ 'auto':'automobile garage', 'garage':'automobile garage', 'mechanic':'automobile garage',
+ 'tractor':'tractor machinery', 'machine':'tractor machinery',
+ 'paint':'painter', 'farm':'farmer agriculture किसान'
+};
+function expandSynonyms(q){
+ let extra = '';
+ Object.keys(SEARCH_SYNONYMS).forEach(k=>{ if(q.includes(k)) extra += ' '+SEARCH_SYNONYMS[k]; });
+ return q + extra;
+}
+
 // ================= "आपको कौन चाहिए?" — Business/Profession टाइप-सर्च (व्यापार + पेशा दोनों merge) =================
 function whomBoxHTML(){
  let h = '<div class="bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl shadow-lg p-6 mb-6 text-center">';
@@ -564,7 +748,7 @@ function whomBoxHTML(){
 }
 function whomResultsHTML(){
  if(!whomQuery.trim()) return '';
- const q = whomQuery.trim().toLowerCase();
+ const q = expandSynonyms(whomQuery.trim().toLowerCase());
  const qWords = q.split(/\s+/).filter(Boolean);
  const scored = allBusinesses().map(b=>{
   const hay = (b.type+' '+b.name+' '+b.owner).toLowerCase();
@@ -689,9 +873,16 @@ function renderHome(){
  h += '<div class="bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg shadow-lg p-8 text-center mb-8">'+
  '<h3 class="text-3xl font-bold mb-2">🤝 JOIN US / हमसे जुड़ें</h3>'+
  '<p class="text-green-100 mb-4">Become an Active Member of PSIM / PSIM के सक्रिय सदस्य बनें</p>'+
- '<button onclick="goPage(\'community\')" class="bg-white text-green-700 px-8 py-3 rounded-lg font-bold text-lg hover:bg-green-50">➕ REGISTER NOW / अभी जुड़ें</button></div>';
+ '<button onclick="joinUsClick()" class="bg-white text-green-700 px-8 py-3 rounded-lg font-bold text-lg hover:bg-green-50">➕ REGISTER NOW / अभी जुड़ें</button></div>';
 
- h += '<div class="bg-gradient-to-r from-blue-900 to-blue-800 text-white rounded-lg shadow-lg p-8 text-center"><h3 class="text-2xl font-bold mb-3">📞 CONTACT US</h3><p class="text-2xl font-bold">Contact - '+CONTACT_PHONE+'</p><p class="text-blue-200 mt-1">पाटीदार समाज इंदौर महानगर</p></div>';
+ h += '<div class="bg-gradient-to-r from-blue-900 to-blue-800 text-white rounded-lg shadow-lg p-8 text-center">'+
+ '<h3 class="text-2xl font-bold mb-4">📞 CONTACT US</h3>'+
+ '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md mx-auto">'+
+ ADMIN_CONTACTS.map(ph=>
+  '<a href="tel:'+ph+'" class="bg-white/10 hover:bg-white/20 rounded-lg p-3 flex items-center justify-center gap-2 font-bold">📞 '+ph+'</a>'+
+  '<a href="https://wa.me/91'+ph+'" target="_blank" class="bg-green-500 hover:bg-green-600 rounded-lg p-3 flex items-center justify-center gap-2 font-bold">💬 WhatsApp</a>'
+ ).join('')+
+ '</div><p class="text-blue-200 mt-4">पाटीदार समाज इंदौर महानगर</p></div>';
  return h;
 }
 
@@ -752,9 +943,9 @@ function memberCard(m){
  '<p>📍 Present: '+esc(m.present_city||'-')+', '+esc(distOf(m,'present')||'-')+(m.present_state&&m.present_state!=='Madhya Pradesh'?' ('+esc(m.present_state)+')':'')+'</p>'+
  (m.marital_status?'<p>💍 '+esc(m.marital_status)+' | Age: '+esc(m.age||'-')+'</p>':'')+
  (m.blood_group?'<p>🩸 Blood Group: <b class="text-red-600">'+esc(m.blood_group)+'</b>'+((m.blood_donor||'').indexOf('हाँ')===0?' <span class="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold">रक्तदाता ✅</span>':'')+'</p>':'')+
- (m.business_name?'<p class="cursor-pointer text-yellow-700 font-bold" onclick="openBiz(\''+m.id+'\')">🏪 '+esc(m.business_name)+' ▸</p>':'')+
  (rels.length?'<p class="bg-indigo-50 rounded p-2 mt-2 text-xs">👨‍👩‍👧‍👦 <b>परिवार:</b> '+rels.join(', ')+'</p>':'')+
  '</div>'+
+ (m.business_name?'<button onclick="openBiz(\''+m.id+'\')" class="mt-3 w-full bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm font-bold">🏪 इनका Business देखें: '+esc(m.business_name)+'</button>':'')+
  (currentUser && currentUser!==m.phone ?
   '<div class="mt-3 flex gap-2 flex-wrap">'+
   '<button onclick="sendFriendRequest(\''+m.id+'\')" class="bg-purple-100 text-purple-700 border border-purple-300 px-3 py-1.5 rounded-lg text-xs font-bold">➕ मित्र</button>'+
@@ -928,6 +1119,7 @@ function renderRegisterPage(){
 }
 function renderCommunity(){
  let top = '<h2 class="text-3xl font-bold mb-6">👥 COMMUNITY / समुदाय</h2>';
+ top += '<button onclick="openSwipeView(\'community\')" class="w-full mb-6 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl">🔀 Profiles घुमा कर देखें / Discover Mode</button>';
  top += '<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">';
  top += '<div class="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl p-6 cursor-pointer hover:shadow-xl" onclick="document.getElementById(\'searchSection\').scrollIntoView({behavior:\'smooth\'})"><p class="text-3xl mb-1">🔍</p><p class="font-bold text-xl">SEARCH MEMBERS</p><p class="text-sm text-blue-100">Name, Number, Village, District, State से</p></div>';
  top += '<div class="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-xl p-6 cursor-pointer hover:shadow-xl" onclick="document.getElementById(\'addSection\').scrollIntoView({behavior:\'smooth\'})"><p class="text-3xl mb-1">➕</p><p class="font-bold text-xl">ADD YOUR DETAILS</p><p class="text-sm text-green-100">Admin approval के बाद live</p></div></div>';
@@ -1049,7 +1241,7 @@ function openMemberProfile(id){
   (m.blood_group?'<p>🩸 Blood Group: <b class="text-red-600">'+esc(m.blood_group)+'</b></p>':'')+
   (m.work_details?'<p>💼 '+esc(m.work_details)+'</p>':'')+
   '</div>'+
-  (m.business_name?'<p class="cursor-pointer text-yellow-700 font-bold mt-3" onclick="openBiz(\''+m.id+'\')">🏪 '+esc(m.business_name)+' ▸</p>':'')+
+  (m.business_name?'<button onclick="openBiz(\''+m.id+'\')" class="w-full bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm font-bold mt-3">🏪 इनका Business देखें: '+esc(m.business_name)+'</button>':'')+
   (!isMe && currentUser ? '<div class="flex gap-2 flex-wrap mt-4"><button onclick="sendFriendRequest(\''+m.id+'\')" class="bg-purple-100 text-purple-700 border border-purple-300 px-3 py-1.5 rounded-lg text-xs font-bold">➕ मित्र</button><button onclick="openRelPicker(\''+m.id+'\')" class="bg-indigo-100 text-indigo-700 border border-indigo-300 px-3 py-1.5 rounded-lg text-xs font-bold">👨‍👩‍👧 रिश्तेदार</button></div>' : '')+
   '<div class="border-t-2 pt-3 mt-4">'+
   '<p class="text-sm font-bold text-gray-700 mb-1">🙋 मित्र ('+frs.length+')</p>'+
@@ -1085,7 +1277,8 @@ function businessStrip(){
 function renderBusinessPage(){
  const list = allBusinesses();
  return '<h2 class="text-3xl font-bold mb-2">🏪 BUSINESS / व्यापार ('+list.length+')</h2>'+
- '<p class="text-gray-500 mb-6">Members की business details automatic दिखती हैं</p>'+
+ '<p class="text-gray-500 mb-4">Members की business details automatic दिखती हैं</p>'+
+ '<button onclick="openSwipeView(\'business\')" class="w-full mb-6 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl">🔀 Businesses घुमा कर देखें / Discover Mode</button>'+
  '<div class="flex gap-5 overflow-x-auto pb-3 noscroll">'+
  list.map(b => '<div class="w-72 shrink-0 bg-white border-2 border-yellow-300 rounded-lg overflow-hidden shadow-md hover:shadow-xl">'+
   '<div onclick="openBiz(\''+b.id+'\')" class="cursor-pointer transform hover:scale-[1.01] transition-all">'+
