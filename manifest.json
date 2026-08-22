@@ -1,7 +1,8 @@
 {
+  "id": "/",
   "name": "Patidar Samaj Indore Mahanagar",
   "short_name": "PSIM",
-  "description": "पाटीदार समाज इंदौर महानगर — समाज की सेवा है हमारा लक्ष्य",
+  "description": "पाटीदार समाज इंदौर महानगर — समाज के सदस्यों को जोड़ने, व्यापार बढ़ाने और समाज की सेवाओं तक पहुँचने के लिए आधिकारिक App",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -9,10 +10,12 @@
   "background_color": "#f9fafb",
   "theme_color": "#1e3a8a",
   "lang": "hi",
+  "dir": "ltr",
+  "categories": ["social", "lifestyle", "business"],
   "icons": [
-    { "src": "/icon-192.jpg", "sizes": "192x192", "type": "image/jpeg", "purpose": "any" },
-    { "src": "/icon-192.jpg", "sizes": "192x192", "type": "image/jpeg", "purpose": "maskable" },
-    { "src": "/icon-512.jpg", "sizes": "512x512", "type": "image/jpeg", "purpose": "any" },
-    { "src": "/icon-512.jpg", "sizes": "512x512", "type": "image/jpeg", "purpose": "maskable" }
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-192-maskable.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
