@@ -13,7 +13,6 @@ const db = firebase.firestore();
 const auth = firebase.auth();
 
 // ================= CONSTANTS =================
-const ADMIN_PASSWORD = "PatidarSamaj@2026"; // backup password
 const ADMIN_PHONE = "8103179376"; // Super Admin ka number - OTP login se auto-admin
 const CONTACT_PHONE = "81031-79376";
 const ADMIN_CONTACTS = ["8103179376"];
@@ -66,24 +65,14 @@ function fmtName(s){ return (s||'').trim().replace(/\s+/g,' ').toLowerCase().rep
 function fmtPhone(s){ return (s||'').replace(/[^0-9]/g,'').slice(0,10); }
 function phoneFromFirebase(fbPhone){ return (fbPhone||'').replace(/[^0-9]/g,'').slice(-10); } // "+919876543210" -> "9876543210"
 
-// ================= ADMIN LOGIN (simple password) =================
+// ================= ADMIN LOGIN (Phone OTP only — Admin/Sub-admin numbers auto-recognized) =================
 function askAdminLogin(){
  if(isAdmin()){
   const at = allowedTabs();
   if(at && at.length) adminTab = at.includes(adminTab) ? adminTab : at[0];
   location.hash='admin'; return;
  }
- if(!currentUser){
-  alert('📱 पहले Register करो / अपना number verify करो।\n(Admin/Sub-admin numbers अपने आप पहचाने जाएंगे)\n\nEmergency: password से भी जा सकते हो - OK दबाओ');
- }
- const pass = prompt('🔒 Backup Admin Password (सिर्फ emergency):');
- if(pass === null) return;
- if(pass === ADMIN_PASSWORD){
-  localStorage.setItem('psim_admin_ok','true');
-  alert('✅ Super Admin (password backup) login!');
-  updateUI(); location.hash='admin'; return;
- }
- alert('❌ गलत Password! Sub-admins को password नहीं - अपने NUMBER से OTP login करो।');
+ alert('📱 पहले अपना number OTP से verify करो / Register करो।\n(Admin/Sub-admin numbers अपने आप पहचाने जाएंगे — कोई अलग password नहीं है)');
 }
 function doLogout(){
  if(!confirm('Logout करें? (दोबारा OTP लगेगा)')) return;
