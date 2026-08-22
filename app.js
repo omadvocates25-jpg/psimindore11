@@ -18,9 +18,11 @@ const ADMIN_PHONE = "8103179376"; // Super Admin ka number - OTP login se auto-a
 const CONTACT_PHONE = "81031-79376";
 const MP_DISTRICTS = ["Agar Malwa","Alirajpur","Anuppur","Ashoknagar","Balaghat","Barwani","Betul","Bhind","Bhopal","Burhanpur","Chhatarpur","Chhindwara","Damoh","Datia","Dewas","Dhar","Dindori","Guna","Gwalior","Harda","Hoshangabad (Narmadapuram)","Indore","Jabalpur","Jhabua","Katni","Khandwa","Khargone","Maihar","Mandla","Mandsaur","Mauganj","Morena","Narsinghpur","Neemuch","Niwari","Pandhurna","Panna","Raisen","Rajgarh","Ratlam","Rewa","Sagar","Satna","Sehore","Seoni","Shahdol","Shajapur","Sheopur","Shivpuri","Sidhi","Singrauli","Tikamgarh","Ujjain","Umaria","Vidisha","Other (MP से बाहर)"];
 const STATES = ["Madhya Pradesh","Maharashtra","Gujarat","Rajasthan","Uttar Pradesh","Chhattisgarh","Delhi","Punjab","Haryana","Bihar","Karnataka","Tamil Nadu","Telangana","Andhra Pradesh","West Bengal","Odisha","Jharkhand","Assam","Kerala","Goa","Himachal Pradesh","Uttarakhand","Jammu & Kashmir","Other / विदेश"];
-const DEFAULT_PROFESSIONS = ["Doctor","Advocate / वकील","CA / Accountant","Teacher / Coaching","Engineer","Government Job","Farmer / किसान","Carpenter / बढ़ई","Plumber","Electrician","Mason / राजमिस्त्री","Tailor / दर्जी","Barber / नाई","Cook / Caterer","Driver","Kirana Shop / किराना","Medical Shop","Electric Shop","Mobile Shop","Sabji / Fruit Vendor","Dairy / दूध डेयरी","Jeweller / सुनार","Cloth Shop / कपड़ा","Footwear Shop","Property Dealer","Tractor / Machinery","Painter","Welder / Fabricator","Photographer / Videographer","Tent House / Event","Computer / IT Work","Gym / Fitness Trainer","Other / अन्य"];
 const RELATIONS = ["पिता / Father","माता / Mother","भाई / Brother","बहन / Sister","बेटा / Son","बेटी / Daughter","पति / Husband","पत्नी / Wife","चाचा / Uncle","मामा / Mama","दादा / Grandfather","अन्य / Other"];
-const BUSINESS_TYPES = ["Kirana/General Store","Restaurant/Food","Textiles/Garments","Agriculture/Farming","Real Estate/Property","Construction/Builder","Transport/Logistics","Medical/Pharmacy","Education/Coaching","Electronics/Mobile","Jewellery","Hardware/Building Material","Automobile/Garage","Beauty/Salon","Legal/CA/Consultant","Import-Export/Trading","Manufacturing/Factory","Other"];
+// Business Type अब Profession को भी cover करता है (मर्ज कर दिया गया) — इसीलिए list बड़ी है
+const BUSINESS_TYPES = ["Kirana/General Store","Restaurant/Food","Textiles/Garments","Agriculture/Farming","Real Estate/Property","Construction/Builder","Transport/Logistics","Medical/Pharmacy","Education/Coaching","Electronics/Mobile","Jewellery","Hardware/Building Material","Automobile/Garage","Beauty/Salon","Legal/CA/Consultant","Import-Export/Trading","Manufacturing/Factory",
+"Doctor","Advocate / वकील","CA / Accountant","Teacher / Coaching","Engineer","Government Job","Farmer / किसान","Carpenter / बढ़ई","Plumber","Electrician","Mason / राजमिस्त्री","Tailor / दर्जी","Barber / नाई","Cook / Caterer","Driver","Medical Shop","Electric Shop","Mobile Shop","Sabji / Fruit Vendor","Dairy / दूध डेयरी","Jeweller / सुनार","Cloth Shop / कपड़ा","Footwear Shop","Property Dealer","Tractor / Machinery","Painter","Welder / Fabricator","Photographer / Videographer","Tent House / Event","Computer / IT Work","Gym / Fitness Trainer",
+"Other"];
 const BLOOD_GROUPS = ["A+","A-","B+","B-","O+","O-","AB+","AB-"];
 
 // ================= STATE =================
@@ -28,7 +30,6 @@ let currentUser = ''; // logged-in user ka 10-digit phone
 let _authResolved = false; // Firebase persisted-session check poora hone tak true nahi hota
 let currentPage = 'home';
 let editingId = null;
-let selectedProfession = '';
 let selectedNewsId = '';
 let randIdx = 0, randOrder = [];
 let searchQ = '', searchBy = 'name';
@@ -37,10 +38,10 @@ let showAddForm=false, showItemForm=false, showPratForm=false, showJobForm=false
 let regStep = 0;
 let relSearchQ = '';
 let friendSearchQ = '';
+let whomQuery = '';
 
-let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], cricketData=[], propertyData=[], bloodData=[];
-let siteMeta = { ticker:'', aboutUs:'', fb:'', insta:'', youtube:'', committee:'', expiryDays:30, propertyValidityDays:365, propertyFee:'500', razorpayButtonId:'', razorpayMakan:'', razorpayDukan:'', shaadiFee:'', razorpayShaadi:'', professions: DEFAULT_PROFESSIONS.slice(), blocked:[], garbaFormOpen:true, ads:[{},{},{},{},{}], subAdmins:[] };
-function professionsList(){ return (siteMeta.professions && siteMeta.professions.length) ? siteMeta.professions : DEFAULT_PROFESSIONS; }
+let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[];
+let siteMeta = { ticker:'', aboutUs:'', fb:'', insta:'', youtube:'', committee:'', expiryDays:30, propertyValidityDays:365, propertyFee:'500', razorpayButtonId:'', razorpayMakan:'', razorpayDukan:'', shaadiFee:'', razorpayShaadi:'', blocked:[], garbaFormOpen:true, ads:[{},{},{},{},{}], subAdmins:[] };
 
 function isSuperAdmin(){ return currentUser === ADMIN_PHONE || localStorage.getItem('psim_admin_ok') === 'true'; }
 function subAdminInfo(){ if(!currentUser) return null; return (siteMeta.subAdmins||[]).find(s => fmtPhone(s.phone) === currentUser) || null; }
@@ -53,7 +54,7 @@ function publicMembers(){ return approvedMembers().filter(isPublicProfile); }
 function findApprovedByPhone(ph){ return approvedMembers().find(m => m.phone === fmtPhone(ph)); }
 function esc(s){ return String(s==null?'':s).replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
 function distOf(m, w){ const d=m[w+'_district']||'', o=m[w+'_district_other']||''; if(d==='Other (MP से बाहर)') return o||'Other'; return o&&!d?o:d; }
-function profOf(m){ const p=m.profession||'', o=m.profession_other||''; if(p.startsWith('Other')) return o||p; return p; }
+function profOf(m){ const p=m.business_type||'', o=m.business_type_other||''; if(p==='Other') return o||p; return p; }
 function today(){ return new Date().toISOString().slice(0,10); }
 function daysAgo(dateStr){ if(!dateStr) return 99999; return Math.floor((Date.now()-new Date(dateStr).getTime())/86400000); }
 function randCode(){ return String(Math.floor(1000+Math.random()*9000)); }
@@ -118,6 +119,7 @@ function setupRealtimeListeners(){
  watch('shaadi', d => shaadiData = d);
  watch('relatives', d => relativesData = d);
  watch('friends', d => friendsData = d);
+ watch('suggestions', d => suggestionsData = d);
  watch('committee', d => committeeData = d);
  watch('garba_regs', d => garbaRegs = d);
  watch('garba_team', d => garbaTeam = d);
@@ -136,7 +138,7 @@ async function saveMeta(){ await db.collection('meta').doc('site').set(siteMeta)
 
 // ================= ROUTING (login-gated) =================
 // बिना login दिखने वाले pages — सिर्फ Community (members directory), Business, Profession (member contact list) lock हैं
-const OPEN_PAGES = ['home','news','register','events','gallery','pratibha','garba','cricket','blood','property','shaadi','rozgaar','olditems'];
+const OPEN_PAGES = ['home','news','register','events','gallery','pratibha','garba','cricket','blood','property','shaadi','rozgaar','olditems','suggestions'];
 const LOCKED_PAGES = ['community','business'];
 function goPage(p){
  if(!currentUser && LOCKED_PAGES.includes(p)){
@@ -144,10 +146,6 @@ function goPage(p){
   return;
  }
  location.hash = p;
-}
-function goProfession(i){
- if(_authResolved && !currentUser){ showRegisterPrompt('इस profession के members की list देखने के लिए Register करो।'); return; }
- selectedProfession = professionsList()[i]; location.hash = 'profession';
 }
 function route(){
  let h = (location.hash||'#home').replace('#','');
@@ -246,8 +244,6 @@ const MEMBER_FIELDS = [
  ['privacy','Profile Privacy / गोपनीयता','privacy'],
  ['age','Age / उम्र','text'],
  ['profile_pic','आपकी Photo 📷','photo'],
- ['profession','Profession / पेशा','profselect'],
- ['profession_other','Profession - Other','text'],
  ['work_details','अपने काम की details','textarea'],
  ['marital_status','Marital Status','select',['Married / विवाहित','Unmarried / अविवाहित']],
  ['blood_group','Blood Group / ब्लड ग्रुप','select',BLOOD_GROUPS],
@@ -279,7 +275,7 @@ const STEP_GROUPS = [
 ];
 
 const OPTIONAL_FIELDS = [
- {title:'👤 और जानकारी / More Details', color:'purple', keys:['profile_pic','age','marital_status','profession','profession_other','work_details','blood_group','blood_donor','home_tehsil','home_pincode','home_police_station','present_address','present_tehsil','present_pincode','present_police_station']}
+ {title:'👤 और जानकारी / More Details', color:'purple', keys:['profile_pic','age','marital_status','work_details','blood_group','blood_donor','home_tehsil','home_pincode','home_police_station','present_address','present_tehsil','present_pincode','present_police_station']}
 ];
 
 function fieldHTML(prefix, f, val){
@@ -309,15 +305,17 @@ function fieldHTML(prefix, f, val){
    '</select>'+
    '<p class="text-[11px] text-red-500 mt-1">"Secret" चुनने पर भी आपको समाज की सारी सुविधाएँ मिलती रहेंगी — बस आपकी प्रोफाइल सार्वजनिक Community list में नहीं दिखेगी।</p></div>';
  }
- if(f[2] === 'profselect'){
-  const opts = professionsList().map(o => '<option '+(o===val?'selected':'')+'>'+o+'</option>').join('');
-  return '<div><label class="text-xs font-bold text-gray-600">'+f[1]+'</label><select id="'+fid+'" class="w-full px-3 py-2 border-2 border-gray-300 rounded"><option value="">--Select--</option>'+opts+'</select></div>';
- }
  if(f[2] === 'select'){
   let src = f[3];
   if(f[0]==='business_type'){
    const extras = [...new Set(membersData.map(m=>m.business_type_other).filter(v=>v&&v.trim()))];
    src = f[3].concat(extras.filter(e=>!f[3].includes(e)));
+  }
+  if(f[0]==='business_type'){
+   // टाइप करके खोजो (जैसे "Dr" लिखते ही "Doctor" जैसे matching options ऊपर दिखेंगे) — या नीचे तीर दबाकर पूरी list भी देख सकते हो
+   return '<div><label class="text-xs font-bold text-gray-600">'+f[1]+' / Profession 🔍</label>'+
+    '<input type="text" id="'+fid+'" list="'+fid+'_dl" value="'+esc(val)+'" placeholder="टाइप करो या नीचे तीर से पूरी list देखो..." class="w-full px-3 py-2 border-2 border-gray-300 rounded">'+
+    '<datalist id="'+fid+'_dl">'+src.map(o=>'<option value="'+esc(o)+'">').join('')+'</datalist></div>';
   }
   const opts = src.map(o => '<option '+(o===val?'selected':'')+'>'+o+'</option>').join('');
   return '<div><label class="text-xs font-bold text-gray-600">'+f[1]+'</label><select id="'+fid+'" class="w-full px-3 py-2 border-2 border-gray-300 rounded"><option value="">--Select--</option>'+opts+'</select></div>';
@@ -553,6 +551,33 @@ function adBanner(idx){
   (ad.link ? '<a href="'+esc(ad.link)+'" target="_blank">'+inner+'</a>' : inner)+'</div>';
 }
 
+// ================= "आपको कौन चाहिए?" — Business/Profession टाइप-सर्च (व्यापार + पेशा दोनों merge) =================
+function whomBoxHTML(){
+ let h = '<div class="bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl shadow-lg p-6 mb-6 text-center">';
+ h += '<p class="text-2xl font-bold mb-1">🔍 आपको कौन चाहिए? / Whom do you need?</p>';
+ h += '<p class="text-orange-100 mb-4">टाइप करो (जैसे: Dr, Electrician...) या तीर 🔽 दबाकर पूरी list देखो</p>';
+ h += '<input type="text" list="dl_whomTypes" id="whomInput" oninput="doWhomSearch(this.value)" value="'+esc(whomQuery)+'" placeholder="जैसे: Doctor, Electrician, वकील..." class="w-full max-w-md mx-auto block px-4 py-3 rounded-lg text-gray-800 font-bold">';
+ h += '<datalist id="dl_whomTypes">'+BUSINESS_TYPES.map(o=>'<option value="'+esc(o)+'">').join('')+'</datalist>';
+ h += '<div id="whomResults" class="mt-4">'+whomResultsHTML()+'</div>';
+ h += '</div>';
+ return h;
+}
+function whomResultsHTML(){
+ if(!whomQuery.trim()) return '';
+ const q = whomQuery.trim().toLowerCase();
+ const qWords = q.split(/\s+/).filter(Boolean);
+ const scored = allBusinesses().map(b=>{
+  const hay = (b.type+' '+b.name+' '+b.owner).toLowerCase();
+  let score = 0;
+  if(hay.includes(q)) score += 10;
+  qWords.forEach(w=>{ if(hay.includes(w)) score += 1; });
+  return {b, score};
+ }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,10);
+ if(!scored.length) return '<p class="text-white text-sm">कोई match नहीं मिला</p>';
+ return '<div class="flex gap-3 overflow-x-auto pb-2 noscroll justify-start md:justify-center">'+scored.map(x=>bizMiniCard(x.b)).join('')+'</div>';
+}
+function doWhomSearch(v){ whomQuery=v; const el=document.getElementById('whomResults'); if(el) el.innerHTML=whomResultsHTML(); }
+
 // ================= HOME =================
 function renderHome(){
  let h = '<div class="text-center mb-8"><h2 class="text-4xl md:text-5xl font-bold mb-3">स्वागत है / Welcome</h2><p class="text-xl md:text-2xl text-gray-600">समाज की सेवा है हमारा लक्ष्य</p><p class="text-sm text-gray-400">Service to Society is Our Goal</p></div>';
@@ -571,13 +596,7 @@ function renderHome(){
   h += '</div>';
  }
 
- h += '<div class="bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl shadow-lg p-6 mb-6 text-center">';
- h += '<p class="text-2xl font-bold mb-1">🔍 आपको कौन चाहिए? / Whom do you need?</p>';
- h += '<p class="text-orange-100 mb-4">Doctor, वकील, Carpenter, Electrician या कोई और?</p>';
- h += '<button onclick="document.getElementById(\'profListBox\').classList.toggle(\'hidden\')" class="bg-white text-orange-600 px-8 py-3 rounded-lg font-bold text-lg hover:bg-orange-50">व्यवसाय चुनें ▼</button>';
- h += '<div id="profListBox" class="hidden mt-4 bg-white rounded-lg p-4 max-h-72 overflow-y-auto text-left"><div class="grid grid-cols-2 md:grid-cols-3 gap-2">';
- professionsList().forEach((p,i)=>{ h += '<button onclick="goProfession('+i+')" class="text-left px-3 py-2 rounded bg-orange-50 hover:bg-orange-200 text-gray-800 font-bold text-sm border border-orange-200">'+p+'</button>'; });
- h += '</div></div></div>';
+ h += whomBoxHTML();
 
  h += adBanner(0);
 
@@ -718,27 +737,6 @@ function renderRandProfile(){
 }
 
 // ================= PROFESSION PAGE =================
-function renderProfessionPage(){
- const list = publicMembers().filter(m => profOf(m)===selectedProfession)
-  .sort((a,b)=>(a.name+' '+a.surname).localeCompare(b.name+' '+b.surname));
- let h = '<button onclick="goPage(\'home\')" class="mb-4 bg-gray-200 px-4 py-2 rounded font-bold">← Back</button>';
- h += '<h2 class="text-3xl font-bold mb-2">🔍 '+esc(selectedProfession)+' ('+list.length+')</h2>';
- h += '<p class="text-gray-500 mb-6">Alphabetical list - गाँव/Tehsil/District details के साथ</p>';
- if(!list.length){
-  h += '<div class="bg-white rounded-lg p-10 text-center shadow"><p class="text-4xl mb-3">😔</p><p class="text-lg font-bold text-gray-600">अभी इस profession में कोई member नहीं है</p></div>';
- } else {
-  h += '<div class="space-y-4">'+list.map(m =>
-   '<div class="bg-white border-2 border-orange-300 rounded-lg p-5 shadow-md hover:shadow-lg"><div class="flex flex-wrap justify-between items-start gap-3"><div class="flex gap-3">'+
-   (m.profile_pic?'<img src="'+m.profile_pic+'" class="h-16 w-16 object-cover rounded-full border-2 border-orange-300">':'')+
-   '<div><p class="text-xl font-bold text-orange-700">'+esc(m.name)+' '+esc(m.surname)+'</p>'+
-   '<p class="text-sm text-gray-700 mt-1">🏡 गाँव: '+esc(m.home_village||'-')+' | District: '+esc(distOf(m,'home')||'-')+'</p>'+
-   '<p class="text-sm text-gray-700">📍 Present: '+esc(m.present_city||'-')+', '+esc(distOf(m,'present')||'-')+'</p>'+
-   (m.work_details?'<p class="text-sm text-gray-600 mt-2 bg-orange-50 rounded p-2">📝 '+esc(m.work_details)+'</p>':'')+
-   '</div></div><a href="tel:'+m.phone+'" class="bg-green-600 text-white px-5 py-2 rounded-lg font-bold">📞 '+esc(m.phone)+'</a></div></div>').join('')+'</div>';
- }
- return h;
-}
-
 // ================= COMMUNITY (members directory — login required) =================
 function setSearch(by){ searchBy=by; renderApp(); }
 function doSearch(v){ searchQ=v.toLowerCase(); renderMemberGrid(); }
@@ -1554,6 +1552,35 @@ function renderPratibhaPage(){
 }
 
 // ================= EVENTS / GALLERY =================
+// ================= SUGGESTIONS ("अपनी सलाह दें") — कोई भी दे सकता है, login जरूरी नहीं =================
+let suggestName = '', suggestPhone = '', suggestText = '';
+function renderSuggestionsPage(){
+ let h = '<div class="bg-gradient-to-br from-orange-500 to-red-500 text-white rounded-xl shadow-lg p-6 mb-6 text-center">';
+ h += '<p class="text-3xl mb-2">💡</p><h2 class="text-2xl md:text-3xl font-bold mb-2">अपनी सलाह दें / Give Your Suggestion</h2>';
+ h += '<p class="text-orange-100">समाज को बेहतर बनाने के लिए आपकी राय हमारे लिए कीमती है</p></div>';
+ h += '<div class="bg-white rounded-lg shadow-lg p-6 max-w-xl mx-auto">';
+ h += '<label class="text-xs font-bold text-gray-600">आपका नाम (optional)</label>';
+ h += '<input type="text" id="sg_name" value="'+esc(suggestName)+'" oninput="suggestName=this.value" placeholder="नाम (चाहें तो)" class="w-full px-3 py-2 border-2 rounded mb-3">';
+ h += '<label class="text-xs font-bold text-gray-600">Mobile Number (optional)</label>';
+ h += '<input type="tel" id="sg_phone" maxlength="10" value="'+esc(suggestPhone)+'" oninput="suggestPhone=this.value" placeholder="ताकि हम contact कर सकें" class="w-full px-3 py-2 border-2 rounded mb-3">';
+ h += '<label class="text-xs font-bold text-gray-600">आपकी सलाह *</label>';
+ h += '<textarea id="sg_text" rows="5" oninput="suggestText=this.value" placeholder="यहाँ अपनी सलाह/सुझाव लिखो..." class="w-full px-3 py-2 border-2 rounded mb-4">'+esc(suggestText)+'</textarea>';
+ h += '<button onclick="submitSuggestion()" class="w-full bg-orange-600 hover:bg-orange-700 text-white px-6 py-3 rounded-lg font-bold text-lg">📤 भेजो / Send</button>';
+ h += '</div>';
+ return h;
+}
+async function submitSuggestion(){
+ const text = document.getElementById('sg_text').value.trim();
+ if(!text){ alert('❌ कृपया अपनी सलाह लिखो'); return; }
+ const name = fmtName(document.getElementById('sg_name').value);
+ const phone = fmtPhone(document.getElementById('sg_phone').value);
+ busy(true);
+ await db.collection('suggestions').add({name:name, phone:phone, text:text, status:'pending', createdAt:today()});
+ busy(false);
+ suggestName=''; suggestPhone=''; suggestText='';
+ alert('🙏 आपकी सलाह के लिए तहे दिल से शुक्रिया!\n\nआपका दिन मंगलमय हो! 😊');
+ renderApp();
+}
 function renderEventsPage(){
  if(!eventsData.length) return '<h2 class="text-3xl font-bold mb-6">📅 EVENTS</h2><p class="text-gray-500 text-center py-12">कोई event नहीं</p>';
  return '<h2 class="text-3xl font-bold mb-6">📅 EVENTS ('+eventsData.length+')</h2><div class="space-y-4">'+
@@ -1575,7 +1602,7 @@ function _localCol(col){
  if(col==='relatives') return relativesData; if(col==='committee') return committeeData;
  if(col==='garba_regs') return garbaRegs; if(col==='garba_team') return garbaTeam;
  if(col==='cricket') return cricketData; if(col==='property') return propertyData;
- if(col==='blood') return bloodData; return null;
+ if(col==='blood') return bloodData; if(col==='suggestions') return suggestionsData; return null;
 }
 async function updDoc(col,id,data){
  // OPTIMISTIC: pehle screen par turant dikhाओ, phir server par save karo
@@ -1650,21 +1677,6 @@ function adminMemberRow(m, pending){
  '<p class="text-sm text-gray-600">🏡 '+esc(m.home_village||'-')+', '+esc(distOf(m,'home')||'-')+' → 📍 '+esc(m.present_city||'-')+'</p>'+
  (m.business_name?'<p class="text-sm text-yellow-700">🏪 '+esc(m.business_name)+'</p>':'')+'</div>'+
  '<div class="flex gap-2 flex-wrap">'+btns+'</div></div>';
-}
-
-// Professions
-async function addProfessionAdmin(){
- const p = document.getElementById('newProf').value.trim();
- if(!p){ alert('❌ लिखो!'); return; }
- if(professionsList().includes(p)){ alert('❌ पहले से है!'); return; }
- siteMeta.professions = professionsList().concat([p]); await saveMeta(); renderApp();
-}
-async function editProfessionAdmin(i){
- const np = prompt('Edit:', professionsList()[i]);
- if(np&&np.trim()){ siteMeta.professions[i]=np.trim(); await saveMeta(); renderApp(); }
-}
-async function delProfessionAdmin(i){
- if(confirm('"'+professionsList()[i]+'" delete?')){ siteMeta.professions.splice(i,1); await saveMeta(); renderApp(); }
 }
 
 // Events
@@ -1806,7 +1818,7 @@ async function toggleGarbaForm(){
 }
 
 // Sub-admins
-const SUBADMIN_TABS = [['members','👥 Members'],['relatives','👨‍👩‍👧 Relatives'],['professions','🔧 Professions'],['garba','🪩 Garba'],['cricket','🏏 Cricket'],['property','🏠 Property'],['blood','🩸 Blood'],['shaadi','💍 Shaadi'],['rozgaar','💼 Jobs'],['olditems','🛒 सामान'],['events','📅 Events'],['news','📰 News'],['pratibha','🏆 प्रतिभा'],['gallery','🖼️ Gallery']];
+const SUBADMIN_TABS = [['members','👥 Members'],['relatives','👨‍👩‍👧 Relatives'],['garba','🪩 Garba'],['cricket','🏏 Cricket'],['property','🏠 Property'],['blood','🩸 Blood'],['shaadi','💍 Shaadi'],['rozgaar','💼 Jobs'],['olditems','🛒 सामान'],['events','📅 Events'],['news','📰 News'],['pratibha','🏆 प्रतिभा'],['gallery','🖼️ Gallery'],['suggestions','💡 Suggestions']];
 let saSearchQ = '', saSelectedPhone = '', saTabs = [];
 function saSearch(v){ saSearchQ = v; saSelectedPhone = ''; renderApp(); }
 function saPick(phone){ saSelectedPhone = phone; renderApp(); }
@@ -1882,13 +1894,13 @@ function renderAdmin(){
  const pendGarba = garbaRegs.filter(g=>g.status==='pending');
  const pendProp = propertyData.filter(p=>p.status==='pending');
  const pendRel = relativesData.filter(r=>r.status==='pending');
+ const pendSuggest = suggestionsData.filter(s=>s.status==='pending');
  let h = '<div class="bg-gradient-to-r from-red-900 to-red-800 text-white rounded-lg px-6 py-5 mb-6 flex flex-wrap justify-between items-center gap-3"><h2 class="text-2xl md:text-3xl font-bold">⚙️ ADMIN DASHBOARD</h2>'+
  '<div class="text-sm">👥 '+approved.length+' approved | ⏳ '+pending.length+' pending</div>'+
  '<button onclick="goPage(\'home\')" class="bg-blue-600 px-5 py-2 rounded font-bold">← BACK</button></div>';
  const tabs = [
   ['members','👥 MEMBERS'+(pending.length?' ('+pending.length+')':'')],
   ['relatives','👨‍👩‍👧 RELATIVES'+(pendRel.length?' ('+pendRel.length+')':'')],
-  ['professions','🔧 PROFESSIONS'],
   ['garba','🪩 GARBA'+(pendGarba.length?' ('+pendGarba.length+')':'')],
   ['cricket','🏏 CRICKET'],
   ['property','🏠 PROPERTY'+(pendProp.length?' ('+pendProp.length+')':'')],
@@ -1900,6 +1912,7 @@ function renderAdmin(){
   ['news','📰 NEWS'],
   ['pratibha','🏆 प्रतिभा'+(pendPrat.length?' ('+pendPrat.length+')':'')],
   ['gallery','🖼️ GALLERY'],
+  ['suggestions','💡 SUGGESTIONS'+(pendSuggest.length?' ('+pendSuggest.length+')':'')],
   ['site','🌐 SITE']
  ];
  const allowed = allowedTabs();
@@ -1932,10 +1945,14 @@ function renderAdmin(){
   h += '</div>';
  }
 
- if(adminTab==='professions'){
-  h += '<div class="bg-orange-50 border-2 border-orange-400 rounded-lg p-6 mb-6"><h3 class="text-2xl font-bold mb-4">➕ ADD PROFESSION</h3><div class="flex gap-3"><input id="newProf" class="flex-1 px-4 py-3 border-2 rounded-lg"><button onclick="addProfessionAdmin()" class="bg-orange-600 text-white px-6 py-3 rounded-lg font-bold">✅ ADD</button></div></div>';
-  h += '<div class="bg-white rounded-lg shadow p-6"><h3 class="text-2xl font-bold mb-4">🔧 ALL ('+professionsList().length+')</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-3">'+
-  professionsList().map((p,i)=>'<div class="flex justify-between items-center bg-orange-50 border border-orange-200 rounded-lg px-4 py-3"><span class="font-bold">'+esc(p)+'</span><div class="flex gap-2"><button onclick="editProfessionAdmin('+i+')" class="bg-blue-500 text-white px-3 py-1 rounded font-bold text-sm">✏️</button><button onclick="delProfessionAdmin('+i+')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div></div>').join('')+'</div></div>';
+ if(adminTab==='suggestions'){
+  h += '<div class="bg-white rounded-lg shadow p-6"><h3 class="text-2xl font-bold mb-4">💡 SUGGESTIONS / सलाह ('+suggestionsData.length+')</h3>'+
+  (suggestionsData.length ? '<div class="space-y-3">'+suggestionsData.slice().sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).map(s=>
+   '<div class="bg-orange-50 border-2 border-orange-200 rounded-lg p-4"><div class="flex justify-between items-start gap-3 flex-wrap"><div><p class="font-bold">'+esc(s.name||'Anonymous')+'</p>'+(s.phone?'<p class="text-xs text-gray-500">📱 '+esc(s.phone)+'</p>':'')+'<p class="text-xs text-gray-400">📅 '+esc(s.createdAt||'')+'</p></div>'+
+   '<button onclick="delDoc(\'suggestions\',\''+s.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div>'+
+   '<p class="text-gray-700 mt-2 whitespace-pre-line">'+esc(s.text)+'</p></div>'
+  ).join('')+'</div>' : '<p class="text-gray-400 text-center py-8">अभी कोई suggestion नहीं आई</p>')+
+  '</div>';
  }
 
  if(adminTab==='garba'){
@@ -2133,8 +2150,8 @@ function renderApp(){
  else if(currentPage==='news') html = renderNewsPage();
  else if(currentPage==='pratibha') html = renderPratibhaPage();
  else if(currentPage==='events') html = renderEventsPage();
+ else if(currentPage==='suggestions') html = renderSuggestionsPage();
  else if(currentPage==='gallery') html = renderGalleryPage();
- else if(currentPage==='profession') html = renderProfessionPage();
  else if(currentPage==='admin') html = renderAdmin();
  else html = renderHome();
  // 🏪 हर page के नीचे businesses (बिना search किए भी दिखें)
