@@ -7,11 +7,11 @@
  .noscroll::-webkit-scrollbar{display:none}
  .noscroll{-ms-overflow-style:none;scrollbar-width:none}
 
- /* Open vs Locked nav — professional palette (charcoal+gold = locked, emerald = open) */
- .nav-btn.nav-open{border-color:#0d9488!important;background:linear-gradient(135deg,#065f46,#0d9488);color:#fff!important}
+ /* Open vs Locked nav — bright emerald = open (clearly free), dark charcoal+gold = locked (clearly restricted) */
+ .nav-btn.nav-open{border-color:#16a34a!important;background:linear-gradient(135deg,#16a34a,#22c55e);color:#fff!important}
  .nav-btn.nav-locked{border-color:#b8860b!important;background:linear-gradient(135deg,#1e293b,#334155);color:#f5d78e!important;animation:navLockGlow 2.4s ease-in-out infinite}
  .nav-btn.nav-locked::after{content:" 🔒";font-size:10px}
- .nav-btn.nav-open::after{content:" 🔓";font-size:10px}
+ .nav-btn.nav-open::after{content:" ✅";font-size:10px}
  @keyframes navLockGlow{
   0%,100%{box-shadow:0 0 0 rgba(234,179,8,0)}
   50%{box-shadow:0 0 8px rgba(234,179,8,.6)}

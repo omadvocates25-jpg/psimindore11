@@ -396,7 +396,7 @@ function stepFormHTML(m){
   } else {
    h += '<p class="text-center mb-4">आपकी सभी जानकारी दर्ज हो गई है।</p>';
    h += '<button onclick="sendRegOtp()" id="regOtpSendBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold">📲 OTP भेजो</button>';
-   h += '<div id="regOtpBox" class="hidden mt-4"><input type="text" id="regOtpCode" maxlength="6" placeholder="OTP डालें" class="w-full px-3 py-2 border-2 border-gray-300 rounded mb-2 text-center text-2xl font-bold tracking-widest"><button onclick="verifyRegOtp()" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold">✅ सत्यापित करें</button></div>';
+   h += '<div id="regOtpBox" class="hidden mt-4"><input type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" oninput="this.value=this.value.replace(/[^0-9]/g,\'\'); if(this.value.length===6) verifyRegOtp();" id="regOtpCode" maxlength="6" placeholder="OTP डालें (SMS से auto-fill होगा)" class="w-full px-3 py-2 border-2 border-gray-300 rounded mb-2 text-center text-2xl font-bold tracking-widest"><button onclick="verifyRegOtp()" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold">✅ सत्यापित करें</button></div>';
    h += '<div id="recaptcha-container-reg" class="mt-3"></div>';
   }
  }
@@ -642,6 +642,17 @@ function ensureRegRecaptcha(){
  }
  return _regRecaptcha;
 }
+// SMS aate hi Android Chrome par bina type kiye OTP auto-fill + auto-verify (support na ho to chup-chaap skip)
+function tryWebOtpAutofill(){
+ if(!('OTPCredential' in window)) return;
+ const ac = new AbortController();
+ setTimeout(()=>ac.abort(), 60000);
+ navigator.credentials.get({ otp: { transport:['sms'] }, signal: ac.signal }).then(otp => {
+  const code = (otp.code||'').replace(/[^0-9]/g,'');
+  const el = document.getElementById('regOtpCode');
+  if(el && code.length===6){ el.value = code; verifyRegOtp(); }
+ }).catch(()=>{});
+}
 async function sendRegOtp(){
  const phone = fmtPhone(draftGet('phone'));
  if(phone.length!==10){ alert('❌ सही 10 अंकों का Mobile Number भरो'); return; }
@@ -651,6 +662,7 @@ async function sendRegOtp(){
  try{
   _regConfirmation = await auth.signInWithPhoneNumber('+91'+phone, ensureRegRecaptcha());
   document.getElementById('regOtpBox').classList.remove('hidden');
+  tryWebOtpAutofill();
  } catch(err){
   alert('❌ OTP भेजने में समस्या: '+err.message);
  }
