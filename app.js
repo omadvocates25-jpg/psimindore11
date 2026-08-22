@@ -133,7 +133,7 @@ function setupRealtimeListeners(){
 async function saveMeta(){ await db.collection('meta').doc('site').set(siteMeta); }
 
 // ================= ROUTING (login-gated) =================
-const OPEN_PAGES = ['home','news']; // बिना login दिखने वाले pages
+const OPEN_PAGES = ['home','news','register']; // बिना login दिखने वाले pages
 function goPage(p){
  
  location.hash = p;
@@ -172,7 +172,14 @@ const cloudWidget = cloudinary.createUploadWidget(
 function openCloudUpload(fieldId){ _cloudTarget = fieldId; cloudWidget.open(); }
 
 // ================= OTP LOGIN =================
-
+let _loginConfirmation = null;
+let _loginRecaptcha = null;
+function ensureLoginRecaptcha(){
+ if(!_loginRecaptcha){
+  _loginRecaptcha = new firebase.auth.RecaptchaVerifier('recaptcha-container', { size: 'invisible' });
+ }
+ return _loginRecaptcha;
+}
 function openLogin(){
  document.getElementById('lmStep1').classList.remove('hidden');
  document.getElementById('lmStep2').classList.add('hidden');
@@ -232,10 +239,9 @@ async function verifyLoginOtp(){
 // Login के तुरंत बाद: अगर member नहीं है तो सीधे registration form पर ले जाओ
 let _pendingRegisterRedirect = false;
 function startRegister(){
- if(!currentUser){ _pendingRegisterRedirect = true; openLogin(); return; }
- if(myMember()){ alert('✅ आप पहले से registered हैं! आपकी profile Community page पर है।'); goPage('community'); return; }
- goPage('community');
- setTimeout(()=>{ const el=document.getElementById('addSection'); if(el) el.scrollIntoView({behavior:'smooth'}); },400);
+ if(currentUser && myMember()){ alert('✅ आप पहले से registered हैं! आपकी profile Community page पर है।'); goPage('community'); return; }
+ regStep = 0;
+ goPage('register');
 }
 auth.onAuthStateChanged(user => {
  _authResolved = true;
@@ -344,8 +350,11 @@ function fieldHTML(prefix, f, val){
   const opts = src.map(o => '<option '+(o===val?'selected':'')+'>'+o+'</option>').join('');
   return '<div><label class="text-xs font-bold text-gray-600">'+f[1]+'</label><select id="'+fid+'" class="w-full px-3 py-2 border-2 border-gray-300 rounded"><option value="">--Select--</option>'+opts+'</select></div>';
  }
- if(f[0]==='phone' && prefix==='reg_'){
+ if(f[0]==='phone' && prefix==='reg_' && currentUser){
   return '<div><label class="text-xs font-bold text-gray-600">'+f[1]+' (आपका login number - automatic)</label><input type="tel" id="'+fid+'" value="'+esc(currentUser)+'" readonly class="w-full px-3 py-2 border-2 border-gray-300 rounded bg-gray-100 text-gray-600"></div>';
+ }
+ if(f[0]==='phone' && prefix==='reg_'){
+  return '<div><label class="text-xs font-bold text-gray-600">'+f[1]+'</label><div class="flex items-center border-2 border-gray-300 rounded overflow-hidden"><span class="bg-gray-100 px-3 py-2 font-bold text-gray-600 text-sm">+91</span><input type="tel" id="'+fid+'" maxlength="10" value="'+esc(val)+'" class="flex-1 px-3 py-2 outline-none"></div></div>';
  }
  let listAttr='';
  if(f[0].includes('village')) listAttr=' list="dl_villages"';
@@ -387,9 +396,16 @@ function stepFormHTML(m){
   h += '<label class="flex items-center gap-2 mb-4 text-sm font-bold cursor-pointer"><input type="checkbox" id="reg_has_business" onchange="document.getElementById(\'bizFields\').classList.toggle(\'hidden\')"> हाँ, मेरे पास व्यापार/सेवा है</label>';
   h += '<div id="bizFields" class="hidden grid grid-cols-1 md:grid-cols-2 gap-4">'+grpFields(['business_name','business_type','business_place','business_phone','business_pic1','business_details']).map(f => fieldHTML('reg_', f, draftGet(f[0], m[f[0]]))).join('')+'</div>';
  } else if(regStep===2){
-  h += '<p class="text-center mb-4">आपकी सभी जानकारी दर्ज हो गई है। अब OTP से सत्यापन करें।</p>';
-  h += '<button onclick="sendRegOtp()" id="regOtpSendBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold">📲 OTP भेजो</button>';
-  h += '<div id="regOtpBox" class="hidden mt-4"><input type="text" id="regOtpCode" maxlength="6" placeholder="OTP डालें" class="w-full px-3 py-2 border-2 border-gray-300 rounded mb-2 text-center text-2xl font-bold tracking-widest"><button onclick="verifyRegOtp()" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold">✅ सत्यापित करें</button></div>';
+  if(currentUser){
+   h += '<p class="text-center mb-4">आपकी सभी जानकारी दर्ज हो गई है। आप पहले से 📱 '+esc(currentUser)+' से login हो (verified) — सीधे submit करो।</p>';
+   h += '<button onclick="submitSelfRegistration()" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold text-lg">✅ पूरा हुआ / Submit</button>';
+  } else {
+   h += '<p class="text-center mb-1">आपकी सभी जानकारी दर्ज हो गई है।</p>';
+   h += '<p class="text-center mb-4 text-sm text-gray-500">+91 '+esc(draftGet('phone'))+' पर OTP भेजा जाएगा</p>';
+   h += '<button onclick="sendRegOtp()" id="regOtpSendBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold">📲 OTP भेजो</button>';
+   h += '<div id="regOtpBox" class="hidden mt-4"><input type="text" id="regOtpCode" maxlength="6" placeholder="OTP डालें" class="w-full px-3 py-2 border-2 border-gray-300 rounded mb-2 text-center text-2xl font-bold tracking-widest"><button onclick="verifyRegOtp()" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold">✅ सत्यापित करें</button></div>';
+   h += '<div id="recaptcha-container-reg" class="mt-3"></div>';
+  }
  }
  h += '</div>';
  h += '<div class="flex justify-between mt-5">';
@@ -415,6 +431,7 @@ function stepNext(){
  stepSaveCurrent();
  if(regStep===0){
   if(!draftGet('name')||!draftGet('surname')||!draftGet('home_village')||!draftGet('home_district')||!draftGet('present_city')){ alert('❌ नाम, Surname, गाँव, जिला, और शहर सब भरो'); return; }
+  if(!currentUser && fmtPhone(draftGet('phone')).length!==10){ alert('❌ सही 10 अंकों का Mobile Number भरो'); return; }
  }
  regStep++; renderApp();
 }
@@ -445,24 +462,36 @@ function readMemberForm(prefix){
  obj.phone = fmtPhone(obj.phone); obj.business_phone = fmtPhone(obj.business_phone);
  return obj;
 }
-let _regOtpSent = false, _regOtpCode = '';
+let _regConfirmation = null;
+let _regRecaptcha = null;
+function ensureRegRecaptcha(){
+ if(!_regRecaptcha){
+  _regRecaptcha = new firebase.auth.RecaptchaVerifier('recaptcha-container-reg', { size: 'invisible' });
+ }
+ return _regRecaptcha;
+}
 async function sendRegOtp(){
+ const phone = fmtPhone(draftGet('phone'));
+ if(phone.length!==10){ alert('❌ सही 10 अंकों का Mobile Number भरो'); return; }
+ if((siteMeta.blocked||[]).includes(phone)){ alert('🚫 यह number block है। Admin से contact: '+CONTACT_PHONE); return; }
+ if(membersData.find(m => m.phone === phone)){ alert('❌ यह number पहले से registered है! सीधे Login करो।'); return; }
  const btn = document.getElementById('regOtpSendBtn');
  btn.disabled = true; btn.textContent = '📲 OTP भेज रहे हैं...';
  try{
-  _regOtpCode = String(Math.floor(Math.random()*1000000)).padStart(6,'0');
-  alert('✅ OTP: '+_regOtpCode+'\\n(Demo mode - real SMS में आएगा)');
-  _regOtpSent = true;
+  _regConfirmation = await auth.signInWithPhoneNumber('+91'+phone, ensureRegRecaptcha());
   document.getElementById('regOtpBox').classList.remove('hidden');
  } catch(err){
   alert('❌ OTP भेजने में समस्या: '+err.message);
-  btn.disabled = false; btn.textContent = '📲 OTP भेजो';
  }
+ btn.disabled = false; btn.textContent = '📲 OTP भेजो';
 }
-function verifyRegOtp(){
- const entered = document.getElementById('regOtpCode').value;
- if(entered !== _regOtpCode){ alert('❌ OTP गलत है!'); return; }
- submitSelfRegistration();
+async function verifyRegOtp(){
+ const code = document.getElementById('regOtpCode').value.trim();
+ if(code.length!==6){ alert('❌ 6 अंकों का OTP डालो'); return; }
+ if(!_regConfirmation){ alert('❌ पहले OTP भेजो'); return; }
+ try{ await _regConfirmation.confirm(code); }
+ catch(e){ alert('❌ गलत OTP - दोबारा देखो'); return; }
+ await submitSelfRegistration();
 }
 async function submitSelfRegistration(){
  stepSaveCurrent();
@@ -470,15 +499,15 @@ async function submitSelfRegistration(){
  MEMBER_FIELDS.forEach(f => { d[f[0]] = draftGet(f[0]) || ''; });
  d.name=fmtName(d.name); d.surname=fmtName(d.surname);
  d.home_village=fmtName(d.home_village); d.present_city=fmtName(d.present_city);
- d.phone = currentUser;
+ d.phone = fmtPhone(d.phone) || currentUser;
  if(!d.name || !d.surname){ alert('❌ Name और Surname दोनों भरो'); return; }
- if(membersData.find(m => m.phone === currentUser)){ alert('❌ आप पहले से registered हो!'); return; }
+ if(!d.phone){ alert('❌ Mobile Number जरूरी है'); return; }
+ if(membersData.find(m => m.phone === d.phone)){ alert('❌ आप पहले से registered हो!'); return; }
  d.status='pending'; d.createdAt=today(); d.phoneVerified=true;
  busy(true);
  await db.collection('members').add(d);
  busy(false);
- draftClear(); regStep=0; _regOtpSent=false;
- closeLogin();
+ draftClear(); regStep=0; _regConfirmation=null;
  alert('✅ स्वागत है, '+fmtName(d.name)+'!\\n\\nआप समुदाय में जुड़ गए हैं। admin approval के बाद आपका profile live हो जाएगा।');
  goPage('community');
 }
@@ -804,6 +833,17 @@ async function togglePrivacySelf(){
  alert('✅ Privacy बदल गई: '+newP);
 }
 
+function renderRegisterPage(){
+ if(currentUser && myMember()){
+  return '<div class="bg-white rounded-lg shadow-lg p-6 text-center"><p class="text-4xl mb-3">✅</p><p class="text-lg font-bold text-gray-700">आप पहले से registered हैं!</p><button onclick="goPage(\'community\')" class="mt-4 bg-blue-600 text-white px-6 py-3 rounded-lg font-bold">Community Page पर जाओ →</button></div>';
+ }
+ let h = '<div class="bg-white rounded-lg shadow-lg p-6 max-w-2xl mx-auto">';
+ h += '<h2 class="text-2xl md:text-3xl font-bold mb-2 text-center">📝 पाटीदार परिवार से जुड़ो</h2>';
+ h += '<p class="text-sm text-red-600 font-bold mb-4 text-center">⚠️ Subject to Admin Approval | सिर्फ जरूरी चीज़ें भरो - बाकी optional</p>';
+ h += stepFormHTML({});
+ h += '</div>';
+ return h;
+}
 function renderCommunity(){
  let top = '<h2 class="text-3xl font-bold mb-6">👥 COMMUNITY / समुदाय</h2>';
  top += '<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">';
@@ -1927,7 +1967,8 @@ function renderApp(){
  buildDatalists();
  const mc = document.getElementById('mainContent');
  let html = '';
- if(currentPage==='community') html = renderCommunity();
+ if(currentPage==='register') html = renderRegisterPage();
+ else if(currentPage==='community') html = renderCommunity();
  else if(currentPage==='business') html = renderBusinessPage();
  else if(currentPage==='garba') html = renderGarbaPage();
  else if(currentPage==='cricket') html = renderCricketPage();
