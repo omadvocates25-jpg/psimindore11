@@ -16,7 +16,10 @@ const auth = firebase.auth();
 const ADMIN_PASSWORD = "PatidarSamaj@2026"; // backup password
 const ADMIN_PHONE = "8103179376"; // Super Admin ka number - OTP login se auto-admin
 const CONTACT_PHONE = "81031-79376";
-const ADMIN_CONTACTS = ["8103179376","7974994436"];
+const ADMIN_CONTACTS = ["8103179376"];
+const DEFAULT_OBJECTIVE_TEXT = "क्या आपको पता है, पाटीदार समाज की अपनी एक App है — जिसमें हम सब आपस में जुड़ सकते हैं, अपने व्यापार को आगे बढ़ा सकते हैं और समाज के अलग-अलग लोगों को जान सकते हैं। सबसे बड़ी बात — हर पाटीदार को अपने ही पाटीदार भाई से व्यापार मिले, यही हमारा सबसे बड़ा उद्देश्य है।\n\nआपको कोई भी काम हो, छोटा हो या बड़ा — फ्रिज-कूलर ठीक करवाना हो या किसी डॉक्टर की जरूरत हो — आप सीधे इस App में search करके सीधे call कर सकते हैं। आखिर, अपने पाटीदार भाई पर भरोसा तो है ही! 🙏";
+const DEFAULT_INVITE_MSG = "🙏 क्या आपको पता है? पाटीदार समाज की अपनी App है जिसमें हम सब आपस में जुड़ सकते हैं और अपने व्यापार को बढ़ा सकते हैं। कोई भी काम हो — छोटा या बड़ा, फ्रिज-कूलर ठीक करवाना हो या डॉक्टर चाहिए — अपने पाटीदार भाई से सीधे जुड़ो। अभी Register करो 👇";
+function T(key, fallback){ return (siteMeta.texts && siteMeta.texts[key]) || fallback; }
 const MP_DISTRICTS = ["Agar Malwa","Alirajpur","Anuppur","Ashoknagar","Balaghat","Barwani","Betul","Bhind","Bhopal","Burhanpur","Chhatarpur","Chhindwara","Damoh","Datia","Dewas","Dhar","Dindori","Guna","Gwalior","Harda","Hoshangabad (Narmadapuram)","Indore","Jabalpur","Jhabua","Katni","Khandwa","Khargone","Maihar","Mandla","Mandsaur","Mauganj","Morena","Narsinghpur","Neemuch","Niwari","Pandhurna","Panna","Raisen","Rajgarh","Ratlam","Rewa","Sagar","Satna","Sehore","Seoni","Shahdol","Shajapur","Sheopur","Shivpuri","Sidhi","Singrauli","Tikamgarh","Ujjain","Umaria","Vidisha","Other (MP से बाहर)"];
 const STATES = ["Madhya Pradesh","Maharashtra","Gujarat","Rajasthan","Uttar Pradesh","Chhattisgarh","Delhi","Punjab","Haryana","Bihar","Karnataka","Tamil Nadu","Telangana","Andhra Pradesh","West Bengal","Odisha","Jharkhand","Assam","Kerala","Goa","Himachal Pradesh","Uttarakhand","Jammu & Kashmir","Other / विदेश"];
 const RELATIONS = ["पिता / Father","माता / Mother","भाई / Brother","बहन / Sister","बेटा / Son","बेटी / Daughter","पति / Husband","पत्नी / Wife","चाचा / Uncle","मामा / Mama","दादा / Grandfather","अन्य / Other"];
@@ -41,8 +44,8 @@ let relSearchQ = '';
 let friendSearchQ = '';
 let whomQuery = '';
 
-let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[], teamJoinData=[];
-let siteMeta = { ticker:'', aboutUs:'', fb:'', insta:'', youtube:'', committee:'', expiryDays:30, propertyValidityDays:365, propertyFee:'500', razorpayButtonId:'', razorpayMakan:'', razorpayDukan:'', shaadiFee:'', razorpayShaadi:'', blocked:[], garbaFormOpen:true, ads:[{},{},{},{},{}], subAdmins:[] };
+let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], garbaCoords=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[], teamJoinData=[];
+let siteMeta = { ticker:'', aboutUs:'', fb:'', insta:'', youtube:'', committee:'', expiryDays:30, propertyValidityDays:365, propertyFee:'500', razorpayButtonId:'', razorpayMakan:'', razorpayDukan:'', shaadiFee:'', razorpayShaadi:'', blocked:[], garbaFormOpen:true, ads:[{},{},{},{},{}], subAdmins:[], texts:{} };
 
 function isSuperAdmin(){ return currentUser === ADMIN_PHONE || localStorage.getItem('psim_admin_ok') === 'true'; }
 function subAdminInfo(){ if(!currentUser) return null; return (siteMeta.subAdmins||[]).find(s => fmtPhone(s.phone) === currentUser) || null; }
@@ -125,6 +128,7 @@ function setupRealtimeListeners(){
  watch('committee', d => committeeData = d);
  watch('garba_regs', d => garbaRegs = d);
  watch('garba_team', d => garbaTeam = d);
+ watch('garba_coords', d => garbaCoords = d);
  watch('cricket', d => cricketData = d);
  watch('property', d => propertyData = d);
  watch('blood', d => bloodData = d);
@@ -139,9 +143,10 @@ function setupRealtimeListeners(){
 async function saveMeta(){ await db.collection('meta').doc('site').set(siteMeta); }
 
 // ================= ROUTING (login-gated) =================
-// बिना login दिखने वाले pages — सिर्फ Community (members directory), Business, Profession (member contact list) lock हैं
-const OPEN_PAGES = ['home','news','register','events','gallery','pratibha','garba','cricket','blood','property','shaadi','rozgaar','olditems','suggestions'];
-const LOCKED_PAGES = ['community','business'];
+// बिना login दिखने वाले pages — Home/News/Pratibha/Events/Gallery + Rozgaar व OLX (सिर्फ browsing) खुले हैं
+// बाकी सब (Community, Business, Garba, Cricket, Blood, Property, Shaadi) के लिए पहले Community member बनना जरूरी है
+const OPEN_PAGES = ['home','news','register','events','gallery','pratibha','rozgaar','olditems','suggestions'];
+const LOCKED_PAGES = ['community','business','garba','cricket','blood','property','shaadi'];
 function goPage(p){
  if(!currentUser && LOCKED_PAGES.includes(p)){
   showRegisterPrompt('यह सुविधा सिर्फ रजिस्टर्ड सदस्यों के लिए है — Community से जुड़ने के लिए Register करो।');
@@ -160,6 +165,16 @@ function route(){
 window.onhashchange = route;
 function shareWA(text){ window.open('https://wa.me/?text='+encodeURIComponent(text), '_blank'); }
 function pageLink(p){ return location.origin + location.pathname + '#' + p; }
+function openObjectivePopup(){
+ const box = document.getElementById('bizModalBox');
+ box.innerHTML = '<div class="p-6">'+
+  '<div class="flex justify-between items-center mb-4"><h3 class="text-xl font-bold text-orange-700">🎯 हमारा उद्देश्य</h3><button onclick="closeBizForce()" class="text-gray-500 hover:text-gray-700 text-2xl font-bold">✕</button></div>'+
+  '<p class="text-gray-700 leading-relaxed whitespace-pre-line">'+esc(T('objective', DEFAULT_OBJECTIVE_TEXT))+'</p>'+
+  '<button onclick="closeBizForce(); startRegister();" class="w-full mt-5 bg-orange-600 hover:bg-orange-700 text-white px-6 py-3 rounded-lg font-bold">📝 अभी Register करो</button>'+
+  '</div>';
+ document.getElementById('bizModal').classList.remove('hidden');
+}
+function shareInvite(){ shareWA(T('inviteMsg', DEFAULT_INVITE_MSG) + '\n' + pageLink('register')); }
 
 // ================= CLOUDINARY =================
 let _cloudTarget = null;
@@ -210,6 +225,10 @@ function saveOptionalFieldsAndClose(){
 function startRegister(){
  if(currentUser && myMember()){ alert('✅ आप पहले से registered हैं! आपकी profile Community page पर है।'); goPage('community'); return; }
  regStep = 0;
+ if(!draftGet('phone')){
+  const saved = localStorage.getItem('psLastPhone');
+  if(saved) draftSet('phone', saved);
+ }
  goPage('register');
 }
 auth.onAuthStateChanged(user => {
@@ -375,8 +394,7 @@ function stepFormHTML(m){
    h += '<p class="text-center mb-4">आपकी सभी जानकारी दर्ज हो गई है। आप पहले से 📱 '+esc(currentUser)+' से login हो (verified) — सीधे submit करो।</p>';
    h += '<button onclick="submitSelfRegistration()" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold text-lg">✅ पूरा हुआ / Submit</button>';
   } else {
-   h += '<p class="text-center mb-1">आपकी सभी जानकारी दर्ज हो गई है।</p>';
-   h += '<p class="text-center mb-4 text-sm text-gray-500">+91 '+esc(draftGet('phone'))+' पर OTP भेजा जाएगा</p>';
+   h += '<p class="text-center mb-4">आपकी सभी जानकारी दर्ज हो गई है।</p>';
    h += '<button onclick="sendRegOtp()" id="regOtpSendBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold">📲 OTP भेजो</button>';
    h += '<div id="regOtpBox" class="hidden mt-4"><input type="text" id="regOtpCode" maxlength="6" placeholder="OTP डालें" class="w-full px-3 py-2 border-2 border-gray-300 rounded mb-2 text-center text-2xl font-bold tracking-widest"><button onclick="verifyRegOtp()" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold">✅ सत्यापित करें</button></div>';
    h += '<div id="recaptcha-container-reg" class="mt-3"></div>';
@@ -647,6 +665,7 @@ async function verifyRegOtp(){
  catch(e){ alert('❌ गलत OTP - दोबारा देखो'); return; }
  _regConfirmation = null;
  currentUser = verifiedPhone; // Firebase का onAuthStateChanged थोड़ी देर से फायर होता है — यहीं तुरंत set कर दो ताकि आगे का redirect सही चले
+ localStorage.setItem('psLastPhone', verifiedPhone); // अगली बार number auto-fill हो जाए
  const existing = membersData.find(m => m.phone === verifiedPhone);
  if(existing){
   draftClear(); regStep=0;
@@ -763,20 +782,27 @@ function whomResultsHTML(){
 function doWhomSearch(v){ whomQuery=v; const el=document.getElementById('whomResults'); if(el) el.innerHTML=whomResultsHTML(); }
 
 // ================= HOME =================
+function portalTile(p){
+ const locked = LOCKED_PAGES.includes(p[0]);
+ const ring = locked ? 'ring-2 ring-offset-1 ring-amber-400' : 'ring-2 ring-offset-1 ring-emerald-400';
+ const badge = locked ?
+  '<span class="absolute top-1.5 right-1.5 bg-slate-900 text-amber-300 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-amber-400">🔒</span>' :
+  '<span class="absolute top-1.5 right-1.5 bg-emerald-700 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">🔓</span>';
+ return '<div class="relative bg-gradient-to-br from-'+p[1]+'-500 to-'+p[1]+'-600 text-white rounded-2xl p-3 md:p-4 text-center cursor-pointer shadow-md hover:shadow-2xl transform hover:scale-105 transition-all '+ring+'" onclick="goPage(\''+p[0]+'\')">'+badge+'<div class="h-10 w-10 md:h-12 md:w-12 mx-auto mb-1.5 rounded-full bg-white/25 flex items-center justify-center text-xl md:text-2xl">'+p[2]+'</div><p class="font-bold text-[11px] md:text-xs leading-tight">'+p[3]+'</p><p class="text-[9px] md:text-[10px] mt-1 text-'+p[1]+'-100">'+p[4]+'</p></div>';
+}
 function renderHome(){
  let h = '<div class="text-center mb-8"><h2 class="text-4xl md:text-5xl font-bold mb-3">स्वागत है / Welcome</h2><p class="text-xl md:text-2xl text-gray-600">समाज की सेवा है हमारा लक्ष्य</p><p class="text-sm text-gray-400">Service to Society is Our Goal</p></div>';
  h += '<div class="bg-gradient-to-r from-blue-900 via-indigo-800 to-orange-600 rounded-2xl shadow-xl p-6 md:p-8 mb-6"><div class="flex flex-col md:flex-row items-center gap-5 md:gap-8"><img src="data:image/webp;base64,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" class="h-28 w-28 md:h-36 md:w-36 rounded-full border-4 border-yellow-400 shadow-2xl object-cover flex-shrink-0"><div class="text-center md:text-left"><p class="text-xs md:text-sm uppercase tracking-widest text-yellow-300 font-bold mb-1">हमारे आदर्श / Our Inspiration</p><h3 class="text-2xl md:text-3xl font-bold text-white mb-1">सरदार वल्लभभाई पटेल</h3><p class="text-blue-100 text-sm md:text-base">लौह पुरुष — Iron Man of India</p></div></div></div>';
 
  if(!currentUser){
-  h += '<div class="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-400 rounded-xl shadow-lg p-6 mb-6 text-center">';
-  h += '<p class="text-lg font-bold text-green-800 mb-4">🌟 हमारे समुदाय से जुड़ो</p>';
-  h += '<div class="grid grid-cols-3 gap-3 mb-4">';
-  h += '<div><p class="text-2xl font-bold text-green-700">'+publicMembers().length+'</p><p class="text-[11px] text-gray-700 font-bold">सदस्य</p></div>';
-  h += '<div><p class="text-2xl font-bold text-yellow-600">'+allBusinesses().length+'</p><p class="text-[11px] text-gray-700 font-bold">व्यापार</p></div>';
-  h += '<div><p class="text-2xl font-bold text-blue-600">'+eventsData.length+'</p><p class="text-[11px] text-gray-700 font-bold">कार्यक्रम</p></div>';
+  h += '<div class="bg-gradient-to-r from-orange-50 to-red-50 border-2 border-orange-400 rounded-xl shadow-lg p-5 mb-4 text-center cursor-pointer" onclick="openObjectivePopup()">';
+  h += '<p class="text-lg font-bold text-orange-800 mb-1">🎯 हमारा उद्देश्य</p>';
+  h += '<p class="text-sm text-gray-700">'+esc(T('objective', DEFAULT_OBJECTIVE_TEXT)).slice(0,110)+'...</p>';
+  h += '<p class="text-xs font-bold text-orange-600 mt-2">👆 पूरा पढ़ो / Read More</p>';
   h += '</div>';
-  h += '<p class="text-sm text-gray-700 mb-3">हजारों पाटीदार समुदाय से जुड़े हैं। अपना नेटवर्क बढ़ाओ!</p>';
-  h += '<button onclick="startRegister()" class="bg-green-600 hover:bg-green-700 text-white px-8 py-2 rounded-lg font-bold">📝 अभी रजिस्टर करो →</button>';
+  h += '<div class="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl shadow-lg p-5 mb-6 text-center text-white">';
+  h += '<p class="font-bold mb-3">📲 अपने पाटीदार भाई-बहनों को जोड़ो</p>';
+  h += '<button onclick="shareInvite()" class="bg-white text-green-700 px-6 py-3 rounded-lg font-bold">💬 WhatsApp पर Invite भेजो</button>';
   h += '</div>';
  }
 
@@ -793,30 +819,18 @@ function renderHome(){
   ['property','purple','🏠','मकान-किरायेदार<br>Property', activeProperties().length+' Listings'],
   ['shaadi','rose','💍','SHAADI<br>विवाह', shaadiData.filter(s=>s.status==='approved').length+' Profiles'],
   ['rozgaar','teal','💼','ROZGAAR<br>रोज़गार', jobsData.filter(j=>j.status==='approved').length+' Jobs'],
-  ['olditems','indigo','🛒','पुराना सामान<br>Old Items', activeOldItems().length+' Items'],
-  ['news','amber','📰','NEWS<br>समाचार', newsData.length+' Updates'],
+  ['olditems','indigo','🛒','अपना OLX<br>Old Items', activeOldItems().length+' Items'],
+  ['news','amber','📰','NEWS<br>समाचार', newsData.filter(n=>n.status!=='pending').length+' Updates'],
   ['pratibha','cyan','🏆','प्रतिभा परिचय<br>Talents', pratibhaData.filter(p=>p.status==='approved').length+' Stars'],
   ['events','lime','📅','EVENTS<br>कार्यक्रम', eventsData.length+' Events']
  ];
- h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">';
- portals.slice(0,4).forEach(p => {
-  h += '<div class="bg-gradient-to-br from-'+p[1]+'-500 to-'+p[1]+'-600 text-white rounded-2xl p-3 md:p-4 text-center cursor-pointer shadow-md hover:shadow-2xl transform hover:scale-105 transition-all" onclick="goPage(\''+p[0]+'\')"><div class="h-10 w-10 md:h-12 md:w-12 mx-auto mb-1.5 rounded-full bg-white/25 flex items-center justify-center text-xl md:text-2xl">'+p[2]+'</div><p class="font-bold text-[11px] md:text-xs leading-tight">'+p[3]+'</p><p class="text-[9px] md:text-[10px] mt-1 text-'+p[1]+'-100">'+p[4]+'</p></div>';
- });
- h += '</div>';
+ h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">'+portals.slice(0,4).map(portalTile).join('')+'</div>';
 
  h += adBanner(1);
 
- h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">';
- portals.slice(4,8).forEach(p => {
-  h += '<div class="bg-gradient-to-br from-'+p[1]+'-500 to-'+p[1]+'-600 text-white rounded-2xl p-3 md:p-4 text-center cursor-pointer shadow-md hover:shadow-2xl transform hover:scale-105 transition-all" onclick="goPage(\''+p[0]+'\')"><div class="h-10 w-10 md:h-12 md:w-12 mx-auto mb-1.5 rounded-full bg-white/25 flex items-center justify-center text-xl md:text-2xl">'+p[2]+'</div><p class="font-bold text-[11px] md:text-xs leading-tight">'+p[3]+'</p><p class="text-[9px] md:text-[10px] mt-1 text-'+p[1]+'-100">'+p[4]+'</p></div>';
- });
- h += '</div>';
+ h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">'+portals.slice(4,8).map(portalTile).join('')+'</div>';
 
- h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">';
- portals.slice(8,12).forEach(p => {
-  h += '<div class="bg-gradient-to-br from-'+p[1]+'-500 to-'+p[1]+'-600 text-white rounded-2xl p-3 md:p-4 text-center cursor-pointer shadow-md hover:shadow-2xl transform hover:scale-105 transition-all" onclick="goPage(\''+p[0]+'\')"><div class="h-10 w-10 md:h-12 md:w-12 mx-auto mb-1.5 rounded-full bg-white/25 flex items-center justify-center text-xl md:text-2xl">'+p[2]+'</div><p class="font-bold text-[11px] md:text-xs leading-tight">'+p[3]+'</p><p class="text-[9px] md:text-[10px] mt-1 text-'+p[1]+'-100">'+p[4]+'</p></div>';
- });
- h += '</div>';
+ h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">'+portals.slice(8,12).map(portalTile).join('')+'</div>';
 
  h += '<div class="bg-white rounded-xl shadow-lg p-6 mb-8"><h3 class="text-2xl font-bold mb-1 text-center">🎲 जानो अपने साथियों को / Know Your Community</h3><p class="text-center text-gray-500 text-sm mb-4">Random member profiles देखो</p><div id="randProfileBox"></div></div>';
 
@@ -851,9 +865,10 @@ function renderHome(){
 
  h += adBanner(3);
 
- if(newsData.length){
+ const visibleNews = newsData.filter(n=>n.status!=='pending');
+ if(visibleNews.length){
   h += '<div class="bg-white rounded-lg shadow-lg p-6 mb-8"><h3 class="text-2xl font-bold mb-4">📰 Latest News / ताज़ा समाचार</h3><div class="space-y-3">'+
-  newsData.slice(0,3).map(n => '<div class="bg-red-50 border-l-4 border-red-500 rounded p-4"><p class="font-bold text-red-700">'+esc(n.title)+'</p><p class="text-xs text-gray-500">📅 '+n.date+'</p><p class="text-sm text-gray-700 mt-1">'+esc(n.content).slice(0,150)+'...</p></div>').join('')+
+  visibleNews.slice(0,3).map(n => '<div class="bg-red-50 border-l-4 border-red-500 rounded p-4"><p class="font-bold text-red-700">'+esc(n.title)+'</p><p class="text-xs text-gray-500">📅 '+n.date+'</p><p class="text-sm text-gray-700 mt-1">'+esc(n.content).slice(0,150)+'...</p></div>').join('')+
   '</div><button onclick="goPage(\'news\')" class="mt-4 text-red-600 font-bold">सभी news देखो →</button></div>';
  }
 
@@ -870,19 +885,16 @@ function renderHome(){
 
  h += adBanner(4);
 
- h += '<div class="bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg shadow-lg p-8 text-center mb-8">'+
- '<h3 class="text-3xl font-bold mb-2">🤝 JOIN US / हमसे जुड़ें</h3>'+
- '<p class="text-green-100 mb-4">Become an Active Member of PSIM / PSIM के सक्रिय सदस्य बनें</p>'+
- '<button onclick="joinUsClick()" class="bg-white text-green-700 px-8 py-3 rounded-lg font-bold text-lg hover:bg-green-50">➕ REGISTER NOW / अभी जुड़ें</button></div>';
+ h += '<div class="bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg shadow-lg p-4 text-center mb-6 flex flex-col sm:flex-row items-center justify-center gap-3">'+
+ '<p class="font-bold text-base">🤝 JOIN US — PSIM के सक्रिय सदस्य बनें</p>'+
+ '<button onclick="joinUsClick()" class="bg-white text-green-700 px-5 py-2 rounded-lg font-bold text-sm hover:bg-green-50">➕ अभी जुड़ें</button></div>';
 
- h += '<div class="bg-gradient-to-r from-blue-900 to-blue-800 text-white rounded-lg shadow-lg p-8 text-center">'+
- '<h3 class="text-2xl font-bold mb-4">📞 CONTACT US</h3>'+
- '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md mx-auto">'+
- ADMIN_CONTACTS.map(ph=>
-  '<a href="tel:'+ph+'" class="bg-white/10 hover:bg-white/20 rounded-lg p-3 flex items-center justify-center gap-2 font-bold">📞 '+ph+'</a>'+
-  '<a href="https://wa.me/91'+ph+'" target="_blank" class="bg-green-500 hover:bg-green-600 rounded-lg p-3 flex items-center justify-center gap-2 font-bold">💬 WhatsApp</a>'
- ).join('')+
- '</div><p class="text-blue-200 mt-4">पाटीदार समाज इंदौर महानगर</p></div>';
+ h += '<div class="bg-gradient-to-r from-blue-900 to-blue-800 text-white rounded-lg shadow-lg p-4 text-center">'+
+ '<p class="font-bold mb-2">📞 CONTACT US / पाटीदार समाज इंदौर महानगर</p>'+
+ '<div class="flex justify-center gap-3 max-w-xs mx-auto">'+
+ '<a href="tel:'+ADMIN_CONTACTS[0]+'" class="bg-white/10 hover:bg-white/20 rounded-lg px-4 py-2 flex items-center gap-2 font-bold text-sm">📞 '+ADMIN_CONTACTS[0]+'</a>'+
+ '<a href="https://wa.me/91'+ADMIN_CONTACTS[0]+'" target="_blank" class="bg-green-500 hover:bg-green-600 rounded-lg px-4 py-2 flex items-center gap-2 font-bold text-sm">💬 WhatsApp</a>'+
+ '</div></div>';
  return h;
 }
 
@@ -1119,7 +1131,7 @@ function renderRegisterPage(){
 }
 function renderCommunity(){
  let top = '<h2 class="text-3xl font-bold mb-6">👥 COMMUNITY / समुदाय</h2>';
- top += '<button onclick="openSwipeView(\'community\')" class="w-full mb-6 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl">🔀 Profiles घुमा कर देखें / Discover Mode</button>';
+ top += '<button onclick="openSwipeView(\'community\')" class="w-full mb-6 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl">🔀 Profiles Explore करें</button>';
  top += '<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">';
  top += '<div class="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl p-6 cursor-pointer hover:shadow-xl" onclick="document.getElementById(\'searchSection\').scrollIntoView({behavior:\'smooth\'})"><p class="text-3xl mb-1">🔍</p><p class="font-bold text-xl">SEARCH MEMBERS</p><p class="text-sm text-blue-100">Name, Number, Village, District, State से</p></div>';
  top += '<div class="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-xl p-6 cursor-pointer hover:shadow-xl" onclick="document.getElementById(\'addSection\').scrollIntoView({behavior:\'smooth\'})"><p class="text-3xl mb-1">➕</p><p class="font-bold text-xl">ADD YOUR DETAILS</p><p class="text-sm text-green-100">Admin approval के बाद live</p></div></div>';
@@ -1278,7 +1290,7 @@ function renderBusinessPage(){
  const list = allBusinesses();
  return '<h2 class="text-3xl font-bold mb-2">🏪 BUSINESS / व्यापार ('+list.length+')</h2>'+
  '<p class="text-gray-500 mb-4">Members की business details automatic दिखती हैं</p>'+
- '<button onclick="openSwipeView(\'business\')" class="w-full mb-6 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl">🔀 Businesses घुमा कर देखें / Discover Mode</button>'+
+ '<button onclick="openSwipeView(\'business\')" class="w-full mb-6 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl">🔀 Businesses Explore करें</button>'+
  '<div class="flex gap-5 overflow-x-auto pb-3 noscroll">'+
  list.map(b => '<div class="w-72 shrink-0 bg-white border-2 border-yellow-300 rounded-lg overflow-hidden shadow-md hover:shadow-xl">'+
   '<div onclick="openBiz(\''+b.id+'\')" class="cursor-pointer transform hover:scale-[1.01] transition-all">'+
@@ -1333,6 +1345,12 @@ function renderGarbaPage(){
 
 
 
+ if(garbaCoords.length){
+  h += '<div class="bg-white rounded-lg shadow-lg p-6 mb-8"><h3 class="text-xl font-bold mb-1">📍 Area Coordinators</h3><p class="text-sm text-gray-500 mb-4">अपने area के coordinator से सीधे बात करो</p><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+  garbaCoords.map(c => '<div class="bg-pink-50 border-2 border-pink-300 rounded-xl p-4"><p class="font-bold text-pink-800">📍 '+esc(c.area)+'</p><p class="text-sm text-gray-700 mt-1">'+esc(c.name)+'</p>'+
+   '<div class="flex gap-2 mt-3"><a href="tel:'+c.phone+'" class="flex-1 text-center bg-green-600 text-white rounded-lg px-3 py-2 text-sm font-bold">📞 Call</a>'+
+   '<a href="https://wa.me/91'+c.phone+'" target="_blank" class="flex-1 text-center bg-green-500 text-white rounded-lg px-3 py-2 text-sm font-bold">💬 WhatsApp</a></div></div>').join('')+'</div></div>';
+ }
  if(garbaTeam.length){
   h += '<div class="bg-white rounded-lg shadow-lg p-6"><h3 class="text-xl font-bold mb-4">👥 हमारी Garba Team</h3><div class="grid grid-cols-2 md:grid-cols-4 gap-4">'+
   garbaTeam.map(t => '<div class="bg-pink-50 border-2 border-pink-300 rounded-xl p-4 text-center">'+
@@ -1374,7 +1392,7 @@ function renderCricketPage(){
 }
 
 // ================= BLOOD =================
-let bloodFilterGroup='', bloodFilterDist='';
+let bloodFilterGroup='', bloodFilterDist='', bloodFilterVillage='';
 function allDonors(){
  const fromMembers = publicMembers()
   .filter(m => m.blood_group && (!m.blood_donor || m.blood_donor.indexOf('हाँ')===0))
@@ -1385,12 +1403,14 @@ function allDonors(){
  return merged;
 }
 function renderBloodPage(){
- const filtered = allDonors().filter(m => (!bloodFilterGroup || m.blood_group===bloodFilterGroup) && (!bloodFilterDist || m.district===bloodFilterDist));
+ const villQ = bloodFilterVillage.trim().toLowerCase();
+ const filtered = allDonors().filter(m => (!bloodFilterGroup || m.blood_group===bloodFilterGroup) && (!bloodFilterDist || m.district===bloodFilterDist) && (!villQ || (m.village||'').toLowerCase().includes(villQ)));
  let h = '<h2 class="text-3xl font-bold mb-2">🩸 BLOOD DONORS / रक्तदाता ('+filtered.length+')</h2>';
- h += '<p class="text-gray-500 mb-6">District/Group से खोजो - सीधे call करो | Donors समाज द्वारा verified ✅</p>';
+ h += '<p class="text-gray-500 mb-6">गाँव/तहसील, District और Group से खोजो — सीधे Call या WhatsApp पर अनुरोध करो | Donors समाज द्वारा verified ✅</p>';
  h += '<div class="bg-white rounded-lg shadow p-5 mb-6 flex flex-wrap gap-3">';
- h += '<select onchange="bloodFilterGroup=this.value;renderApp()" class="px-3 py-2 border-2 rounded"><option value="">सभी Blood Group</option>'+BLOOD_GROUPS.map(g=>'<option '+(g===bloodFilterGroup?'selected':'')+'>'+g+'</option>').join('')+'</select>';
+ h += '<input type="text" value="'+esc(bloodFilterVillage)+'" oninput="bloodFilterVillage=this.value;renderApp()" placeholder="🏡 अपना गाँव/तहसील खुद डालो" class="px-3 py-2 border-2 rounded flex-1 min-w-[180px]">';
  h += '<select onchange="bloodFilterDist=this.value;renderApp()" class="px-3 py-2 border-2 rounded"><option value="">सभी District</option>'+MP_DISTRICTS.map(d=>'<option '+(d===bloodFilterDist?'selected':'')+'>'+d+'</option>').join('')+'</select>';
+ h += '<select onchange="bloodFilterGroup=this.value;renderApp()" class="px-3 py-2 border-2 rounded"><option value="">सभी Blood Group</option>'+BLOOD_GROUPS.map(g=>'<option '+(g===bloodFilterGroup?'selected':'')+'>'+g+'</option>').join('')+'</select>';
  h += '</div>';
  const meB = myMember();
  if(meB){
@@ -1412,10 +1432,11 @@ function renderBloodPage(){
    if(!grp.length) return;
    h += '<h3 class="text-2xl font-bold text-red-700 mt-6 mb-3">🩸 '+gr+' ('+grp.length+')</h3>';
    h += '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">'+grp.map(m =>
-    '<div class="bg-white border-2 border-red-300 rounded-lg p-5 shadow-md"><div class="flex justify-between items-start"><div><p class="font-bold text-lg">'+esc(m.name)+'</p>'+
+    '<div class="bg-white border-2 border-red-300 rounded-lg p-5 shadow-md"><div class="flex justify-between items-start gap-2"><div><p class="font-bold text-lg">'+esc(m.name)+'</p>'+
     '<p class="text-2xl font-bold text-red-600 my-1">'+esc(m.blood_group)+'</p>'+
     '<p class="text-sm text-gray-600">📍 '+esc(m.village?m.village+', ':'')+esc(m.district||'-')+'</p></div>'+
-    '<a href="tel:'+m.phone+'" class="bg-green-600 text-white px-4 py-2 rounded-lg font-bold text-sm">📞 Call</a></div></div>').join('')+'</div>';
+    '<div class="flex flex-col gap-2 shrink-0"><a href="tel:'+m.phone+'" class="bg-green-600 text-white px-4 py-2 rounded-lg font-bold text-sm text-center">📞 Call</a>'+
+    '<a href="https://wa.me/91'+m.phone+'?text='+encodeURIComponent('🩸 नमस्ते, मुझे आपकी '+m.blood_group+' Blood Group की जरूरत है। क्या आप रक्तदान के लिए उपलब्ध हैं? — पाटीदार समाज इंदौर महानगर')+'" target="_blank" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-bold text-sm text-center">💬 अनुरोध</a></div></div></div>').join('')+'</div>';
   });
  }
  return h;
@@ -1428,6 +1449,9 @@ function activeProperties(){
  return propertyData.filter(p => p.status==='approved' && p.active!==false && (p.approvedAt||p.createdAt||'9999') >= cutoff);
 }
 async function submitProperty(){
+ const me = myMember();
+ if(!me || me.status!=='approved'){ showRegisterPrompt('Listing डालने के लिए पहले Community member बनो।'); return; }
+ if(propertyData.find(p => p.phone===me.phone && p.status!=='rejected')){ alert('❌ आप पहले से एक Listing डाल चुके हो — एक member सिर्फ एक ही listing डाल सकता है।'); return; }
  const type=document.getElementById('pp_type').value;
  const nm=fmtName(document.getElementById('pp_name').value);
  const ph=fmtPhone(document.getElementById('pp_phone').value);
@@ -1658,6 +1682,8 @@ function activeOldItems(){
  return oldItems.filter(o => o.status==='approved' && (o.createdAt||'9999') >= cutoff);
 }
 async function submitOldItem(){
+ const me = myMember();
+ if(!me || me.status!=='approved'){ showRegisterPrompt('सामान बेचने के लिए पहले Community member बनो।'); return; }
  const t=document.getElementById('it_title').value.trim(), pr=document.getElementById('it_price').value.trim(),
   ph=fmtPhone(document.getElementById('it_phone').value), ds=document.getElementById('it_desc').value.trim(),
   pic=document.getElementById('it_pic').value;
@@ -1670,10 +1696,16 @@ async function submitOldItem(){
 }
 function renderOldItemsPage(){
  const approved = activeOldItems();
- let h = '<h2 class="text-3xl font-bold mb-2">🛒 पुराने सामान का बाज़ार ('+approved.length+')</h2>';
- h += '<p class="text-gray-500 mb-4">पुराना सामान बेचो-खरीदो — समाज के अंदर। सामान की पूरी details + OLX link (click करते ही OLX पर redirect)</p>';
- h += '<button onclick="showItemForm=!showItemForm;renderApp()" class="mb-4 bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-bold">➕ अपना सामान बेचो</button>';
- if(showItemForm){
+ const me = myMember();
+ const isMember = !!(me && me.status==='approved');
+ let h = '<h2 class="text-3xl font-bold mb-2">🛒 अपना OLX ('+approved.length+')</h2>';
+ h += '<p class="text-gray-500 mb-4">समाज के अंदर पुराना सामान बेचो — देखना सबके लिए खुला है, पूरी details + Call/WhatsApp के लिए Community member बनो</p>';
+ if(isMember){
+  h += '<button onclick="showItemForm=!showItemForm;renderApp()" class="mb-4 bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-bold">➕ अपना सामान बेचो</button>';
+ } else {
+  h += '<div class="bg-purple-50 border-2 border-purple-300 rounded-lg p-4 mb-4 text-center text-sm">🔒 सामान बेचने के लिए पहले <button onclick="showRegisterPrompt(\'सामान बेचने के लिए पहले Community member बनो।\')" class="underline font-bold text-purple-700">Register करो</button></div>';
+ }
+ if(showItemForm && isMember){
   h += '<div class="bg-purple-50 border-2 border-purple-400 rounded-lg p-5 mb-6"><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
   '<div><label class="text-xs font-bold">Item Name *</label><input id="it_title" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">Price (₹) *</label><input id="it_price" class="w-full px-3 py-2 border-2 rounded"></div>'+
@@ -1684,7 +1716,7 @@ function renderOldItemsPage(){
   '<div class="flex gap-3 mt-4"><button onclick="submitOldItem()" class="bg-purple-600 text-white px-8 py-3 rounded font-bold">✅ SUBMIT</button><button onclick="showItemForm=false;renderApp()" class="bg-gray-400 text-white px-8 py-3 rounded font-bold">CANCEL</button></div></div>';
  }
  if(!approved.length) h += '<div class="bg-white rounded-lg p-10 text-center shadow"><p class="text-4xl mb-3">🛒</p><p class="text-lg font-bold text-gray-600">अभी कोई item नहीं - पहला आप डालो!</p></div>';
- else h += '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">'+approved.map(o =>
+ else if(isMember) h += '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">'+approved.map(o =>
   '<div class="bg-white border-2 border-purple-300 rounded-lg overflow-hidden shadow-md hover:shadow-lg">'+
   (o.pic?'<img src="'+o.pic+'" class="w-full h-44 object-cover">':'')+
   '<div class="p-4"><p class="font-bold text-lg text-purple-700">'+esc(o.title)+'</p>'+
@@ -1692,25 +1724,64 @@ function renderOldItemsPage(){
   (o.description?'<p class="text-sm text-gray-600 mt-2">'+esc(o.description)+'</p>':'')+
   '<a href="tel:'+o.phone+'" class="block text-center mt-3 bg-green-600 text-white px-4 py-2 rounded-lg font-bold text-sm">📞 Call</a>'+
   (o.olx_link?'<a href="'+esc(o.olx_link)+'" target="_blank" rel="noopener" class="block text-center mt-2 bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-sm">🔗 OLX पर देखो / Open OLX</a>':'')+
+  '<button onclick="shareWA(\'🛒 '+esc(o.title).replace(/\'/g,'')+' - ₹'+esc(o.price)+' | अपना OLX: \'+pageLink(\'olditems\'))" class="block w-full text-center mt-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-bold text-sm">📤 WhatsApp Share</button>'+
+  '</div></div>').join('')+'</div>';
+ else h += '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">'+approved.map(o =>
+  '<div class="bg-white border-2 border-purple-200 rounded-lg overflow-hidden shadow-md">'+
+  (o.pic?'<img src="'+o.pic+'" class="w-full h-44 object-cover">':'')+
+  '<div class="p-4"><p class="font-bold text-lg text-purple-700">'+esc(o.title)+'</p>'+
+  (o.description?'<p class="text-sm text-gray-500 mt-1">'+esc(o.description).slice(0,60)+(o.description.length>60?'...':'')+'</p>':'')+
+  '<button onclick="showRegisterPrompt(\'पूरी details, price और seller का number देखने के लिए पहले Community member बनो।\')" class="block w-full text-center mt-3 bg-purple-600 text-white px-4 py-2 rounded-lg font-bold text-sm">🔒 पूरी Details के लिए Register करो</button>'+
   '</div></div>').join('')+'</div>';
  return h;
 }
 
 // ================= NEWS =================
+let showNewsForm = false;
+async function submitNews(){
+ const me = myMember();
+ if(!me || me.status!=='approved'){ showRegisterPrompt('News डालने के लिए पहले Community member बनो।'); return; }
+ const t=document.getElementById('un_title').value.trim(), c=document.getElementById('un_content').value.trim(), pic=document.getElementById('un_pic').value;
+ if(!t||!c){ alert('❌ Title और Content जरूरी!'); return; }
+ busy(true);
+ await db.collection('news').add({title:t, content:c, pic:pic, date:today(), status:'pending', createdAt:today(), submittedBy:me.phone});
+ busy(false); showNewsForm=false;
+ alert('✅ Submit हो गया! Admin approval के बाद live होगा।'); renderApp();
+}
 function renderNewsPage(){
- if(!newsData.length) return '<h2 class="text-3xl font-bold mb-6">📰 NEWS</h2><p class="text-gray-500 text-center py-12 text-lg">अभी कोई news नहीं है</p>';
- let list = newsData.slice();
+ const me = myMember();
+ const isMember = !!(me && me.status==='approved');
+ const visible = newsData.filter(n => n.status!=='pending');
+ let h = '<h2 class="text-3xl font-bold mb-2">📰 NEWS ('+visible.length+')</h2>';
+ h += '<p class="text-gray-500 text-sm mb-4">पाटीदार समाज से जुड़ी कोई भी खबर हो तो डालो — Subject to Admin Approval</p>';
+ if(isMember){
+  h += '<button onclick="showNewsForm=!showNewsForm;renderApp()" class="mb-4 bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-bold">➕ News डालो</button>';
+  if(showNewsForm){
+   h += '<div class="bg-red-50 border-2 border-red-400 rounded-lg p-5 mb-6"><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+   '<div><label class="text-xs font-bold">Title *</label><input id="un_title" class="w-full px-3 py-2 border-2 rounded"></div>'+
+   '<div><label class="text-xs font-bold">Photo 📷</label><input type="hidden" id="un_pic"><button type="button" onclick="openCloudUpload(\'un_pic\')" class="w-full bg-blue-600 text-white px-3 py-2 rounded font-bold text-sm">📷 Upload</button></div>'+
+   '<div class="md:col-span-2"><label class="text-xs font-bold">Content *</label><textarea id="un_content" rows="3" class="w-full px-3 py-2 border-2 rounded"></textarea></div></div>'+
+   '<div class="flex gap-3 mt-4"><button onclick="submitNews()" class="bg-red-600 text-white px-8 py-3 rounded font-bold">✅ SUBMIT</button><button onclick="showNewsForm=false;renderApp()" class="bg-gray-400 text-white px-8 py-3 rounded font-bold">CANCEL</button></div></div>';
+  }
+ } else {
+  h += '<div class="bg-red-50 border-2 border-red-200 rounded-lg p-3 mb-4 text-center text-sm">🔒 News डालने के लिए पहले <button onclick="showRegisterPrompt(\'News डालने के लिए पहले Community member बनो।\')" class="underline font-bold text-red-700">Register करो</button></div>';
+ }
+ if(!visible.length) return h+'<p class="text-gray-500 text-center py-12 text-lg">अभी कोई news नहीं है</p>';
+ let list = visible.slice();
  if(selectedNewsId){ const idx=list.findIndex(n=>n.id===selectedNewsId); if(idx>0){ const [n]=list.splice(idx,1); list.unshift(n); } }
- return '<h2 class="text-3xl font-bold mb-6">📰 NEWS ('+newsData.length+')</h2><div class="space-y-5">'+
+ h += '<div class="space-y-5">'+
  list.map(n => '<div class="bg-white border-2 '+(n.id===selectedNewsId?'border-red-600 ring-2 ring-red-300':'border-red-300')+' rounded-lg overflow-hidden shadow-md">'+
   (n.pic?'<img src="'+n.pic+'" class="w-full h-52 object-cover">':'')+
   '<div class="p-5"><p class="text-2xl font-bold text-red-700">'+esc(n.title)+'</p><p class="text-xs text-gray-500 mt-1">📅 '+n.date+'</p><p class="text-gray-700 mt-3 whitespace-pre-line">'+esc(n.content)+'</p>'+
   '<button onclick="shareWA(\'📰 '+esc(n.title).replace(/\'/g,'')+' | Patidar Samaj Indore: \'+pageLink(\'news/'+n.id+'\'))" class="mt-4 bg-green-500 text-white px-5 py-2 rounded-lg font-bold text-sm">📤 WhatsApp Share</button>'+
   '</div></div>').join('')+'</div>';
+ return h;
 }
 
 // ================= PRATIBHA =================
 async function submitPratibha(){
+ const me = myMember();
+ if(!me || me.status!=='approved'){ showRegisterPrompt('प्रतिभा जोड़ने के लिए पहले Community member बनो।'); return; }
  const nm=fmtName(document.getElementById('pt_name').value), ach=document.getElementById('pt_ach').value.trim(),
   ds=document.getElementById('pt_desc').value.trim(), vl=fmtName(document.getElementById('pt_place').value);
  if(!nm||!ach){ alert('❌ Name और Achievement जरूरी!'); return; }
@@ -1721,9 +1792,16 @@ async function submitPratibha(){
 }
 function renderPratibhaPage(){
  const approved = pratibhaData.filter(p=>p.status==='approved');
+ const meP = myMember();
+ const isMemberP = !!(meP && meP.status==='approved');
  let h = '<h2 class="text-3xl font-bold mb-2">🏆 प्रतिभा परिचय</h2>';
- h += '<button onclick="showPratForm=!showPratForm;renderApp()" class="mb-4 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-bold">➕ प्रतिभा जोड़ो</button>';
- if(showPratForm){
+ h += '<p class="text-gray-500 text-sm mb-3">Community member कोई भी प्रतिभा जोड़ सकता है — Subject to Admin Approval</p>';
+ if(isMemberP){
+  h += '<button onclick="showPratForm=!showPratForm;renderApp()" class="mb-4 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-bold">➕ प्रतिभा जोड़ो</button>';
+ } else {
+  h += '<div class="bg-indigo-50 border-2 border-indigo-200 rounded-lg p-3 mb-4 text-center text-sm">🔒 प्रतिभा जोड़ने के लिए पहले <button onclick="showRegisterPrompt(\'प्रतिभा जोड़ने के लिए पहले Community member बनो।\')" class="underline font-bold text-indigo-700">Register करो</button></div>';
+ }
+ if(showPratForm && isMemberP){
   h += '<div class="bg-indigo-50 border-2 border-indigo-400 rounded-lg p-5 mb-6"><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
   '<div><label class="text-xs font-bold">Name *</label><input id="pt_name" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">Achievement *</label><input id="pt_ach" class="w-full px-3 py-2 border-2 rounded"></div>'+
@@ -1794,6 +1872,7 @@ function _localCol(col){
  if(col==='jobs') return jobsData; if(col==='shaadi') return shaadiData;
  if(col==='relatives') return relativesData; if(col==='committee') return committeeData;
  if(col==='garba_regs') return garbaRegs; if(col==='garba_team') return garbaTeam;
+ if(col==='garba_coords') return garbaCoords;
  if(col==='cricket') return cricketData; if(col==='property') return propertyData;
  if(col==='blood') return bloodData; if(col==='suggestions') return suggestionsData; return null;
 }
@@ -2009,6 +2088,14 @@ async function addGarbaTeam(){
 async function toggleGarbaForm(){
  siteMeta.garbaFormOpen = !siteMeta.garbaFormOpen; await saveMeta(); renderApp();
 }
+async function addGarbaCoord(){
+ if(garbaCoords.length>=10){ alert('❌ ज्यादा से ज्यादा 10 Area Coordinators ही जोड़ सकते हो'); return; }
+ const nm=fmtName(document.getElementById('gc_name').value), ph=fmtPhone(document.getElementById('gc_phone').value), area=document.getElementById('gc_area').value.trim();
+ if(!nm||!ph||!area){ alert('❌ Name, Phone, Area जरूरी!'); return; }
+ busy(true);
+ await db.collection('garba_coords').add({name:nm,phone:ph,area:area,createdAt:today()});
+ busy(false); alert('✅ Area Coordinator added!'); renderApp();
+}
 
 // Sub-admins
 const SUBADMIN_TABS = [['members','👥 Members'],['relatives','👨‍👩‍👧 Relatives'],['garba','🪩 Garba'],['cricket','🏏 Cricket'],['property','🏠 Property'],['blood','🩸 Blood'],['shaadi','💍 Shaadi'],['rozgaar','💼 Jobs'],['olditems','🛒 सामान'],['events','📅 Events'],['news','📰 News'],['pratibha','🏆 प्रतिभा'],['gallery','🖼️ Gallery'],['suggestions','💡 Suggestions']];
@@ -2069,6 +2156,12 @@ async function saveSiteMeta(){
  siteMeta.razorpayDukan = document.getElementById('st_rz_dukan').value.trim();
  siteMeta.shaadiFee = document.getElementById('st_shaadifee').value.trim();
  siteMeta.razorpayShaadi = document.getElementById('st_rz_shaadi').value.trim();
+ siteMeta.texts = Object.assign({}, siteMeta.texts, {
+  registerTagline: document.getElementById('tx_regTagline').value.trim(),
+  registerBtn: document.getElementById('tx_regBtn').value.trim(),
+  objective: document.getElementById('tx_objective').value.trim(),
+  inviteMsg: document.getElementById('tx_invite').value.trim()
+ });
  siteMeta.ads = [0,1,2,3,4].map(i => ({
   img: document.getElementById('ad_img_'+i).value,
   link: document.getElementById('ad_link_'+i).value.trim(),
@@ -2088,6 +2181,7 @@ function renderAdmin(){
  const pendProp = propertyData.filter(p=>p.status==='pending');
  const pendRel = relativesData.filter(r=>r.status==='pending');
  const pendSuggest = suggestionsData.filter(s=>s.status==='pending');
+ const pendNews = newsData.filter(n=>n.status==='pending');
  let h = '<div class="bg-gradient-to-r from-red-900 to-red-800 text-white rounded-lg px-6 py-5 mb-6 flex flex-wrap justify-between items-center gap-3"><h2 class="text-2xl md:text-3xl font-bold">⚙️ ADMIN DASHBOARD</h2>'+
  '<div class="text-sm">👥 '+approved.length+' approved | ⏳ '+pending.length+' pending</div>'+
  '<button onclick="goPage(\'home\')" class="bg-blue-600 px-5 py-2 rounded font-bold">← BACK</button></div>';
@@ -2102,7 +2196,7 @@ function renderAdmin(){
   ['rozgaar','💼 JOBS'+(pendJobs.length?' ('+pendJobs.length+')':'')],
   ['olditems','🛒 सामान'+(pendItems.length?' ('+pendItems.length+')':'')],
   ['events','📅 EVENTS'],
-  ['news','📰 NEWS'],
+  ['news','📰 NEWS'+(pendNews.length?' ('+pendNews.length+')':'')],
   ['pratibha','🏆 प्रतिभा'+(pendPrat.length?' ('+pendPrat.length+')':'')],
   ['gallery','🖼️ GALLERY'],
   ['suggestions','💡 SUGGESTIONS'+(pendSuggest.length?' ('+pendSuggest.length+')':'')],
@@ -2159,6 +2253,10 @@ function renderAdmin(){
   '<div><input type="hidden" id="gt_pic"><button type="button" onclick="openCloudUpload(\'gt_pic\')" class="w-full bg-blue-600 text-white px-3 py-2 rounded font-bold text-sm">📷 Photo</button></div></div>'+
   '<button onclick="addGarbaTeam()" class="mt-3 bg-pink-600 text-white px-6 py-2 rounded font-bold">✅ ADD</button></div>';
   h += '<div class="bg-white rounded-lg shadow p-6"><h3 class="text-xl font-bold mb-4">Team ('+garbaTeam.length+')</h3><div class="space-y-2">'+garbaTeam.map(t=>'<div class="flex justify-between items-center bg-pink-50 rounded-lg px-4 py-2"><span class="font-bold">'+esc(t.name)+' - '+esc(t.role||'')+' ('+esc(t.phone)+')</span><button onclick="delDoc(\'garba_team\',\''+t.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div>').join('')+'</div></div>';
+  h += '<div class="bg-purple-50 border-2 border-purple-400 rounded-lg p-6 mt-6"><h3 class="text-xl font-bold mb-1">📍 AREA COORDINATORS ('+garbaCoords.length+'/10)</h3><p class="text-xs text-gray-500 mb-4">हर area के बच्चों को पता चले किससे बात करनी है — max 10</p><div class="grid grid-cols-1 md:grid-cols-3 gap-3">'+
+  '<input id="gc_name" placeholder="Name" class="px-3 py-2 border-2 rounded"><input id="gc_phone" placeholder="Phone" maxlength="10" class="px-3 py-2 border-2 rounded"><input id="gc_area" placeholder="Area (जैसे Vishal Nagar)" class="px-3 py-2 border-2 rounded"></div>'+
+  '<button onclick="addGarbaCoord()" class="mt-3 bg-purple-600 text-white px-6 py-2 rounded font-bold">✅ ADD</button>'+
+  '<div class="mt-4 space-y-2">'+garbaCoords.map(c=>'<div class="flex justify-between items-center bg-white rounded-lg px-4 py-2 border"><span class="font-bold text-sm">📍 '+esc(c.area)+' — '+esc(c.name)+' ('+esc(c.phone)+')</span><button onclick="delDoc(\'garba_coords\',\''+c.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div>').join('')+'</div></div>';
  }
 
  if(adminTab==='cricket'){
@@ -2240,8 +2338,11 @@ function renderAdmin(){
   '<div class="md:col-span-2"><label class="text-xs font-bold">Content *</label><textarea id="nw_content" rows="3" class="w-full px-3 py-2 border-2 rounded"></textarea></div>'+
   '<div><label class="text-xs font-bold">Photo 📷</label><input type="hidden" id="nw_pic"><button type="button" onclick="openCloudUpload(\'nw_pic\')" class="w-full bg-blue-600 text-white px-3 py-2 rounded font-bold text-sm">📷 Upload</button><img id="nw_pic_prev" class="hidden mt-2 h-24 object-cover rounded border-2"></div></div>'+
   '<button onclick="addNewsAdmin()" class="mt-4 bg-red-600 text-white px-8 py-3 rounded font-bold">✅ ADD NEWS</button></div>';
+  h += '<div class="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-6 mb-6"><h3 class="text-xl font-bold mb-4">⏳ MEMBERS द्वारा भेजी गई (PENDING) ('+pendNews.length+')</h3>';
+  h += pendNews.length ? '<div class="space-y-3">'+pendNews.map(n=>'<div class="bg-white border-2 border-yellow-400 rounded-lg p-4 flex flex-wrap justify-between items-center gap-3"><div><p class="font-bold">'+esc(n.title)+'</p><p class="text-sm text-gray-600">'+esc(String(n.content||'').slice(0,80))+'...</p></div><div class="flex gap-2"><button onclick="updDoc(\'news\',\''+n.id+'\',{status:\'approved\'})" class="bg-green-600 text-white px-4 py-2 rounded font-bold">✅</button><button onclick="delDoc(\'news\',\''+n.id+'\')" class="bg-red-600 text-white px-4 py-2 rounded font-bold">❌</button></div></div>').join('')+'</div>' : '<p class="text-gray-500">कोई pending नहीं</p>';
+  h += '</div>';
   if(editNewsId) h += editNewsForm();
-  h += '<div class="space-y-3">'+newsData.map(n=>'<div class="bg-white border-2 border-red-300 rounded-lg p-4 flex flex-wrap justify-between items-center gap-3"><div class="flex gap-3 items-center">'+(n.pic?'<img src="'+n.pic+'" class="h-16 w-16 object-cover rounded">':'<div class="h-16 w-16 bg-red-50 rounded flex items-center justify-center text-2xl">📰</div>')+'<div><p class="font-bold">'+esc(n.title)+'</p><p class="text-xs text-gray-500">📅 '+n.date+'</p><p class="text-xs text-gray-500">'+esc(String(n.content||'').slice(0,60))+'...</p></div></div><div class="flex gap-2"><button onclick="startEditNews(\''+n.id+'\')" class="bg-blue-500 text-white px-3 py-2 rounded font-bold">✏️ EDIT</button><button onclick="delDoc(\'news\',\''+n.id+'\')" class="bg-red-500 text-white px-3 py-2 rounded font-bold">🗑️</button></div></div>').join('')+'</div>';
+  h += '<div class="space-y-3">'+newsData.filter(n=>n.status!=='pending').map(n=>'<div class="bg-white border-2 border-red-300 rounded-lg p-4 flex flex-wrap justify-between items-center gap-3"><div class="flex gap-3 items-center">'+(n.pic?'<img src="'+n.pic+'" class="h-16 w-16 object-cover rounded">':'<div class="h-16 w-16 bg-red-50 rounded flex items-center justify-center text-2xl">📰</div>')+'<div><p class="font-bold">'+esc(n.title)+'</p><p class="text-xs text-gray-500">📅 '+n.date+'</p><p class="text-xs text-gray-500">'+esc(String(n.content||'').slice(0,60))+'...</p></div></div><div class="flex gap-2"><button onclick="startEditNews(\''+n.id+'\')" class="bg-blue-500 text-white px-3 py-2 rounded font-bold">✏️ EDIT</button><button onclick="delDoc(\'news\',\''+n.id+'\')" class="bg-red-500 text-white px-3 py-2 rounded font-bold">🗑️</button></div></div>').join('')+'</div>';
  }
 
  if(adminTab==='pratibha'){
@@ -2281,6 +2382,14 @@ function renderAdmin(){
   '<div><label class="text-xs font-bold">💍 Shaadi Profile Fee (₹)</label><input id="st_shaadifee" value="'+esc(siteMeta.shaadiFee||'')+'" placeholder="जैसे 500" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">💍 Shaadi — Razorpay Button ID</label><input id="st_rz_shaadi" value="'+esc(siteMeta.razorpayShaadi||'')+'" placeholder="pl_XXXX" class="w-full px-3 py-2 border-2 rounded"></div></div>'+
   '<div><label class="text-xs font-bold">🚫 Blocked phones</label><p class="text-sm text-gray-600">'+((siteMeta.blocked||[]).join(', ')||'कोई नहीं')+'</p></div>';
+
+  h += '<div class="border-t-2 pt-4"><p class="font-bold text-lg mb-2">📝 Website के मुख्य Text (Site Text Editor)</p><p class="text-xs text-gray-500 mb-3">यहाँ से पूरी website के मुख्य/marketing text खुद बदल सकते हो — बिना developer के</p>'+
+  '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+  '<div><label class="text-xs font-bold">🌟 ऊपर वाली Register Bar — Tagline</label><input id="tx_regTagline" value="'+esc(T('registerTagline','🌟 पाटीदार परिवार का हिस्सा बनो!'))+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">🌟 ऊपर वाली Register Bar — Button Text</label><input id="tx_regBtn" value="'+esc(T('registerBtn','आपकी पहचान, आपका समाज — अभी जुड़ो! →'))+'" class="w-full px-3 py-2 border-2 rounded"></div></div>'+
+  '<div class="mt-3"><label class="text-xs font-bold">🎯 हमारा उद्देश्य (Objective popup)</label><textarea id="tx_objective" rows="4" class="w-full px-3 py-2 border-2 rounded">'+esc(T('objective', DEFAULT_OBJECTIVE_TEXT))+'</textarea></div>'+
+  '<div class="mt-3"><label class="text-xs font-bold">💬 WhatsApp Invite Message</label><textarea id="tx_invite" rows="3" class="w-full px-3 py-2 border-2 rounded">'+esc(T('inviteMsg', DEFAULT_INVITE_MSG))+'</textarea></div>'+
+  '</div>';
 
   h += '<div class="border-t-2 pt-4"><p class="font-bold text-lg mb-2">📢 5 AD SLOTS (Home Page)</p>';
   for(let i=0;i<5;i++){
@@ -2374,6 +2483,8 @@ function updateUI(){
  // "REGISTER YOURSELF" bar - सिर्फ तब तक जब तक member नहीं बना
  const rb = document.getElementById('registerBar');
  if(rb) rb.classList.toggle('hidden', !!(loggedIn && me));
+ const rbt = document.getElementById('registerBarTagline'); if(rbt) rbt.textContent = T('registerTagline', '🌟 पाटीदार परिवार का हिस्सा बनो!');
+ const rbb = document.getElementById('registerBarBtn'); if(rbb) rbb.textContent = T('registerBtn', 'आपकी पहचान, आपका समाज — अभी जुड़ो! →');
  const tb = document.getElementById('tickerBar');
  if(siteMeta.ticker){ tb.classList.remove('hidden'); document.getElementById('tickerText').textContent = '🔔 '+siteMeta.ticker+'  •  🔔 '+siteMeta.ticker; }
  else tb.classList.add('hidden');
@@ -2381,8 +2492,8 @@ function updateUI(){
   b.classList.toggle('bg-blue-500', b.dataset.page===currentPage);
   b.classList.toggle('text-white', b.dataset.page===currentPage);
   const locked = LOCKED_PAGES.includes(b.dataset.page);
-  b.classList.toggle('border-red-500', locked);
-  b.classList.toggle('border-green-500', !locked);
+  b.classList.toggle('nav-locked', locked);
+  b.classList.toggle('nav-open', !locked);
  });
  renderApp();
 }
