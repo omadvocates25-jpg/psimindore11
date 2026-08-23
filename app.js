@@ -44,7 +44,7 @@ let friendSearchQ = '';
 let whomQuery = '';
 
 let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], garbaCoords=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[], teamJoinData=[], labhData=[];
-let siteMeta = { ticker:'', aboutUs:'', fb:'', insta:'', youtube:'', committee:'', expiryDays:30, propertyValidityDays:365, propertyFeeRent:'500', propertyFeeWanted:'11', razorpayPropRent:'', razorpayPropWanted:'', shaadiFee:'500', shaadiValidityDays:180, razorpayShaadi:'', jobsFeeSeeker:'11', razorpayJobsSeeker:'', bizPromoFee:'100', bizPromoValidityDays:30, razorpayBizPromo:'', blocked:[], garbaFormOpen:true, ads:[{},{},{},{},{}], subAdmins:[], texts:{} };
+let siteMeta = { ticker:'', aboutUs:'', fb:'', insta:'', youtube:'', committee:'', expiryDays:30, propertyValidityDays:365, propertyFeeRent:'500', propertyFeeWanted:'11', razorpayPropRent:'', razorpayPropWanted:'', shaadiFee:'500', shaadiValidityDays:180, razorpayShaadi:'', jobsFeeSeeker:'11', razorpayJobsSeeker:'', bizPromoFee:'300', bizPromoValidityDays:365, razorpayBizPromo:'', blocked:[], garbaFormOpen:true, ads:[{},{},{},{},{}], subAdmins:[], texts:{} };
 
 function isSuperAdmin(){ return currentUser === ADMIN_PHONE || localStorage.getItem('psim_admin_ok') === 'true'; }
 function subAdminInfo(){ if(!currentUser) return null; return (siteMeta.subAdmins||[]).find(s => fmtPhone(s.phone) === currentUser) || null; }
@@ -120,7 +120,7 @@ async function giveLabh(toId, toPhone, toName){
  renderApp();
 }
 async function approveBizPromo(id){
- const until = new Date(Date.now() + (siteMeta.bizPromoValidityDays||30)*86400000).toISOString().slice(0,10);
+ const until = new Date(Date.now() + (siteMeta.bizPromoValidityDays||365)*86400000).toISOString().slice(0,10);
  busy(true);
  await db.collection('members').doc(id).update({biz_promo_status:'active', biz_promo_until:until});
  busy(false); renderApp();
@@ -1600,7 +1600,7 @@ function labhListPanelHTML(me){
  return h;
 }
 function bizPromoPanelHTML(me){
- const fee = siteMeta.bizPromoFee||'100', days = siteMeta.bizPromoValidityDays||30;
+ const fee = siteMeta.bizPromoFee||'300', days = siteMeta.bizPromoValidityDays||365;
  if(me.biz_promo_status==='active' && (me.biz_promo_until||'0000-00-00')>=today()){
   return '<div class="mx-6 mb-6 bg-orange-50 border-2 border-orange-400 rounded-lg p-4 text-center"><p class="font-bold text-orange-800">🚀 आपका Business अभी Promoted है</p><p class="text-xs text-orange-600 mt-1">Valid until: '+esc(me.biz_promo_until)+'</p></div>';
  }
@@ -1609,7 +1609,8 @@ function bizPromoPanelHTML(me){
  }
  return '<div class="mx-6 mb-6 bg-orange-50 border-2 border-orange-300 rounded-lg p-4">'+
   '<p class="font-bold text-orange-800 mb-1">🚀 अपना Business Promote करो</p>'+
-  '<p class="text-xs text-gray-600 mb-3">₹'+esc(fee)+' / '+days+' दिन — Business list में सबसे ऊपर दिखेगा</p>'+
+  '<p class="text-xs text-gray-500 mb-2">आपका Business list में free में already दिखता है — Promote करने पर सबसे ऊपर, सबसे पहले दिखेगा</p>'+
+  '<p class="text-xs text-gray-600 mb-3 font-bold">₹'+esc(fee)+' / '+(days>=365?Math.round(days/365)+' साल':days+' दिन')+'</p>'+
   (siteMeta.razorpayBizPromo?'<div id="razorpayBizPromoBox" class="flex justify-center mb-3"></div>':'<p class="text-xs text-gray-400 mb-3">💳 Payment button जल्द चालू होगा — तब तक Admin से बात करो: '+CONTACT_PHONE+'</p>')+
   referrerSelectHTML('bp_ref')+
   '<button onclick="submitBizPromo()" class="w-full mt-3 bg-orange-600 hover:bg-orange-700 text-white px-6 py-3 rounded-lg font-bold">✅ Payment के बाद यहाँ Confirm करो</button>'+
@@ -2617,8 +2618,8 @@ async function saveSiteMeta(){
  siteMeta.razorpayShaadi = document.getElementById('st_rz_shaadi').value.trim();
  siteMeta.jobsFeeSeeker = document.getElementById('st_jobsfeeseeker').value.trim()||'11';
  siteMeta.razorpayJobsSeeker = document.getElementById('st_rz_jobsseeker').value.trim();
- siteMeta.bizPromoFee = document.getElementById('st_bizpromofee').value.trim()||'100';
- siteMeta.bizPromoValidityDays = parseInt(document.getElementById('st_bizpromodays').value)||30;
+ siteMeta.bizPromoFee = document.getElementById('st_bizpromofee').value.trim()||'300';
+ siteMeta.bizPromoValidityDays = parseInt(document.getElementById('st_bizpromodays').value)||365;
  siteMeta.razorpayBizPromo = document.getElementById('st_rz_bizpromo').value.trim();
  siteMeta.texts = Object.assign({}, siteMeta.texts, {
   objective: document.getElementById('tx_objective').value.trim(),
@@ -2873,8 +2874,8 @@ function renderAdmin(){
   '<div><label class="text-xs font-bold">🙋 चाहिए — Razorpay Button ID</label><input id="st_rz_jobsseeker" value="'+esc(siteMeta.razorpayJobsSeeker||'')+'" placeholder="pl_XXXX" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div></div>'+
   '<p class="text-xs text-gray-500 md:col-span-3">💼 "रोज़गार/Freelancing देना है" हमेशा FREE रहेगा — koi fee/button नहीं है</p>'+
-  '<div><label class="text-xs font-bold">🚀 Business Promotion Fee (₹)</label><input id="st_bizpromofee" value="'+esc(siteMeta.bizPromoFee||'100')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
-  '<div><label class="text-xs font-bold">🚀 Business Promotion Validity (दिन)</label><input type="number" id="st_bizpromodays" value="'+(siteMeta.bizPromoValidityDays||30)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">🚀 Business Promotion Fee (₹)</label><input id="st_bizpromofee" value="'+esc(siteMeta.bizPromoFee||'300')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">🚀 Business Promotion Validity (दिन)</label><input type="number" id="st_bizpromodays" value="'+(siteMeta.bizPromoValidityDays||365)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">🚀 Business Promotion — Razorpay Button ID</label><input id="st_rz_bizpromo" value="'+esc(siteMeta.razorpayBizPromo||'')+'" placeholder="pl_XXXX" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '</div></div>'+
   '<div><label class="text-xs font-bold">🚫 Blocked phones</label><p class="text-sm text-gray-600">'+((siteMeta.blocked||[]).join(', ')||'कोई नहीं')+'</p></div>';
