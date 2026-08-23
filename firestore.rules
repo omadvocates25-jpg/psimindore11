@@ -43,7 +43,18 @@ service cloud.firestore {
       allow update: if isAdmin()
                     || (isOwnPhone(resource.data.phone)
                         && request.resource.data.phone == resource.data.phone // phone badal nahi sakte
-                        && request.resource.data.status == 'pending'); // edit karne pe dobara pending
+                        && request.resource.data.status == 'pending') // edit karne pe dobara pending
+                    || (isOwnPhone(resource.data.phone)
+                        // Business Promotion request — sirf biz_promo_* fields touch karta hai,
+                        // status ya baaki profile ko chhoड़ता nahi, isliye "wapas pending" wala rule apply nahi hota.
+                        // 'active' banana ya biz_promo_until set karna sirf Admin kar sakta hai (upar wale isAdmin() clause se) —
+                        // yaha self-update sirf 'pending' request bhejne तक limited hai, koi khud ko promote nahi kar sakta.
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                             .hasOnly(['biz_promo_status', 'biz_promo_referredBy', 'biz_promo_requestedAt'])
+                        && request.resource.data.biz_promo_status == 'pending')
+                    || (isOwnPhone(resource.data.phone)
+                        // सिर्फ अपना lastActiveAt छूता है — लाभ की 30-दिन inactivity expiry के लिए (route() पर हर session में एक बार लिखा जाता है)
+                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastActiveAt']));
       allow delete: if isAdmin() || isOwnPhone(resource.data.phone);
     }
 
@@ -95,7 +106,15 @@ service cloud.firestore {
     }
     match /shaadi/{docId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin(); // profiles सिर्फ Admin add करता है
+      // Member khud apni/parivaar ki profile submit kar sakta hai (self-serve + payment),
+      // lekin सीधे approved/paid nahi ban sakta — Admin hi approve karta hai.
+      // Admin ka "बिना payment link के" direct-add wala flow bhi yahi create rule use karta hai, isliye isAdmin() bhi allowed.
+      allow create: if isAdmin()
+                    || (isOwnPhone(request.resource.data.contact)
+                        && request.resource.data.status == 'pending'
+                        && request.resource.data.paid == false);
+      allow update: if isAdmin();
+      allow delete: if isAdmin() || isOwnPhone(resource.data.contact);
     }
     match /blood/{docId} {
       allow read: if isSignedIn();
@@ -113,6 +132,15 @@ service cloud.firestore {
     }
     match /garba_team/{docId} { allow read: if isSignedIn(); allow write: if isAdmin(); }
     match /garba_coords/{docId} { allow read: if isSignedIn(); allow write: if isAdmin(); }
+
+    // ---- लाभ (business trust-endorsement — daily/one-time caps client-side check karte hain, yahan sirf ownership) ----
+    match /labh/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isOwnPhone(request.resource.data.fromPhone)
+                    && request.resource.data.toPhone != request.resource.data.fromPhone;
+      allow update: if false; // कभी edit नहीं होता — सिर्फ create/delete
+      allow delete: if isAdmin(); // suspicious entry सिर्फ Admin हटा सकता है (audit trail बचा रहे)
+    }
 
     // ---- Admin-only visibility ----
     match /suggestions/{docId} {
