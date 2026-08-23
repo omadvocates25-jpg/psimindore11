@@ -996,7 +996,7 @@ function whomResultsHTML(){
   if(hay.includes(q)) score += 10;
   qWords.forEach(w=>{ if(hay.includes(w)) score += 1; });
   return {b, score};
- }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,10);
+ }).filter(x=>x.score>0).sort((a,b)=>(b.b.promoted?1:0)-(a.b.promoted?1:0) || b.score-a.score).slice(0,10);
  if(!scored.length) return '<p class="text-white text-sm">कोई match नहीं मिला</p>';
  return '<div class="flex gap-3 overflow-x-auto pb-2 noscroll justify-start md:justify-center">'+scored.map(x=>bizMiniCard(x.b)).join('')+'</div>';
 }
@@ -1011,8 +1011,31 @@ function portalTile(p){
   '<span class="absolute top-1.5 right-1.5 bg-emerald-700 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">🔓</span>';
  return '<div class="relative bg-gradient-to-br from-'+p[1]+'-500 to-'+p[1]+'-600 text-white rounded-2xl p-3 md:p-4 text-center cursor-pointer shadow-md hover:shadow-2xl transform hover:scale-105 transition-all '+ring+'" onclick="goPage(\''+p[0]+'\')">'+badge+'<div class="h-10 w-10 md:h-12 md:w-12 mx-auto mb-1.5 rounded-full bg-white/25 flex items-center justify-center text-xl md:text-2xl">'+p[2]+'</div><p class="font-bold text-[11px] md:text-xs leading-tight">'+p[3]+'</p><p class="text-[9px] md:text-[10px] mt-1 text-'+p[1]+'-100">'+p[4]+'</p></div>';
 }
+function promoBizCardHTML(b){
+ return '<div onclick="openBiz(\''+b.id+'\')" class="w-60 shrink-0 rounded-2xl overflow-hidden shadow-xl cursor-pointer transform hover:scale-105 transition-all border-2 border-amber-500" style="background:linear-gradient(160deg,#FFF3C4,#F5B92B);">'+
+  (b.pic?'<img src="'+b.pic+'" class="w-full h-28 object-cover">':'<div class="w-full h-20 flex items-center justify-center text-4xl">🏪</div>')+
+  '<div class="p-3"><span class="inline-block bg-white/80 text-amber-900 text-[9px] font-bold px-2 py-0.5 rounded-full mb-1">🚀 BUSINESS</span>'+
+  '<p class="font-bold text-amber-950 text-sm truncate">'+esc(b.name)+'</p><p class="text-[11px] text-amber-900 truncate">'+esc(b.type)+'</p></div></div>';
+}
+function promoOlxCardHTML(o){
+ return '<div onclick="goPage(\'olditems\')" class="w-60 shrink-0 rounded-2xl overflow-hidden shadow-xl cursor-pointer transform hover:scale-105 transition-all border-2 border-amber-500" style="background:linear-gradient(160deg,#FFF3C4,#F5B92B);">'+
+  (o.pic?'<img src="'+o.pic+'" class="w-full h-28 object-cover">':'<div class="w-full h-20 flex items-center justify-center text-4xl">🛒</div>')+
+  '<div class="p-3"><span class="inline-block bg-white/80 text-amber-900 text-[9px] font-bold px-2 py-0.5 rounded-full mb-1">🚀 OLX</span>'+
+  '<p class="font-bold text-amber-950 text-sm truncate">'+esc(o.title)+'</p><p class="text-sm font-bold text-amber-900">₹'+esc(o.price)+'</p></div></div>';
+}
+function promotedCarouselHTML(){
+ const promoBiz = allBusinesses().filter(b => b.promoted);
+ const promoItems = activeOldItems().filter(o => o.promoted);
+ let combined = promoBiz.map(b => ({kind:'biz', d:b})).concat(promoItems.map(o => ({kind:'olx', d:o})));
+ if(!combined.length) return '';
+ combined = combined.sort(() => Math.random()-0.5);
+ const cards = combined.map(e => e.kind==='biz' ? promoBizCardHTML(e.d) : promoOlxCardHTML(e.d)).join('');
+ return '<div class="mb-6"><h3 class="text-lg md:text-xl font-bold mb-3 flex items-center gap-2"><span>🌟</span><span>Featured — पाटीदार बंधुओं की खास पेशकश</span></h3>'+
+  '<div class="flex gap-4 overflow-x-auto pb-3 noscroll">'+cards+'</div></div>';
+}
 function renderHome(){
  let h = '<div class="text-center mb-5"><h2 class="text-3xl md:text-5xl font-bold">🙏 पाटीदार परिवार में आपका स्वागत है</h2><p class="text-lg text-gray-500">Welcome to Patidar Family</p></div>';
+ h += promotedCarouselHTML();
  if(!currentUser){
   h += '<div class="grid grid-cols-4 gap-3 mb-2">';
   h += '<div class="col-span-3 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-2xl p-6 md:p-8 text-center cursor-pointer shadow-lg hover:shadow-2xl transform hover:scale-[1.02] transition-all flex items-center justify-center" onclick="startRegister()"><p class="text-xl md:text-3xl font-bold">📝 Register Now</p></div>';
@@ -1066,15 +1089,16 @@ function renderHome(){
  // 🏪 BUSINESS SPOTLIGHT (random - हर बार अलग | बिना search किए भी दिखे)
  const biz = allBusinesses();
  if(biz.length){
-  const shuffled = biz.slice().sort(()=>Math.random()-0.5).slice(0,6);
+  const shuffled = shufflePromotedFirst(biz).slice(0,6);
   h += '<div class="bg-gradient-to-br from-yellow-50 to-orange-50 border-2 border-yellow-300 rounded-xl shadow-lg p-6 mb-8">';
   h += '<h3 class="text-2xl font-bold mb-1 text-center">🏪 पाटीदार बंधुओं के व्यापार / Business Spotlight</h3>';
   h += '<p class="text-center text-gray-500 text-sm mb-4">हर बार अलग-अलग businesses — card पर click करो, पूरी details + Call/WhatsApp मिलेगा</p>';
   h += '<div class="grid grid-cols-2 md:grid-cols-3 gap-4">';
   shuffled.forEach(b => {
-   h += '<div onclick="openBiz(\''+b.id+'\')" class="bg-white border-2 border-yellow-300 rounded-lg overflow-hidden shadow cursor-pointer hover:shadow-xl transform hover:scale-105 transition-all">'+
+   h += '<div onclick="openBiz(\''+b.id+'\')" class="relative border-2 rounded-lg overflow-hidden shadow cursor-pointer hover:shadow-xl transform hover:scale-105 transition-all '+(b.promoted?'border-amber-500':'bg-white border-yellow-300')+'" '+(b.promoted?'style="background:linear-gradient(160deg,#FEF3C7,#FDE68A);"':'')+'>'+
+   (b.promoted?'<span class="absolute top-1.5 left-1.5 z-10 bg-amber-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow">🚀</span>':'')+
    (b.pic?'<img src="'+b.pic+'" class="w-full h-32 object-cover">':'<div class="w-full h-20 bg-yellow-100 flex items-center justify-center text-4xl">🏪</div>')+
-   '<div class="p-3"><p class="font-bold text-yellow-800 text-sm truncate">'+esc(b.name)+'</p>'+
+   '<div class="p-3"><p class="font-bold text-yellow-900 text-sm truncate">'+esc(b.name)+'</p>'+
    '<p class="text-[10px] bg-yellow-200 inline-block px-2 py-0.5 rounded font-bold mt-1">'+esc(b.type)+'</p>'+
    '<p class="text-[11px] text-gray-600 mt-1 truncate">👤 '+esc(b.owner)+'</p>'+
    (b.place?'<p class="text-[11px] text-gray-500 truncate">📍 '+esc(b.place)+'</p>':'')+'</div></div>';
@@ -1426,6 +1450,12 @@ const SAMPLE_BUSINESSES = [
  {id:'sample_5', name:'ग्लैमर ब्यूटी सलून', type:'Salon/Beauty', owner:'रीना पटेल', phone:'9876543214', place:'पुष्पराज नगर, इंदौर', description:'हेयर, मेहंदी, ब्राइडल मेकअप। होम सर्विस भी।', village:'Indore', city:'Indore'}
 ];
 function isBizPromoActive(m){ return m && m.biz_promo_status==='active' && (m.biz_promo_until||'0000-00-00') >= today(); }
+function shufflePromotedFirst(list){
+ // 🚀 Promoted (paid) वाले हमेशा पहले — बस promoted-promoted और free-free के अंदर random order रहे
+ const promoted = list.filter(x=>x.promoted).sort(()=>Math.random()-0.5);
+ const free = list.filter(x=>!x.promoted).sort(()=>Math.random()-0.5);
+ return promoted.concat(free);
+}
 function allBusinesses(){
  const real = publicMembers().filter(m => m.business_name).map(m => ({
   id:m.id,
@@ -1722,7 +1752,7 @@ function myAcc_mitra(){
 function businessStrip(){
  const biz = allBusinesses();
  if(!biz.length) return '';
- const sh = biz.slice().sort(()=>Math.random()-0.5);
+ const sh = shufflePromotedFirst(biz);
  const cards = sh.map(bizMiniCard).join('');
  return '<div class="mt-10 bg-gradient-to-br from-yellow-50 to-orange-50 border-t-4 border-yellow-400 rounded-xl p-5 shadow-inner">'+
   '<h3 class="text-xl md:text-2xl font-bold text-center mb-1">🏪 पाटीदार बंधुओं के व्यापार</h3>'+
@@ -1736,8 +1766,8 @@ function renderBusinessPage(){
  '<p class="text-gray-500 mb-4">Members की business details automatic दिखती हैं</p>'+
  '<button onclick="openSwipeView(\'business\')" class="w-full mb-6 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl">🔀 Businesses Explore करें</button>'+
  '<div class="flex gap-5 overflow-x-auto pb-3 noscroll">'+
- list.map(b => '<div class="w-72 shrink-0 bg-white border-2 '+(b.promoted?'border-orange-400':'border-yellow-300')+' rounded-lg overflow-hidden shadow-md hover:shadow-xl relative">'+
-  (b.promoted?'<span class="absolute top-2 left-2 z-10 bg-orange-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow">🚀 PROMOTED</span>':'')+
+ list.map(b => '<div class="w-72 shrink-0 border-2 '+(b.promoted?'border-amber-500':'bg-white border-yellow-300')+' rounded-lg overflow-hidden shadow-md hover:shadow-xl relative" '+(b.promoted?'style="background:linear-gradient(160deg,#FFF9E6,#FDE68A);"':'')+'>'+
+  (b.promoted?'<span class="absolute top-2 left-2 z-10 bg-gradient-to-r from-amber-500 to-yellow-600 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-lg">🚀 PROMOTED</span>':'')+
   '<div onclick="openBiz(\''+b.id+'\')" class="cursor-pointer transform hover:scale-[1.01] transition-all">'+
   (b.pic?'<img src="'+b.pic+'" class="w-full h-44 object-cover">':'')+
   '<div class="p-5"><p class="font-bold text-xl text-yellow-700">'+esc(b.name)+'</p>'+
@@ -2201,8 +2231,8 @@ function renderOldItemsPage(){
  }
  if(!approved.length) h += '<div class="bg-white rounded-lg p-10 text-center shadow"><p class="text-4xl mb-3">🛒</p><p class="text-lg font-bold text-gray-600">अभी कोई item नहीं - पहला आप डालो!</p></div>';
  else if(isMember) h += '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">'+approved.map(o =>
-  '<div class="bg-white border-2 '+(o.promoted?'border-orange-400':'border-purple-300')+' rounded-lg overflow-hidden shadow-md hover:shadow-lg relative">'+
-  (o.promoted?'<span class="absolute top-2 left-2 z-10 bg-orange-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow">🚀 PROMOTED</span>':'')+
+  '<div class="border-2 '+(o.promoted?'border-amber-500':'bg-white border-purple-300')+' rounded-lg overflow-hidden shadow-md hover:shadow-lg relative" '+(o.promoted?'style="background:linear-gradient(160deg,#FFF9E6,#FDE68A);"':'')+'>'+
+  (o.promoted?'<span class="absolute top-2 left-2 z-10 bg-gradient-to-r from-amber-500 to-yellow-600 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-lg">🚀 PROMOTED</span>':'')+
   (o.pic?'<img src="'+o.pic+'" class="w-full h-44 object-cover">':'')+
   '<div class="p-4"><p class="font-bold text-lg text-purple-700">'+esc(o.title)+'</p>'+
   '<p class="text-2xl font-bold text-green-600 mt-1">₹ '+esc(o.price)+'</p>'+
@@ -2212,8 +2242,8 @@ function renderOldItemsPage(){
   '<button onclick="shareWA(\'🛒 '+esc(o.title).replace(/\'/g,'')+' - ₹'+esc(o.price)+' | अपना OLX: \'+pageLink(\'olditems\'))" class="block w-full text-center mt-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-bold text-sm">📤 WhatsApp Share</button>'+
   '</div></div>').join('')+'</div>';
  else h += '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">'+approved.map(o =>
-  '<div class="bg-white border-2 '+(o.promoted?'border-orange-400':'border-purple-200')+' rounded-lg overflow-hidden shadow-md relative">'+
-  (o.promoted?'<span class="absolute top-2 left-2 z-10 bg-orange-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow">🚀 PROMOTED</span>':'')+
+  '<div class="border-2 '+(o.promoted?'border-amber-500':'bg-white border-purple-200')+' rounded-lg overflow-hidden shadow-md relative" '+(o.promoted?'style="background:linear-gradient(160deg,#FFF9E6,#FDE68A);"':'')+'>'+
+  (o.promoted?'<span class="absolute top-2 left-2 z-10 bg-gradient-to-r from-amber-500 to-yellow-600 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-lg">🚀 PROMOTED</span>':'')+
   (o.pic?'<img src="'+o.pic+'" class="w-full h-44 object-cover">':'')+
   '<div class="p-4"><p class="font-bold text-lg text-purple-700">'+esc(o.title)+'</p>'+
   (o.description?'<p class="text-sm text-gray-500 mt-1">'+esc(o.description).slice(0,60)+(o.description.length>60?'...':'')+'</p>':'')+
