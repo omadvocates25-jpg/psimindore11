@@ -44,7 +44,7 @@ let friendSearchQ = '';
 let whomQuery = '';
 
 let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], garbaCoords=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[], teamJoinData=[];
-let siteMeta = { ticker:'', aboutUs:'', fb:'', insta:'', youtube:'', committee:'', expiryDays:30, propertyValidityDays:365, propertyFee:'500', razorpayButtonId:'', razorpayMakan:'', razorpayDukan:'', shaadiFee:'', razorpayShaadi:'', blocked:[], garbaFormOpen:true, ads:[{},{},{},{},{}], subAdmins:[], texts:{} };
+let siteMeta = { ticker:'', aboutUs:'', fb:'', insta:'', youtube:'', committee:'', expiryDays:30, propertyValidityDays:365, propertyFee:'500', razorpayButtonId:'', razorpayMakan:'', razorpayDukan:'', shaadiFee:'500', shaadiValidityDays:180, razorpayShaadi:'', jobsFee:'100', razorpayJobs:'', bizPromoFee:'100', bizPromoValidityDays:30, razorpayBizPromo:'', blocked:[], garbaFormOpen:true, ads:[{},{},{},{},{}], subAdmins:[], texts:{} };
 
 function isSuperAdmin(){ return currentUser === ADMIN_PHONE || localStorage.getItem('psim_admin_ok') === 'true'; }
 function subAdminInfo(){ if(!currentUser) return null; return (siteMeta.subAdmins||[]).find(s => fmtPhone(s.phone) === currentUser) || null; }
@@ -55,6 +55,50 @@ function approvedMembers(){ return membersData.filter(m => m.status === 'approve
 function isPublicProfile(m){ return !(m.gender && m.gender.indexOf('Female')===0 && m.privacy && m.privacy.indexOf('Secret')===0); }
 function publicMembers(){ return approvedMembers().filter(isPublicProfile); }
 function findApprovedByPhone(ph){ return approvedMembers().find(m => m.phone === fmtPhone(ph)); }
+
+// ================= REFERRAL (किसके माध्यम से जुड़े — karyakarta credit) =================
+function referrerSelectHTML(fieldId){
+ const mems = approvedMembers().slice().sort((a,b) => (a.name+a.surname).localeCompare(b.name+b.surname));
+ return '<div><label class="text-xs font-bold">🎗️ किसके माध्यम से जुड़े? (Optional)</label>'+
+  '<select id="'+fieldId+'" class="w-full px-3 py-2 border-2 rounded"><option value="">कोई नहीं / Self</option>'+
+  mems.map(m => '<option value="'+esc(m.phone)+'">'+esc(m.name+' '+m.surname)+' ('+esc(m.phone)+')</option>').join('')+
+  '</select></div>';
+}
+function referrerNameOf(phone){
+ if(!phone) return '';
+ const m = findApprovedByPhone(phone);
+ return m ? (m.name+' '+m.surname) : phone;
+}
+function computeReferralLeaderboard(){
+ const rows = [];
+ const push = (list, feeKey) => {
+  const fee = parseFloat(siteMeta[feeKey])||0;
+  (list||[]).forEach(item => { if(item.referredBy) rows.push({phone:item.referredBy, amount:fee}); });
+ };
+ push(propertyData.filter(p=>p.status==='approved'), 'propertyFee');
+ push(jobsData.filter(j=>j.status==='approved'), 'jobsFee');
+ push(shaadiData.filter(s=>s.status==='approved'), 'shaadiFee');
+ membersData.filter(m=>m.biz_promo_status==='active').forEach(m => {
+  if(m.biz_promo_referredBy) rows.push({phone:m.biz_promo_referredBy, amount:parseFloat(siteMeta.bizPromoFee)||0});
+ });
+ const byPhone = {};
+ rows.forEach(r => {
+  if(!byPhone[r.phone]) byPhone[r.phone] = {phone:r.phone, count:0, amount:0};
+  byPhone[r.phone].count++; byPhone[r.phone].amount += r.amount;
+ });
+ return Object.values(byPhone).sort((a,b) => b.count-a.count || b.amount-a.amount);
+}
+async function approveBizPromo(id){
+ const until = new Date(Date.now() + (siteMeta.bizPromoValidityDays||30)*86400000).toISOString().slice(0,10);
+ busy(true);
+ await db.collection('members').doc(id).update({biz_promo_status:'active', biz_promo_until:until});
+ busy(false); renderApp();
+}
+async function rejectBizPromo(id){
+ busy(true);
+ await db.collection('members').doc(id).update({biz_promo_status:'none'});
+ busy(false); renderApp();
+}
 function esc(s){ return String(s==null?'':s).replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
 function distOf(m, w){ const d=m[w+'_district']||'', o=m[w+'_district_other']||''; if(d==='Other (MP से बाहर)') return o||'Other'; return o&&!d?o:d; }
 function profOf(m){ const p=m.business_type||'', o=m.business_type_other||''; if(p==='Other') return o||p; return p; }
@@ -1333,14 +1377,16 @@ const SAMPLE_BUSINESSES = [
  {id:'sample_4', name:'राहुल वुड वर्क्स', type:'Carpenter', owner:'राहुल कुमार', phone:'9876543213', place:'मंडलेश्वर, इंदौर', description:'कस्टम फर्नीचर, दरवाजे, अलमारी। डिजाइन फ्री परामर्श।', village:'Indore', city:'Indore'},
  {id:'sample_5', name:'ग्लैमर ब्यूटी सलून', type:'Salon/Beauty', owner:'रीना पटेल', phone:'9876543214', place:'पुष्पराज नगर, इंदौर', description:'हेयर, मेहंदी, ब्राइडल मेकअप। होम सर्विस भी।', village:'Indore', city:'Indore'}
 ];
+function isBizPromoActive(m){ return m && m.biz_promo_status==='active' && (m.biz_promo_until||'0000-00-00') >= today(); }
 function allBusinesses(){
  const real = publicMembers().filter(m => m.business_name).map(m => ({
   id:m.id,
   name:m.business_name, type:(m.business_type==='Other'&&m.business_type_other)?m.business_type_other:(m.business_type||'Business'),
   owner:m.name+' '+m.surname, phone:m.business_phone||m.phone, place:m.business_place||m.present_city||'',
   gmap:m.business_gmap||'', pic:m.business_pic1||'', description:m.business_details||'',
-  village:m.home_village||'', city:m.present_city||'', ownerPhone:m.phone||''
+  village:m.home_village||'', city:m.present_city||'', ownerPhone:m.phone||'', promoted:isBizPromoActive(m)
  }));
+ real.sort((a,b) => (b.promoted?1:0)-(a.promoted?1:0));
  return real.length > 0 ? real : SAMPLE_BUSINESSES;
 }
 // ===== BUSINESS DETAIL MODAL (कहीं से भी click => पूरी details) =====
@@ -1470,8 +1516,36 @@ function myAcc_business(){
   owner: me.name+' '+me.surname, phone: me.business_phone||me.phone, place: me.business_place||me.present_city||'',
   gmap: me.business_gmap||'', pic: me.business_pic1||'', description: me.business_details||'', ownerPhone: me.phone
  };
- box.innerHTML = bizDetailHTML(b);
+ box.innerHTML = bizDetailHTML(b) + bizPromoPanelHTML(me);
  document.getElementById('bizModal').classList.remove('hidden');
+ if(me.biz_promo_status!=='active' && me.biz_promo_status!=='pending' && siteMeta.razorpayBizPromo){
+  setTimeout(()=>mountRazorpayButton(siteMeta.razorpayBizPromo,'razorpayBizPromoBox'),30);
+ }
+}
+function bizPromoPanelHTML(me){
+ const fee = siteMeta.bizPromoFee||'100', days = siteMeta.bizPromoValidityDays||30;
+ if(me.biz_promo_status==='active' && (me.biz_promo_until||'0000-00-00')>=today()){
+  return '<div class="mx-6 mb-6 bg-orange-50 border-2 border-orange-400 rounded-lg p-4 text-center"><p class="font-bold text-orange-800">🚀 आपका Business अभी Promoted है</p><p class="text-xs text-orange-600 mt-1">Valid until: '+esc(me.biz_promo_until)+'</p></div>';
+ }
+ if(me.biz_promo_status==='pending'){
+  return '<div class="mx-6 mb-6 bg-yellow-50 border-2 border-yellow-400 rounded-lg p-4 text-center"><p class="font-bold text-yellow-800">⏳ Promotion Request Pending</p><p class="text-xs text-yellow-600 mt-1">Admin payment confirm करते ही Promote कर देगा</p></div>';
+ }
+ return '<div class="mx-6 mb-6 bg-orange-50 border-2 border-orange-300 rounded-lg p-4">'+
+  '<p class="font-bold text-orange-800 mb-1">🚀 अपना Business Promote करो</p>'+
+  '<p class="text-xs text-gray-600 mb-3">₹'+esc(fee)+' / '+days+' दिन — Business list में सबसे ऊपर दिखेगा</p>'+
+  (siteMeta.razorpayBizPromo?'<div id="razorpayBizPromoBox" class="flex justify-center mb-3"></div>':'<p class="text-xs text-gray-400 mb-3">💳 Payment button जल्द चालू होगा — तब तक Admin से बात करो: '+CONTACT_PHONE+'</p>')+
+  referrerSelectHTML('bp_ref')+
+  '<button onclick="submitBizPromo()" class="w-full mt-3 bg-orange-600 hover:bg-orange-700 text-white px-6 py-3 rounded-lg font-bold">✅ Payment के बाद यहाँ Confirm करो</button>'+
+  '</div>';
+}
+async function submitBizPromo(){
+ const me = myMember(); if(!me) return;
+ const ref = document.getElementById('bp_ref').value;
+ busy(true);
+ await db.collection('members').doc(me.id).update({biz_promo_status:'pending', biz_promo_referredBy:ref, biz_promo_requestedAt:today()});
+ busy(false);
+ alert('✅ Request भेज दी! Payment confirm होते ही Admin आपका Business Promote कर देगा।');
+ closeBizForce();
 }
 function myAcc_property(){
  const me = myMember();
@@ -1577,7 +1651,8 @@ function renderBusinessPage(){
  '<p class="text-gray-500 mb-4">Members की business details automatic दिखती हैं</p>'+
  '<button onclick="openSwipeView(\'business\')" class="w-full mb-6 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl">🔀 Businesses Explore करें</button>'+
  '<div class="flex gap-5 overflow-x-auto pb-3 noscroll">'+
- list.map(b => '<div class="w-72 shrink-0 bg-white border-2 border-yellow-300 rounded-lg overflow-hidden shadow-md hover:shadow-xl">'+
+ list.map(b => '<div class="w-72 shrink-0 bg-white border-2 '+(b.promoted?'border-orange-400':'border-yellow-300')+' rounded-lg overflow-hidden shadow-md hover:shadow-xl relative">'+
+  (b.promoted?'<span class="absolute top-2 left-2 z-10 bg-orange-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow">🚀 PROMOTED</span>':'')+
   '<div onclick="openBiz(\''+b.id+'\')" class="cursor-pointer transform hover:scale-[1.01] transition-all">'+
   (b.pic?'<img src="'+b.pic+'" class="w-full h-44 object-cover">':'')+
   '<div class="p-5"><p class="font-bold text-xl text-yellow-700">'+esc(b.name)+'</p>'+
@@ -1745,11 +1820,12 @@ async function submitProperty(){
  const bhk=document.getElementById('pp_bhk').value.trim();
  const desc=document.getElementById('pp_desc').value.trim();
  const pics=[0,1,2,3,4].map(i=>document.getElementById('pp_pic_'+i).value).filter(Boolean);
+ const ref=document.getElementById('pp_ref').value;
  if(!type||!nm||!ph||!area){ alert('❌ Type, Name, Phone, Area जरूरी!'); return; }
  const code = randCode();
  busy(true);
  const kind = document.getElementById('pp_kind').value;
- await db.collection('property').add({kind,type,name:nm,phone:ph,area,rent,bhk,description:desc,pics,pic:pics[0]||'',code,status:'pending',active:true,createdAt:today()});
+ await db.collection('property').add({kind,type,name:nm,phone:ph,area,rent,bhk,description:desc,pics,pic:pics[0]||'',referredBy:ref,code,status:'pending',active:true,createdAt:today()});
  busy(false); showPropForm=false;
  alert('✅ Listing submit हो गई!\\n\\n🔑 यह CODE संभाल के रखो: '+code+'\\n(इससे बाद में listing ON/OFF कर पाओगे)\\n\\nAdmin approval के बाद live होगी।');
  renderApp();
@@ -1831,6 +1907,7 @@ function renderPropertyPage(){
   '<div><label class="text-xs font-bold">Area / इलाका (Indore) *</label><input id="pp_area" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">Rent (₹/माह)</label><input id="pp_rent" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">BHK / Rooms</label><input id="pp_bhk" placeholder="जैसे: 2 BHK" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  referrerSelectHTML('pp_ref')+
   '<div class="md:col-span-2"><label class="text-xs font-bold">Details</label><textarea id="pp_desc" rows="2" class="w-full px-3 py-2 border-2 rounded"></textarea></div></div>';
   h += '<div class="mt-4"><label class="text-xs font-bold">📷 Photos (ज्यादा से ज्यादा 5)</label><div class="grid grid-cols-3 sm:grid-cols-5 gap-2 mt-1">'+
   [0,1,2,3,4].map(i=>'<div><input type="hidden" id="pp_pic_'+i+'"><button type="button" onclick="openCloudUpload(\'pp_pic_'+i+'\')" class="w-full bg-blue-600 text-white px-2 py-2 rounded font-bold text-xs">📷 '+(i+1)+'</button><img id="pp_pic_'+i+'_prev" class="hidden mt-1 h-16 w-full object-cover rounded border-2"></div>').join('')+
@@ -1932,10 +2009,10 @@ async function submitJob(){
  const t=document.getElementById('jb_title').value.trim(), c=fmtName(document.getElementById('jb_company').value),
   pl=document.getElementById('jb_place').value.trim(), sal=document.getElementById('jb_salary').value.trim(),
   ph=fmtPhone(document.getElementById('jb_phone').value), ds=document.getElementById('jb_desc').value.trim(),
-  kind=document.getElementById('jb_kind').value;
+  kind=document.getElementById('jb_kind').value, ref=document.getElementById('jb_ref').value;
  if(!t||!ph){ alert('❌ Title और Contact जरूरी!'); return; }
  busy(true);
- await db.collection('jobs').add({title:t,company:c,place:pl,salary:sal,phone:ph,details:ds,kind:kind,status:'pending',createdAt:today()});
+ await db.collection('jobs').add({title:t,company:c,place:pl,salary:sal,phone:ph,details:ds,kind:kind,referredBy:ref,status:'pending',createdAt:today()});
  busy(false); showJobForm=false;
  alert('✅ Submit हो गया! Admin approval के बाद live होगा।'); renderApp();
 }
@@ -1948,6 +2025,9 @@ function renderRozgaarPage(){
  '<button onclick="jobKind=\'lena\';renderApp()" class="px-4 py-2 rounded-lg font-bold text-sm '+(jobKind==='lena'?'bg-green-600 text-white':'bg-gray-200')+'">🙋 रोज़गार चाहिए ('+all.filter(j=>j.kind==='lena').length+')</button>'+
  '<button onclick="jobKind=\'freelance_dena\';renderApp()" class="px-4 py-2 rounded-lg font-bold text-sm '+(jobKind==='freelance_dena'?'bg-green-600 text-white':'bg-gray-200')+'">💻 Freelancing काम देना है ('+all.filter(j=>j.kind==='freelance_dena'||j.kind==='freelance').length+')</button>'+
  '<button onclick="jobKind=\'freelance_lena\';renderApp()" class="px-4 py-2 rounded-lg font-bold text-sm '+(jobKind==='freelance_lena'?'bg-green-600 text-white':'bg-gray-200')+'">🙋‍♂️ Freelancing काम चाहिए ('+all.filter(j=>j.kind==='freelance_lena').length+')</button></div>';
+ const jobsFee = siteMeta.jobsFee||'100';
+ h += '<div class="bg-yellow-100 border border-yellow-400 rounded p-3 mb-4 text-sm">💳 Post Fee: ₹'+esc(jobsFee)+' — Payment करके नीचे form भरो</div>';
+ if(siteMeta.razorpayJobs) h += '<div id="razorpayJobsBox" class="flex justify-center mb-4"></div>';
  h += '<button onclick="showJobForm=!showJobForm;renderApp()" class="mb-4 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold">➕ Post करो</button>';
  if(showJobForm){
   h += '<div class="bg-green-50 border-2 border-green-400 rounded-lg p-5 mb-6"><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
@@ -1957,6 +2037,7 @@ function renderRozgaarPage(){
   '<div><label class="text-xs font-bold">Place</label><input id="jb_place" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">Salary</label><input id="jb_salary" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">Contact *</label><input id="jb_phone" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  referrerSelectHTML('jb_ref')+
   '<div class="md:col-span-2"><label class="text-xs font-bold">Details</label><textarea id="jb_desc" rows="2" class="w-full px-3 py-2 border-2 rounded"></textarea></div></div>'+
   '<div class="flex gap-3 mt-4"><button onclick="submitJob()" class="bg-green-600 text-white px-8 py-3 rounded font-bold">✅ SUBMIT</button><button onclick="showJobForm=false;renderApp()" class="bg-gray-400 text-white px-8 py-3 rounded font-bold">CANCEL</button></div></div>';
  }
@@ -2394,7 +2475,7 @@ async function addGarbaCoord(){
 }
 
 // Sub-admins
-const SUBADMIN_TABS = [['members','👥 Members'],['relatives','👨‍👩‍👧 Relatives'],['garba','🪩 Garba'],['cricket','🏏 Cricket'],['property','🏠 Property'],['blood','🩸 Blood'],['shaadi','💍 Shaadi'],['rozgaar','💼 Jobs'],['olditems','🛒 सामान'],['events','📅 Events'],['news','📰 News'],['pratibha','🏆 प्रतिभा'],['gallery','🖼️ Gallery'],['suggestions','💡 Suggestions']];
+const SUBADMIN_TABS = [['members','👥 Members'],['relatives','👨‍👩‍👧 Relatives'],['garba','🪩 Garba'],['cricket','🏏 Cricket'],['property','🏠 Property'],['blood','🩸 Blood'],['shaadi','💍 Shaadi'],['rozgaar','💼 Jobs'],['olditems','🛒 सामान'],['events','📅 Events'],['news','📰 News'],['pratibha','🏆 प्रतिभा'],['gallery','🖼️ Gallery'],['suggestions','💡 Suggestions'],['referrals','🎗️ Referral']];
 let saSearchQ = '', saSelectedPhone = '', saTabs = [];
 function saSearch(v){ saSearchQ = v; saSelectedPhone = ''; renderApp(); }
 function saPick(phone){ saSelectedPhone = phone; renderApp(); }
@@ -2451,7 +2532,13 @@ async function saveSiteMeta(){
  siteMeta.razorpayMakan = document.getElementById('st_rz_makan').value.trim();
  siteMeta.razorpayDukan = document.getElementById('st_rz_dukan').value.trim();
  siteMeta.shaadiFee = document.getElementById('st_shaadifee').value.trim();
+ siteMeta.shaadiValidityDays = parseInt(document.getElementById('st_shaadidays').value)||180;
  siteMeta.razorpayShaadi = document.getElementById('st_rz_shaadi').value.trim();
+ siteMeta.jobsFee = document.getElementById('st_jobsfee').value.trim()||'100';
+ siteMeta.razorpayJobs = document.getElementById('st_rz_jobs').value.trim();
+ siteMeta.bizPromoFee = document.getElementById('st_bizpromofee').value.trim()||'100';
+ siteMeta.bizPromoValidityDays = parseInt(document.getElementById('st_bizpromodays').value)||30;
+ siteMeta.razorpayBizPromo = document.getElementById('st_rz_bizpromo').value.trim();
  siteMeta.texts = Object.assign({}, siteMeta.texts, {
   objective: document.getElementById('tx_objective').value.trim(),
   inviteMsg: document.getElementById('tx_invite').value.trim()
@@ -2476,6 +2563,7 @@ function renderAdmin(){
  const pendRel = relativesData.filter(r=>r.status==='pending');
  const pendSuggest = suggestionsData.filter(s=>s.status==='pending');
  const pendNews = newsData.filter(n=>n.status==='pending');
+ const pendBizPromo = membersData.filter(m=>m.biz_promo_status==='pending');
  let h = '<div class="bg-gradient-to-r from-red-900 to-red-800 text-white rounded-lg px-6 py-5 mb-6 flex flex-wrap justify-between items-center gap-3"><h2 class="text-2xl md:text-3xl font-bold">⚙️ ADMIN DASHBOARD</h2>'+
  '<div class="text-sm">👥 '+approved.length+' approved | ⏳ '+pending.length+' pending</div>'+
  '<button onclick="goPage(\'home\')" class="bg-blue-600 px-5 py-2 rounded font-bold">← BACK</button></div>';
@@ -2494,6 +2582,7 @@ function renderAdmin(){
   ['pratibha','🏆 प्रतिभा'+(pendPrat.length?' ('+pendPrat.length+')':'')],
   ['gallery','🖼️ GALLERY'],
   ['suggestions','💡 SUGGESTIONS'+(pendSuggest.length?' ('+pendSuggest.length+')':'')],
+  ['referrals','🎗️ REFERRAL'+(pendBizPromo.length?' ('+pendBizPromo.length+')':'')],
   ['site','🌐 SITE']
  ];
  const allowed = allowedTabs();
@@ -2534,6 +2623,17 @@ function renderAdmin(){
    '<p class="text-gray-700 mt-2 whitespace-pre-line">'+esc(s.text)+'</p></div>'
   ).join('')+'</div>' : '<p class="text-gray-400 text-center py-8">अभी कोई suggestion नहीं आई</p>')+
   '</div>';
+ }
+
+ if(adminTab==='referrals'){
+  h += '<div class="bg-orange-50 border-2 border-orange-300 rounded-lg p-6 mb-6"><h3 class="text-2xl font-bold mb-4">🚀 PENDING BUSINESS PROMOTIONS ('+pendBizPromo.length+')</h3>';
+  h += pendBizPromo.length ? '<div class="space-y-3">'+pendBizPromo.map(m=>'<div class="bg-white border-2 border-yellow-400 rounded-lg p-4 flex flex-wrap justify-between items-center gap-3"><p><b>'+esc(m.business_name||'-')+'</b> — '+esc(m.name+' '+m.surname)+' ('+esc(m.phone)+')'+(m.biz_promo_referredBy?' | 🎗️ '+esc(referrerNameOf(m.biz_promo_referredBy)):'')+'</p><div class="flex gap-2"><button onclick="approveBizPromo(\''+m.id+'\')" class="bg-green-600 text-white px-4 py-2 rounded font-bold">✅ Activate</button><button onclick="rejectBizPromo(\''+m.id+'\')" class="bg-red-600 text-white px-4 py-2 rounded font-bold">❌</button></div></div>').join('')+'</div>' : '<p class="text-gray-500">कोई pending नहीं</p>';
+  h += '</div>';
+  const board = computeReferralLeaderboard();
+  h += '<div class="bg-white rounded-lg shadow p-6"><h3 class="text-2xl font-bold mb-1">🎗️ REFERRAL LEADERBOARD</h3><p class="text-xs text-gray-500 mb-4">Property/Jobs/Shaadi/Business-Promotion — approved paid items जिनमें referrer select हुआ था</p>';
+  h += !board.length ? '<p class="text-gray-400 text-center py-8">अभी कोई referral नहीं</p>' :
+   '<div class="space-y-2">'+board.map((r,i)=>'<div class="flex justify-between items-center bg-orange-50 border border-orange-200 rounded-lg px-4 py-3"><span class="font-bold">#'+(i+1)+' '+esc(referrerNameOf(r.phone))+' <span class="text-xs text-gray-500 font-normal">('+esc(r.phone)+')</span></span><span class="font-bold text-orange-700">'+r.count+' referrals · ₹'+r.amount+'</span></div>').join('')+'</div>';
+  h += '</div>';
  }
 
  if(adminTab==='garba'){
@@ -2673,8 +2773,17 @@ function renderAdmin(){
   '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
   '<div><label class="text-xs font-bold">🏠 मकान Portal — Razorpay Button ID</label><input id="st_rz_makan" value="'+esc(siteMeta.razorpayMakan||'')+'" placeholder="pl_XXXX (खाली = default)" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">🏪 दुकान Portal — Razorpay Button ID</label><input id="st_rz_dukan" value="'+esc(siteMeta.razorpayDukan||'')+'" placeholder="pl_XXXX (खाली = default)" class="w-full px-3 py-2 border-2 rounded"></div>'+
-  '<div><label class="text-xs font-bold">💍 Shaadi Profile Fee (₹)</label><input id="st_shaadifee" value="'+esc(siteMeta.shaadiFee||'')+'" placeholder="जैसे 500" class="w-full px-3 py-2 border-2 rounded"></div>'+
-  '<div><label class="text-xs font-bold">💍 Shaadi — Razorpay Button ID</label><input id="st_rz_shaadi" value="'+esc(siteMeta.razorpayShaadi||'')+'" placeholder="pl_XXXX" class="w-full px-3 py-2 border-2 rounded"></div></div>'+
+  '<div><label class="text-xs font-bold">💍 Shaadi Profile Fee (₹)</label><input id="st_shaadifee" value="'+esc(siteMeta.shaadiFee||'500')+'" placeholder="जैसे 500" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">💍 Shaadi — Razorpay Button ID</label><input id="st_rz_shaadi" value="'+esc(siteMeta.razorpayShaadi||'')+'" placeholder="pl_XXXX" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">💍 Shaadi Validity (दिन)</label><input type="number" id="st_shaadidays" value="'+(siteMeta.shaadiValidityDays||180)+'" class="w-full px-3 py-2 border-2 rounded"></div></div>'+
+  '<div class="border-t-2 pt-4 mt-2"><p class="font-bold text-lg mb-3">💰 Rozgaar / Business Promotion — Fee Settings</p><div class="grid grid-cols-1 md:grid-cols-3 gap-4">'+
+  '<div><label class="text-xs font-bold">💼 Rozgaar Post Fee (₹)</label><input id="st_jobsfee" value="'+esc(siteMeta.jobsFee||'100')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">💼 Rozgaar — Razorpay Button ID</label><input id="st_rz_jobs" value="'+esc(siteMeta.razorpayJobs||'')+'" placeholder="pl_XXXX" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div></div>'+
+  '<div><label class="text-xs font-bold">🚀 Business Promotion Fee (₹)</label><input id="st_bizpromofee" value="'+esc(siteMeta.bizPromoFee||'100')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">🚀 Business Promotion Validity (दिन)</label><input type="number" id="st_bizpromodays" value="'+(siteMeta.bizPromoValidityDays||30)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">🚀 Business Promotion — Razorpay Button ID</label><input id="st_rz_bizpromo" value="'+esc(siteMeta.razorpayBizPromo||'')+'" placeholder="pl_XXXX" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '</div></div>'+
   '<div><label class="text-xs font-bold">🚫 Blocked phones</label><p class="text-sm text-gray-600">'+((siteMeta.blocked||[]).join(', ')||'कोई नहीं')+'</p></div>';
 
   h += '<div class="border-t-2 pt-4"><p class="font-bold text-lg mb-2">📝 Website के मुख्य Text (Site Text Editor)</p><p class="text-xs text-gray-500 mb-3">यहाँ से पूरी website के मुख्य/marketing text खुद बदल सकते हो — बिना developer के</p>'+
@@ -2758,6 +2867,7 @@ function renderApp(){
   if(rid) setTimeout(()=>mountRazorpayButton(rid,'razorpayBtnContainer'),30);
  }
  if(currentPage==='shaadi' && siteMeta.razorpayShaadi) setTimeout(()=>mountRazorpayButton(siteMeta.razorpayShaadi,'razorpayShaadiBox'),30);
+ if(currentPage==='rozgaar' && siteMeta.razorpayJobs) setTimeout(()=>mountRazorpayButton(siteMeta.razorpayJobs,'razorpayJobsBox'),30);
  setTimeout(()=>{
   document.querySelectorAll('select[id$="gender"]').forEach(sel=>{
    const prefix = sel.id.slice(0,-6);

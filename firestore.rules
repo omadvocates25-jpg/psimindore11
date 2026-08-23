@@ -43,7 +43,15 @@ service cloud.firestore {
       allow update: if isAdmin()
                     || (isOwnPhone(resource.data.phone)
                         && request.resource.data.phone == resource.data.phone // phone badal nahi sakte
-                        && request.resource.data.status == 'pending'); // edit karne pe dobara pending
+                        && request.resource.data.status == 'pending') // edit karne pe dobara pending
+                    || (isOwnPhone(resource.data.phone)
+                        // Business Promotion request — sirf biz_promo_* fields touch karta hai,
+                        // status ya baaki profile ko chhoड़ता nahi, isliye "wapas pending" wala rule apply nahi hota.
+                        // 'active' banana ya biz_promo_until set karna sirf Admin kar sakta hai (upar wale isAdmin() clause se) —
+                        // yaha self-update sirf 'pending' request bhejne तक limited hai, koi khud ko promote nahi kar sakta.
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                             .hasOnly(['biz_promo_status', 'biz_promo_referredBy', 'biz_promo_requestedAt'])
+                        && request.resource.data.biz_promo_status == 'pending');
       allow delete: if isAdmin() || isOwnPhone(resource.data.phone);
     }
 
