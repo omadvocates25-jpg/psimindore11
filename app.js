@@ -44,7 +44,7 @@ let friendSearchQ = '';
 let whomQuery = '';
 
 let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], garbaCoords=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[], teamJoinData=[], labhData=[];
-let siteMeta = { ticker:'', aboutUs:'', fb:'', insta:'', youtube:'', committee:'', expiryDays:30, propertyValidityDays:365, propertyFeeRent:'500', propertyFeeWanted:'11', razorpayPropRent:'', razorpayPropWanted:'', shaadiFee:'500', shaadiValidityDays:180, razorpayShaadi:'', jobsFeeSeeker:'11', razorpayJobsSeeker:'', bizPromoFee:'300', bizPromoValidityDays:365, razorpayBizPromo:'', blocked:[], garbaFormOpen:true, ads:[{},{},{},{},{}], subAdmins:[], texts:{} };
+let siteMeta = { ticker:'', aboutUs:'', fb:'', insta:'', youtube:'', committee:'', expiryDays:30, propertyValidityDays:365, propertyFeeRent:'500', propertyFeeWanted:'11', razorpayPropRent:'', razorpayPropWanted:'', shaadiFee:'500', shaadiValidityDays:180, razorpayShaadi:'', jobsFeeSeeker:'11', razorpayJobsSeeker:'', bizPromoFee:'300', bizPromoValidityDays:365, razorpayBizPromo:'', olxExtraItemFee:'100', razorpayOlxExtra:'', olxPromoFee:'100', razorpayOlxPromo:'', blocked:[], garbaFormOpen:true, ads:[{},{},{},{},{}], subAdmins:[], texts:{} };
 
 function isSuperAdmin(){ return currentUser === ADMIN_PHONE || localStorage.getItem('psim_admin_ok') === 'true'; }
 function subAdminInfo(){ if(!currentUser) return null; return (siteMeta.subAdmins||[]).find(s => fmtPhone(s.phone) === currentUser) || null; }
@@ -72,6 +72,12 @@ function referrerNameOf(phone){
 const JOB_SEEKER_KINDS = ['lena', 'freelance_lena']; // इनके लिए ही fee लगता है, "देना है" वाले हमेशा free
 function feeForProperty(p){ return parseFloat(p.type==='rent' ? siteMeta.propertyFeeRent : siteMeta.propertyFeeWanted)||0; }
 function feeForJob(j){ return JOB_SEEKER_KINDS.includes(j.kind) ? (parseFloat(siteMeta.jobsFeeSeeker)||0) : 0; }
+function feeForOldItem(o){
+ let f = 0;
+ if(o.extraFee) f += parseFloat(siteMeta.olxExtraItemFee)||0; // पहली listing free, अगली पर fee
+ if(o.promoted) f += parseFloat(siteMeta.olxPromoFee)||0;
+ return f;
+}
 function computeReferralLeaderboard(){
  const rows = [];
  const push = (list, feeKey) => {
@@ -80,6 +86,7 @@ function computeReferralLeaderboard(){
  };
  propertyData.filter(p=>p.status==='approved').forEach(p => { if(p.referredBy) rows.push({phone:p.referredBy, amount:feeForProperty(p)}); });
  jobsData.filter(j=>j.status==='approved').forEach(j => { if(j.referredBy) rows.push({phone:j.referredBy, amount:feeForJob(j)}); });
+ oldItems.filter(o=>o.status==='approved').forEach(o => { if(o.referredBy) rows.push({phone:o.referredBy, amount:feeForOldItem(o)}); });
  push(shaadiData.filter(s=>s.status==='approved'), 'shaadiFee');
  membersData.filter(m=>m.biz_promo_status==='active').forEach(m => {
   if(m.biz_promo_referredBy) rows.push({phone:m.biz_promo_referredBy, amount:parseFloat(siteMeta.bizPromoFee)||0});
@@ -1889,7 +1896,7 @@ function activeProperties(){
 async function submitProperty(){
  const me = myMember();
  if(!me || me.status!=='approved'){ showRegisterPrompt('Listing डालने के लिए पहले Community member बनो।'); return; }
- if(propertyData.find(p => p.phone===me.phone && p.status!=='rejected')){ alert('❌ आप पहले से एक Listing डाल चुके हो — एक member सिर्फ एक ही listing डाल सकता है।'); return; }
+ // एक से ज़्यादा listing डाल सकते हो — हर listing की अपनी अलग Fee लगती है (ऊपर देना है/चाहिए wale Razorpay button)
  const type=document.getElementById('pp_type').value;
  const nm=fmtName(document.getElementById('pp_name').value);
  const ph=fmtPhone(document.getElementById('pp_phone').value);
@@ -2138,7 +2145,9 @@ function renderRozgaarPage(){
 function activeOldItems(){
  const days = siteMeta.expiryDays || 30;
  const cutoff = new Date(Date.now() - days*86400000).toISOString().slice(0,10);
- return oldItems.filter(o => o.status==='approved' && (o.createdAt||'9999') >= cutoff);
+ const list = oldItems.filter(o => o.status==='approved' && (o.createdAt||'9999') >= cutoff);
+ list.sort((a,b) => (b.promoted?1:0)-(a.promoted?1:0));
+ return list;
 }
 async function submitOldItem(){
  const me = myMember();
@@ -2147,9 +2156,12 @@ async function submitOldItem(){
   ph=fmtPhone(document.getElementById('it_phone').value), ds=document.getElementById('it_desc').value.trim(),
   pic=document.getElementById('it_pic').value;
  if(!t||!pr||!ph){ alert('❌ Item, Price, Contact जरूरी!'); return; }
- busy(true);
  const olx=document.getElementById('it_olx').value.trim();
- await db.collection('olditems').add({title:t,price:pr,phone:ph,description:ds,pic:pic,olx_link:olx,status:'pending',createdAt:today()});
+ const ref=document.getElementById('it_ref').value;
+ const promoted=document.getElementById('it_promote').checked;
+ const isExtra = oldItems.some(o => o.phone===me.phone && o.status!=='rejected');
+ busy(true);
+ await db.collection('olditems').add({title:t,price:pr,phone:ph,description:ds,pic:pic,olx_link:olx,referredBy:ref,promoted,extraFee:isExtra,status:'pending',createdAt:today()});
  busy(false); showItemForm=false;
  alert('✅ Item submit! Admin approval के बाद '+(siteMeta.expiryDays||30)+' दिन live रहेगा।'); renderApp();
 }
@@ -2164,6 +2176,17 @@ function renderOldItemsPage(){
  } else {
   h += '<div class="bg-purple-50 border-2 border-purple-300 rounded-lg p-4 mb-4 text-center text-sm">🔒 सामान बेचने के लिए पहले <button onclick="showRegisterPrompt(\'सामान बेचने के लिए पहले Community member बनो।\')" class="underline font-bold text-purple-700">Register करो</button></div>';
  }
+ if(isMember){
+  const hasItem = oldItems.some(o => o.phone===me.phone && o.status!=='rejected');
+  if(hasItem){
+   h += '<div class="bg-yellow-100 border border-yellow-400 rounded p-3 mb-3 text-sm">💳 आपकी पहली listing free थी — अगली/extra listing के लिए ₹'+esc(siteMeta.olxExtraItemFee||'100')+' लगेंगे</div>';
+   if(siteMeta.razorpayOlxExtra) h += '<div id="razorpayOlxExtraBox" class="flex justify-center mb-3"></div>';
+  } else {
+   h += '<div class="bg-green-100 border border-green-400 rounded p-3 mb-3 text-sm">🆓 आपकी पहली Listing बिल्कुल FREE है</div>';
+  }
+  h += '<div class="bg-orange-50 border border-orange-300 rounded p-3 mb-4 text-sm">🚀 सबसे ऊपर दिखाना है? ₹'+esc(siteMeta.olxPromoFee||'100')+' — नीचे form में checkbox से चुनो</div>';
+  if(siteMeta.razorpayOlxPromo) h += '<div id="razorpayOlxPromoBox" class="flex justify-center mb-4"></div>';
+ }
  if(showItemForm && isMember){
   h += '<div class="bg-purple-50 border-2 border-purple-400 rounded-lg p-5 mb-6"><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
   '<div><label class="text-xs font-bold">Item Name *</label><input id="it_title" class="w-full px-3 py-2 border-2 rounded"></div>'+
@@ -2171,12 +2194,15 @@ function renderOldItemsPage(){
   '<div><label class="text-xs font-bold">Contact *</label><input id="it_phone" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">Photo 📷</label><input type="hidden" id="it_pic"><button type="button" onclick="openCloudUpload(\'it_pic\')" class="w-full bg-blue-600 text-white px-3 py-2 rounded font-bold text-sm">📷 Upload</button><img id="it_pic_prev" class="hidden mt-2 h-24 object-cover rounded border-2"></div>'+
   '<div><label class="text-xs font-bold">🔗 OLX Link (optional — OLX पर भी डाला हो तो)</label><input id="it_olx" placeholder="https://www.olx.in/item/..." class="w-full px-3 py-2 border-2 rounded"><p class="text-[10px] text-gray-400 mt-0.5">यहाँ link डालोगे तो सामान पर "OLX पर देखो" button आएगा जो सीधे OLX पर ले जाएगा</p></div>'+
-  '<div class="md:col-span-2"><label class="text-xs font-bold">Details</label><textarea id="it_desc" rows="2" class="w-full px-3 py-2 border-2 rounded"></textarea></div></div>'+
+  referrerSelectHTML('it_ref')+
+  '<div class="md:col-span-2"><label class="text-xs font-bold">Details</label><textarea id="it_desc" rows="2" class="w-full px-3 py-2 border-2 rounded"></textarea></div>'+
+  '<label class="md:col-span-2 flex items-center gap-2 text-sm font-bold bg-orange-50 border border-orange-300 rounded px-3 py-2"><input type="checkbox" id="it_promote" class="h-4 w-4"> 🚀 इसे सबसे ऊपर दिखाओ (Promote — ₹'+esc(siteMeta.olxPromoFee||'100')+', payment ऊपर करके ही टिक करो)</label></div>'+
   '<div class="flex gap-3 mt-4"><button onclick="submitOldItem()" class="bg-purple-600 text-white px-8 py-3 rounded font-bold">✅ SUBMIT</button><button onclick="showItemForm=false;renderApp()" class="bg-gray-400 text-white px-8 py-3 rounded font-bold">CANCEL</button></div></div>';
  }
  if(!approved.length) h += '<div class="bg-white rounded-lg p-10 text-center shadow"><p class="text-4xl mb-3">🛒</p><p class="text-lg font-bold text-gray-600">अभी कोई item नहीं - पहला आप डालो!</p></div>';
  else if(isMember) h += '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">'+approved.map(o =>
-  '<div class="bg-white border-2 border-purple-300 rounded-lg overflow-hidden shadow-md hover:shadow-lg">'+
+  '<div class="bg-white border-2 '+(o.promoted?'border-orange-400':'border-purple-300')+' rounded-lg overflow-hidden shadow-md hover:shadow-lg relative">'+
+  (o.promoted?'<span class="absolute top-2 left-2 z-10 bg-orange-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow">🚀 PROMOTED</span>':'')+
   (o.pic?'<img src="'+o.pic+'" class="w-full h-44 object-cover">':'')+
   '<div class="p-4"><p class="font-bold text-lg text-purple-700">'+esc(o.title)+'</p>'+
   '<p class="text-2xl font-bold text-green-600 mt-1">₹ '+esc(o.price)+'</p>'+
@@ -2186,7 +2212,8 @@ function renderOldItemsPage(){
   '<button onclick="shareWA(\'🛒 '+esc(o.title).replace(/\'/g,'')+' - ₹'+esc(o.price)+' | अपना OLX: \'+pageLink(\'olditems\'))" class="block w-full text-center mt-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-bold text-sm">📤 WhatsApp Share</button>'+
   '</div></div>').join('')+'</div>';
  else h += '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">'+approved.map(o =>
-  '<div class="bg-white border-2 border-purple-200 rounded-lg overflow-hidden shadow-md">'+
+  '<div class="bg-white border-2 '+(o.promoted?'border-orange-400':'border-purple-200')+' rounded-lg overflow-hidden shadow-md relative">'+
+  (o.promoted?'<span class="absolute top-2 left-2 z-10 bg-orange-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow">🚀 PROMOTED</span>':'')+
   (o.pic?'<img src="'+o.pic+'" class="w-full h-44 object-cover">':'')+
   '<div class="p-4"><p class="font-bold text-lg text-purple-700">'+esc(o.title)+'</p>'+
   (o.description?'<p class="text-sm text-gray-500 mt-1">'+esc(o.description).slice(0,60)+(o.description.length>60?'...':'')+'</p>':'')+
@@ -2621,6 +2648,10 @@ async function saveSiteMeta(){
  siteMeta.bizPromoFee = document.getElementById('st_bizpromofee').value.trim()||'300';
  siteMeta.bizPromoValidityDays = parseInt(document.getElementById('st_bizpromodays').value)||365;
  siteMeta.razorpayBizPromo = document.getElementById('st_rz_bizpromo').value.trim();
+ siteMeta.olxExtraItemFee = document.getElementById('st_olxextrafee').value.trim()||'100';
+ siteMeta.razorpayOlxExtra = document.getElementById('st_rz_olxextra').value.trim();
+ siteMeta.olxPromoFee = document.getElementById('st_olxpromofee').value.trim()||'100';
+ siteMeta.razorpayOlxPromo = document.getElementById('st_rz_olxpromo').value.trim();
  siteMeta.texts = Object.assign({}, siteMeta.texts, {
   objective: document.getElementById('tx_objective').value.trim(),
   inviteMsg: document.getElementById('tx_invite').value.trim()
@@ -2878,6 +2909,12 @@ function renderAdmin(){
   '<div><label class="text-xs font-bold">🚀 Business Promotion Validity (दिन)</label><input type="number" id="st_bizpromodays" value="'+(siteMeta.bizPromoValidityDays||365)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">🚀 Business Promotion — Razorpay Button ID</label><input id="st_rz_bizpromo" value="'+esc(siteMeta.razorpayBizPromo||'')+'" placeholder="pl_XXXX" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '</div></div>'+
+  '<div class="border-t-2 pt-4 mt-2"><p class="font-bold text-lg mb-1">🛒 अपना OLX — पहली Listing FREE, अगली Extra Fee + Promote</p><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+  '<div><label class="text-xs font-bold">🛒 Extra Item Fee (₹)</label><input id="st_olxextrafee" value="'+esc(siteMeta.olxExtraItemFee||'100')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">🛒 Extra Item — Razorpay Button ID</label><input id="st_rz_olxextra" value="'+esc(siteMeta.razorpayOlxExtra||'')+'" placeholder="pl_XXXX" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">🚀 OLX Promote Fee (₹)</label><input id="st_olxpromofee" value="'+esc(siteMeta.olxPromoFee||'100')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">🚀 OLX Promote — Razorpay Button ID</label><input id="st_rz_olxpromo" value="'+esc(siteMeta.razorpayOlxPromo||'')+'" placeholder="pl_XXXX" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '</div></div>'+
   '<div><label class="text-xs font-bold">🚫 Blocked phones</label><p class="text-sm text-gray-600">'+((siteMeta.blocked||[]).join(', ')||'कोई नहीं')+'</p></div>';
 
   h += '<div class="border-t-2 pt-4"><p class="font-bold text-lg mb-2">📝 Website के मुख्य Text (Site Text Editor)</p><p class="text-xs text-gray-500 mb-3">यहाँ से पूरी website के मुख्य/marketing text खुद बदल सकते हो — बिना developer के</p>'+
@@ -2962,6 +2999,10 @@ function renderApp(){
  }
  if(currentPage==='shaadi' && siteMeta.razorpayShaadi) setTimeout(()=>mountRazorpayButton(siteMeta.razorpayShaadi,'razorpayShaadiBox'),30);
  if(currentPage==='rozgaar' && siteMeta.razorpayJobsSeeker) setTimeout(()=>mountRazorpayButton(siteMeta.razorpayJobsSeeker,'razorpayJobsSeekerBox'),30);
+ if(currentPage==='olditems'){
+  if(siteMeta.razorpayOlxExtra) setTimeout(()=>mountRazorpayButton(siteMeta.razorpayOlxExtra,'razorpayOlxExtraBox'),30);
+  if(siteMeta.razorpayOlxPromo) setTimeout(()=>mountRazorpayButton(siteMeta.razorpayOlxPromo,'razorpayOlxPromoBox'),30);
+ }
  setTimeout(()=>{
   document.querySelectorAll('select[id$="gender"]').forEach(sel=>{
    const prefix = sel.id.slice(0,-6);
