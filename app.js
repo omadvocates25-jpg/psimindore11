@@ -1344,12 +1344,8 @@ function allBusinesses(){
  return real.length > 0 ? real : SAMPLE_BUSINESSES;
 }
 // ===== BUSINESS DETAIL MODAL (कहीं से भी click => पूरी details) =====
-function openBiz(id){
- const b = allBusinesses().find(x => x.id === id);
- if(!b) return;
- const box = document.getElementById('bizModalBox');
- box.innerHTML =
-  (b.pic?'<img src="'+b.pic+'" class="w-full h-56 object-cover rounded-t-2xl">':'<div class="w-full h-28 bg-yellow-100 flex items-center justify-center text-6xl rounded-t-2xl">🏪</div>')+
+function bizDetailHTML(b){
+ return (b.pic?'<img src="'+b.pic+'" class="w-full h-56 object-cover rounded-t-2xl">':'<div class="w-full h-28 bg-yellow-100 flex items-center justify-center text-6xl rounded-t-2xl">🏪</div>')+
   '<div class="p-6">'+
   '<p class="text-2xl font-bold text-yellow-700">'+esc(b.name)+'</p>'+
   '<p class="inline-block bg-yellow-200 text-yellow-900 px-3 py-1 rounded-full text-xs font-bold mt-2">'+esc(b.type)+'</p>'+
@@ -1367,6 +1363,11 @@ function openBiz(id){
   (b.gmap?'<a href="'+esc(b.gmap)+'" target="_blank" class="text-center bg-blue-600 text-white px-4 py-3 rounded-lg font-bold">📍 Location देखो</a>':'')+
   '<button onclick="closeBizForce()" class="bg-gray-200 text-gray-700 px-4 py-3 rounded-lg font-bold">बंद करो / Close</button>'+
   '</div></div>';
+}
+function openBiz(id){
+ const b = allBusinesses().find(x => x.id === id);
+ if(!b) return;
+ document.getElementById('bizModalBox').innerHTML = bizDetailHTML(b);
  document.getElementById('bizModal').classList.remove('hidden');
 }
 function closeBizForce(){ document.getElementById('bizModal').classList.add('hidden'); }
@@ -1402,6 +1403,7 @@ function openMemberProfile(id){
   (m.work_details?'<p>💼 '+esc(m.work_details)+'</p>':'')+
   '</div>'+
   (m.business_name?'<button onclick="openBiz(\''+m.id+'\')" class="w-full bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm font-bold mt-3">🏪 इनका Business देखें: '+esc(m.business_name)+'</button>':'')+
+  (isMe?'<button onclick="closeBizForce();openEditProfile()" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-bold mt-3">✏️ Edit Profile</button>':'')+
   (!isMe && currentUser ? '<div class="flex gap-2 flex-wrap mt-4"><button onclick="sendFriendRequest(\''+m.id+'\')" class="bg-purple-100 text-purple-700 border border-purple-300 px-3 py-1.5 rounded-lg text-xs font-bold">➕ मित्र</button><button onclick="openRelPicker(\''+m.id+'\')" class="bg-indigo-100 text-indigo-700 border border-indigo-300 px-3 py-1.5 rounded-lg text-xs font-bold">👨‍👩‍👧 रिश्तेदार</button></div>' : '')+
   '<div class="border-t-2 pt-3 mt-4">'+
   '<p class="text-sm font-bold text-gray-700 mb-1">🙋 मित्र ('+frs.length+')</p>'+
@@ -1421,6 +1423,141 @@ function bizMiniCard(b){
   '<p class="text-[11px] text-gray-600 mt-1 truncate">👤 '+esc(b.owner)+'</p>'+
   (b.place?'<p class="text-[11px] text-gray-500 truncate">📍 '+esc(b.place)+'</p>':'')+
   '</div></div>';
+}
+
+// ================= MY ACCOUNT MENU (☰ — हर page पर, अपनी सारी चीज़ें एक जगह) =================
+function openMyAccountMenu(){
+ if(!currentUser){ showRegisterPrompt('अपनी Profile/Business/Property वगैरह देखने के लिए पहले Register करो।'); return; }
+ const box = document.getElementById('bizModalBox');
+ box.innerHTML = '<div class="p-6">'+
+  '<div class="flex justify-between items-center mb-4"><h3 class="text-xl font-bold text-blue-800">☰ मेरा अकाउंट</h3><button onclick="closeBizForce()" class="text-gray-500 hover:text-gray-700 text-2xl font-bold">✕</button></div>'+
+  '<div class="grid grid-cols-2 gap-3">'+
+  '<button onclick="myAcc_profile()" class="bg-blue-50 hover:bg-blue-100 border-2 border-blue-300 rounded-lg p-4 text-center font-bold text-blue-800"><span class="text-2xl block mb-1">👤</span>मेरी Profile</button>'+
+  '<button onclick="myAcc_business()" class="bg-yellow-50 hover:bg-yellow-100 border-2 border-yellow-300 rounded-lg p-4 text-center font-bold text-yellow-800"><span class="text-2xl block mb-1">🏪</span>मेरा Business</button>'+
+  '<button onclick="myAcc_property()" class="bg-purple-50 hover:bg-purple-100 border-2 border-purple-300 rounded-lg p-4 text-center font-bold text-purple-800"><span class="text-2xl block mb-1">🏠</span>मेरी Property</button>'+
+  '<button onclick="myAcc_jobs()" class="bg-green-50 hover:bg-green-100 border-2 border-green-300 rounded-lg p-4 text-center font-bold text-green-800"><span class="text-2xl block mb-1">💼</span>मेरे Jobs</button>'+
+  '<button onclick="myAcc_rishtedaar()" class="bg-indigo-50 hover:bg-indigo-100 border-2 border-indigo-300 rounded-lg p-4 text-center font-bold text-indigo-800"><span class="text-2xl block mb-1">👨‍👩‍👧</span>मेरे रिश्तेदार</button>'+
+  '<button onclick="myAcc_mitra()" class="bg-pink-50 hover:bg-pink-100 border-2 border-pink-300 rounded-lg p-4 text-center font-bold text-pink-800"><span class="text-2xl block mb-1">🙋</span>मेरे मित्र</button>'+
+  '</div>'+
+  '<div class="border-t-2 mt-4 pt-4 grid grid-cols-1 gap-2">'+
+  '<button onclick="closeBizForce();openEditProfile()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg font-bold text-sm">✏️ Edit My Profile</button>'+
+  '<button onclick="closeBizForce();askAdminLogin()" class="bg-gray-700 hover:bg-gray-800 text-white px-4 py-3 rounded-lg font-bold text-sm">🏛️ Admin / Sub-admin Login</button>'+
+  '<button onclick="closeBizForce();doLogout()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-lg font-bold text-sm">🚪 Sign Out</button>'+
+  '</div></div>';
+ document.getElementById('bizModal').classList.remove('hidden');
+}
+function myAcc_profile(){
+ const me = myMember();
+ if(!me){ closeBizForce(); showRegisterPrompt('पहले Register करो — अभी आप सिर्फ OTP से login हो, Community member नहीं बने।'); return; }
+ openMemberProfile(me.id);
+}
+function myAcc_business(){
+ const me = myMember();
+ if(!me){ closeBizForce(); showRegisterPrompt('पहले Register करो।'); return; }
+ const box = document.getElementById('bizModalBox');
+ if(!me.business_name){
+  box.innerHTML = '<div class="p-6 text-center">'+
+   '<div class="flex justify-end"><button onclick="closeBizForce()" class="text-gray-500 hover:text-gray-700 text-2xl font-bold">✕</button></div>'+
+   '<p class="text-5xl mb-3">🏪</p><p class="font-bold text-gray-700 mb-4">अभी आपने कोई Business details नहीं डाली</p>'+
+   '<button onclick="closeBizForce();openEditProfile()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold">✏️ Business Details जोड़ो</button>'+
+   '</div>';
+  document.getElementById('bizModal').classList.remove('hidden');
+  return;
+ }
+ const b = {
+  id: me.id, name: me.business_name,
+  type: (me.business_type==='Other'&&me.business_type_other)?me.business_type_other:(me.business_type||'Business'),
+  owner: me.name+' '+me.surname, phone: me.business_phone||me.phone, place: me.business_place||me.present_city||'',
+  gmap: me.business_gmap||'', pic: me.business_pic1||'', description: me.business_details||'', ownerPhone: me.phone
+ };
+ box.innerHTML = bizDetailHTML(b);
+ document.getElementById('bizModal').classList.remove('hidden');
+}
+function myAcc_property(){
+ const me = myMember();
+ if(!me){ closeBizForce(); showRegisterPrompt('पहले Register करो।'); return; }
+ const mine = propertyData.filter(p => p.phone===me.phone && p.status!=='rejected');
+ const box = document.getElementById('bizModalBox');
+ if(!mine.length){
+  box.innerHTML = '<div class="p-6 text-center">'+
+   '<div class="flex justify-end"><button onclick="closeBizForce()" class="text-gray-500 hover:text-gray-700 text-2xl font-bold">✕</button></div>'+
+   '<p class="text-5xl mb-3">🏠</p><p class="font-bold text-gray-700 mb-4">अभी आपकी कोई Property Listing नहीं है</p>'+
+   '<button onclick="closeBizForce();goPage(\'property\')" class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-bold">➕ Listing डालो</button>'+
+   '</div>';
+ } else {
+  box.innerHTML = '<div class="p-6">'+
+   '<div class="flex justify-between items-center mb-4"><h3 class="text-xl font-bold text-purple-800">🏠 मेरी Property</h3><button onclick="closeBizForce()" class="text-gray-500 hover:text-gray-700 text-2xl font-bold">✕</button></div>'+
+   mine.map(p => '<div class="border-2 border-purple-300 rounded-lg p-4 mb-3">'+
+    '<p class="font-bold">'+(p.kind==='dukan'?'🏪 दुकान':'🏠 मकान')+' - '+esc(p.name)+'</p>'+
+    '<p class="text-sm text-gray-600">📍 '+esc(p.area)+(p.rent?' | ₹'+esc(p.rent)+'/माह':'')+'</p>'+
+    '<p class="text-xs mt-1 font-bold '+(p.status==='approved'?(p.active!==false?'text-green-600':'text-gray-500'):'text-yellow-600')+'">'+(p.status==='approved'?(p.active!==false?'✅ Live':'⏸️ Inactive'):'⏳ Admin Approval बाकी')+'</p>'+
+    '<p class="text-xs text-gray-400 mt-1">🔑 Code: '+esc(p.code||'-')+'</p></div>'
+   ).join('')+
+   '<button onclick="closeBizForce()" class="w-full mt-2 bg-gray-200 text-gray-700 px-4 py-3 rounded-lg font-bold">बंद करो / Close</button></div>';
+ }
+ document.getElementById('bizModal').classList.remove('hidden');
+}
+function myAcc_jobs(){
+ const me = myMember();
+ if(!me){ closeBizForce(); showRegisterPrompt('पहले Register करो।'); return; }
+ const mine = jobsData.filter(j => j.phone===me.phone);
+ const box = document.getElementById('bizModalBox');
+ const kindLabel = k => ({dena:'💼 रोज़गार देना है', lena:'🙋 रोज़गार चाहिए', freelance:'💻 Freelancing', freelance_dena:'💻 Freelancing देना है', freelance_lena:'🙋‍♂️ Freelancing चाहिए'}[k]||k);
+ if(!mine.length){
+  box.innerHTML = '<div class="p-6 text-center">'+
+   '<div class="flex justify-end"><button onclick="closeBizForce()" class="text-gray-500 hover:text-gray-700 text-2xl font-bold">✕</button></div>'+
+   '<p class="text-5xl mb-3">💼</p><p class="font-bold text-gray-700 mb-4">अभी आपकी कोई Job/Freelancing post नहीं है</p>'+
+   '<button onclick="closeBizForce();goPage(\'rozgaar\')" class="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold">➕ Post करो</button>'+
+   '</div>';
+ } else {
+  box.innerHTML = '<div class="p-6">'+
+   '<div class="flex justify-between items-center mb-4"><h3 class="text-xl font-bold text-green-800">💼 मेरे Jobs</h3><button onclick="closeBizForce()" class="text-gray-500 hover:text-gray-700 text-2xl font-bold">✕</button></div>'+
+   mine.map(j => '<div class="border-2 border-green-300 rounded-lg p-4 mb-3">'+
+    '<p class="font-bold">'+esc(j.title)+'</p>'+
+    '<p class="text-xs text-gray-500">'+kindLabel(j.kind)+'</p>'+
+    '<p class="text-xs mt-1 font-bold '+(j.status==='approved'?'text-green-600':'text-yellow-600')+'">'+(j.status==='approved'?'✅ Live':'⏳ Admin Approval बाकी')+'</p></div>'
+   ).join('')+
+   '<button onclick="closeBizForce()" class="w-full mt-2 bg-gray-200 text-gray-700 px-4 py-3 rounded-lg font-bold">बंद करो / Close</button></div>';
+ }
+ document.getElementById('bizModal').classList.remove('hidden');
+}
+function myAcc_rishtedaar(){
+ const me = myMember();
+ if(!me){ closeBizForce(); showRegisterPrompt('पहले Register करो।'); return; }
+ const pending = relativesData.filter(r => r.toPhone===me.phone && r.status==='pending');
+ const sent = relativesData.filter(r => r.fromPhone===me.phone && r.status==='pending');
+ const accepted = relativesData.filter(r => r.status==='approved' && (r.fromPhone===me.phone||r.toPhone===me.phone));
+ const box = document.getElementById('bizModalBox');
+ box.innerHTML = '<div class="p-6">'+
+  '<div class="flex justify-between items-center mb-4"><h3 class="text-xl font-bold text-indigo-800">👨‍👩‍👧 मेरे रिश्तेदार</h3><button onclick="closeBizForce()" class="text-gray-500 hover:text-gray-700 text-2xl font-bold">✕</button></div>'+
+  (pending.length?('<p class="font-bold text-indigo-700 text-sm mb-2">🔔 Pending Requests</p>'+pending.map(r=>
+   '<div class="bg-indigo-50 border border-indigo-300 rounded-lg p-3 mb-2 flex flex-wrap justify-between items-center gap-2"><p class="text-sm">'+esc(r.fromName)+' ने आपको <b>'+esc(r.relation)+'</b> बताया है</p>'+
+   '<div class="flex gap-2"><button onclick="respondRel(\''+r.id+'\',true);closeBizForce()" class="bg-green-600 text-white w-9 h-9 rounded-full font-bold">✔️</button><button onclick="respondRel(\''+r.id+'\',false);closeBizForce()" class="bg-red-500 text-white w-9 h-9 rounded-full font-bold">✖️</button></div></div>'
+  ).join('')):'')+
+  (sent.length?('<p class="font-bold text-gray-600 text-sm mt-3 mb-2">📤 भेजी हुई (waiting)</p>'+sent.map(r=>'<p class="text-sm text-gray-600 mb-1">'+esc(r.toName)+' — '+esc(r.relation)+'</p>').join('')):'')+
+  '<p class="font-bold text-gray-700 text-sm mt-3 mb-2">👨‍👩‍👧 List ('+accepted.length+')</p>'+
+  (accepted.length?accepted.map(r=>'<p class="text-sm text-gray-600 mb-1">'+esc(r.fromPhone===me.phone?(r.toName+' ('+r.relation.split('/')[0].trim()+')'):(r.fromName+' ('+r.relation.split('/')[0].trim()+')'))+'</p>').join(''):'<p class="text-xs text-gray-400">अभी कोई नहीं</p>')+
+  '<button onclick="closeBizForce()" class="w-full mt-4 bg-gray-200 text-gray-700 px-4 py-3 rounded-lg font-bold">बंद करो / Close</button></div>';
+ document.getElementById('bizModal').classList.remove('hidden');
+}
+function myAcc_mitra(){
+ const me = myMember();
+ if(!me){ closeBizForce(); showRegisterPrompt('पहले Register करो।'); return; }
+ const pending = friendsData.filter(f => f.toPhone===me.phone && f.status==='pending');
+ const sent = friendsData.filter(f => f.fromPhone===me.phone && f.status==='pending');
+ const accepted = friendsData.filter(f => f.status==='approved' && (f.fromPhone===me.phone||f.toPhone===me.phone));
+ const box = document.getElementById('bizModalBox');
+ box.innerHTML = '<div class="p-6">'+
+  '<div class="flex justify-between items-center mb-4"><h3 class="text-xl font-bold text-pink-800">🙋 मेरे मित्र</h3><button onclick="closeBizForce()" class="text-gray-500 hover:text-gray-700 text-2xl font-bold">✕</button></div>'+
+  (pending.length?('<p class="font-bold text-pink-700 text-sm mb-2">🔔 Pending Requests</p>'+pending.map(f=>
+   '<div class="bg-pink-50 border border-pink-300 rounded-lg p-3 mb-2 flex flex-wrap justify-between items-center gap-2"><p class="text-sm">'+esc(f.fromName)+' ने Friend Request भेजी है</p>'+
+   '<div class="flex gap-2"><button onclick="respondFriend(\''+f.id+'\',true);closeBizForce()" class="bg-green-600 text-white w-9 h-9 rounded-full font-bold">✔️</button><button onclick="respondFriend(\''+f.id+'\',false);closeBizForce()" class="bg-red-500 text-white w-9 h-9 rounded-full font-bold">✖️</button></div></div>'
+  ).join('')):'')+
+  (sent.length?('<p class="font-bold text-gray-600 text-sm mt-3 mb-2">📤 भेजी हुई (waiting)</p>'+sent.map(f=>'<p class="text-sm text-gray-600 mb-1">'+esc(f.toName)+'</p>').join('')):'')+
+  '<p class="font-bold text-gray-700 text-sm mt-3 mb-2">🙋 List ('+accepted.length+')</p>'+
+  (accepted.length?accepted.map(f=>'<p class="text-sm text-gray-600 mb-1">'+esc(f.fromPhone===me.phone?f.toName:f.fromName)+'</p>').join(''):'<p class="text-xs text-gray-400">अभी कोई नहीं</p>')+
+  '<button onclick="closeBizForce()" class="w-full mt-4 bg-gray-200 text-gray-700 px-4 py-3 rounded-lg font-bold">बंद करो / Close</button></div>';
+ document.getElementById('bizModal').classList.remove('hidden');
 }
 // हर page के नीचे चलती-फिरती business पट्टी (बिना search किए भी दिखे)
 function businessStrip(){
@@ -2316,8 +2453,6 @@ async function saveSiteMeta(){
  siteMeta.shaadiFee = document.getElementById('st_shaadifee').value.trim();
  siteMeta.razorpayShaadi = document.getElementById('st_rz_shaadi').value.trim();
  siteMeta.texts = Object.assign({}, siteMeta.texts, {
-  registerTagline: document.getElementById('tx_regTagline').value.trim(),
-  registerBtn: document.getElementById('tx_regBtn').value.trim(),
   objective: document.getElementById('tx_objective').value.trim(),
   inviteMsg: document.getElementById('tx_invite').value.trim()
  });
@@ -2544,8 +2679,6 @@ function renderAdmin(){
 
   h += '<div class="border-t-2 pt-4"><p class="font-bold text-lg mb-2">📝 Website के मुख्य Text (Site Text Editor)</p><p class="text-xs text-gray-500 mb-3">यहाँ से पूरी website के मुख्य/marketing text खुद बदल सकते हो — बिना developer के</p>'+
   '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
-  '<div><label class="text-xs font-bold">🌟 ऊपर वाली Register Bar — Tagline</label><input id="tx_regTagline" value="'+esc(T('registerTagline','🌟 पाटीदार परिवार का हिस्सा बनो!'))+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
-  '<div><label class="text-xs font-bold">🌟 ऊपर वाली Register Bar — Button Text</label><input id="tx_regBtn" value="'+esc(T('registerBtn','आपकी पहचान, आपका समाज — अभी जुड़ो! →'))+'" class="w-full px-3 py-2 border-2 rounded"></div></div>'+
   '<div class="mt-3"><label class="text-xs font-bold">🎯 हमारा उद्देश्य (Objective popup)</label><textarea id="tx_objective" rows="4" class="w-full px-3 py-2 border-2 rounded">'+esc(T('objective', DEFAULT_OBJECTIVE_TEXT))+'</textarea></div>'+
   '<div class="mt-3"><label class="text-xs font-bold">💬 WhatsApp Invite Message</label><textarea id="tx_invite" rows="3" class="w-full px-3 py-2 border-2 rounded">'+esc(T('inviteMsg', DEFAULT_INVITE_MSG))+'</textarea></div>'+
   '</div>';
@@ -2639,11 +2772,6 @@ function updateUI(){
  const me = loggedIn ? myMember() : null;
  const nameStr = loggedIn ? (me ? (me.name+' '+me.surname) : currentUser) : '';
  document.getElementById('userName').textContent = loggedIn ? '👤 '+nameStr+(isSuperAdmin()?' (Admin)':(subAdminInfo()?' (Sub-Admin)':'')) : '';
- // "REGISTER YOURSELF" bar - सिर्फ तब तक जब तक member नहीं बना
- const rb = document.getElementById('registerBar');
- if(rb) rb.classList.toggle('hidden', !!(loggedIn && me));
- const rbt = document.getElementById('registerBarTagline'); if(rbt) rbt.textContent = T('registerTagline', '🌟 पाटीदार परिवार का हिस्सा बनो!');
- const rbb = document.getElementById('registerBarBtn'); if(rbb) rbb.textContent = T('registerBtn', 'आपकी पहचान, आपका समाज — अभी जुड़ो! →');
  const tb = document.getElementById('tickerBar');
  if(siteMeta.ticker){ tb.classList.remove('hidden'); document.getElementById('tickerText').textContent = '🔔 '+siteMeta.ticker+'  •  🔔 '+siteMeta.ticker; }
  else tb.classList.add('hidden');
