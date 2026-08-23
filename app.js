@@ -13,7 +13,6 @@ const db = firebase.firestore();
 const auth = firebase.auth();
 
 // ================= CONSTANTS =================
-const ADMIN_PASSWORD = "PatidarSamaj@2026"; // backup password
 const ADMIN_PHONE = "8103179376"; // Super Admin ka number - OTP login se auto-admin
 const CONTACT_PHONE = "81031-79376";
 const ADMIN_CONTACTS = ["8103179376"];
@@ -66,24 +65,70 @@ function fmtName(s){ return (s||'').trim().replace(/\s+/g,' ').toLowerCase().rep
 function fmtPhone(s){ return (s||'').replace(/[^0-9]/g,'').slice(0,10); }
 function phoneFromFirebase(fbPhone){ return (fbPhone||'').replace(/[^0-9]/g,'').slice(-10); } // "+919876543210" -> "9876543210"
 
-// ================= ADMIN LOGIN (simple password) =================
+// ================= ADMIN LOGIN (Phone OTP only — Admin/Sub-admin numbers auto-recognized) =================
 function askAdminLogin(){
  if(isAdmin()){
   const at = allowedTabs();
   if(at && at.length) adminTab = at.includes(adminTab) ? adminTab : at[0];
   location.hash='admin'; return;
  }
- if(!currentUser){
-  alert('📱 पहले Register करो / अपना number verify करो।\n(Admin/Sub-admin numbers अपने आप पहचाने जाएंगे)\n\nEmergency: password से भी जा सकते हो - OK दबाओ');
+ openAdminLoginModal();
+}
+// ===== ADMIN LOGIN MODAL (phone + OTP — Admin/Sub-admin numbers auto-recognized) =====
+let _adminConfirmation = null, _adminRecaptcha = null;
+function ensureAdminRecaptcha(){
+ if(!_adminRecaptcha){
+  _adminRecaptcha = new firebase.auth.RecaptchaVerifier('recaptcha-container-adminlogin', { size: 'invisible' });
  }
- const pass = prompt('🔒 Backup Admin Password (सिर्फ emergency):');
- if(pass === null) return;
- if(pass === ADMIN_PASSWORD){
-  localStorage.setItem('psim_admin_ok','true');
-  alert('✅ Super Admin (password backup) login!');
-  updateUI(); location.hash='admin'; return;
+ return _adminRecaptcha;
+}
+function openAdminLoginModal(){
+ const box = document.getElementById('bizModalBox');
+ box.innerHTML = '<div class="p-6">'+
+  '<div class="flex justify-between items-center mb-4"><h3 class="text-xl font-bold text-blue-800">🏛️ Admin Login</h3><button onclick="closeBizForce()" class="text-gray-500 hover:text-gray-700 text-2xl font-bold">✕</button></div>'+
+  '<p class="text-xs text-gray-500 mb-3">Admin/Sub-admin Mobile Number डालो — OTP से सीधे Admin Panel खुलेगा</p>'+
+  '<div class="flex items-center border-2 border-blue-300 rounded overflow-hidden mb-3"><span class="bg-blue-100 px-3 py-2 font-bold text-blue-700 text-sm">+91</span><input type="tel" id="al_phone" maxlength="10" inputmode="numeric" placeholder="Mobile Number" class="flex-1 px-3 py-2 outline-none"></div>'+
+  '<button onclick="sendAdminLoginOtp()" id="alOtpSendBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold">📲 OTP भेजो</button>'+
+  '<div id="alOtpBox" class="hidden mt-3"><input type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" oninput="this.value=this.value.replace(/[^0-9]/g,\'\'); if(this.value.length===6) verifyAdminLoginOtp();" id="alOtpCode" maxlength="6" placeholder="OTP डालें" class="w-full px-3 py-2 border-2 border-blue-300 rounded mb-2 text-center text-2xl font-bold tracking-widest"><button onclick="verifyAdminLoginOtp()" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold">✅ Login करो</button><div id="alResendArea" class="mt-2 text-center"></div></div>'+
+  '<div id="recaptcha-container-adminlogin" class="mt-2 flex justify-center"></div>'+
+  '</div>';
+ document.getElementById('bizModal').classList.remove('hidden');
+}
+async function sendAdminLoginOtp(){
+ const phone = fmtPhone(document.getElementById('al_phone').value);
+ if(phone.length!==10){ alert('❌ सही 10 अंकों का Mobile Number भरो'); return; }
+ if((siteMeta.blocked||[]).includes(phone)){ alert('🚫 यह number block है। Admin से contact: '+CONTACT_PHONE); return; }
+ const btn = document.getElementById('alOtpSendBtn');
+ btn.disabled = true; btn.textContent = '📲 OTP भेज रहे हैं...';
+ try{
+  _adminConfirmation = await auth.signInWithPhoneNumber('+91'+phone, ensureAdminRecaptcha());
+  document.getElementById('alOtpBox').classList.remove('hidden');
+  tryWebOtpAutofillInto('alOtpCode', verifyAdminLoginOtp);
+  startOtpResendCooldown('admin', 'alResendArea', 30, 'sendAdminLoginOtp');
+ } catch(err){
+  alert('❌ OTP भेजने में समस्या: '+err.message);
  }
- alert('❌ गलत Password! Sub-admins को password नहीं - अपने NUMBER से OTP login करो।');
+ btn.disabled = false; btn.textContent = '📲 OTP भेजो';
+}
+async function verifyAdminLoginOtp(){
+ const code = document.getElementById('alOtpCode').value.trim();
+ if(code.length!==6){ alert('❌ 6 अंकों का OTP डालो'); return; }
+ if(!_adminConfirmation){ alert('❌ पहले OTP भेजो'); return; }
+ let verifiedPhone;
+ try{ const res = await _adminConfirmation.confirm(code); verifiedPhone = phoneFromFirebase(res.user.phoneNumber); }
+ catch(e){ alert('❌ गलत OTP - दोबारा देखो'); return; }
+ _adminConfirmation = null;
+ currentUser = verifiedPhone;
+ localStorage.setItem('psLastPhone', verifiedPhone);
+ closeBizForce();
+ if(isAdmin()){
+  const at = allowedTabs();
+  if(at && at.length) adminTab = at.includes(adminTab) ? adminTab : at[0];
+  location.hash = 'admin';
+ } else {
+  alert('❌ यह number Admin/Sub-admin नहीं है।\nआप सामान्य member की तरह login हो गए।');
+  goPage('community');
+ }
 }
 function doLogout(){
  if(!confirm('Logout करें? (दोबारा OTP लगेगा)')) return;
@@ -1699,12 +1744,12 @@ async function submitProperty(){
  const rent=document.getElementById('pp_rent').value.trim();
  const bhk=document.getElementById('pp_bhk').value.trim();
  const desc=document.getElementById('pp_desc').value.trim();
- const pic=document.getElementById('pp_pic').value;
+ const pics=[0,1,2,3,4].map(i=>document.getElementById('pp_pic_'+i).value).filter(Boolean);
  if(!type||!nm||!ph||!area){ alert('❌ Type, Name, Phone, Area जरूरी!'); return; }
  const code = randCode();
  busy(true);
  const kind = document.getElementById('pp_kind').value;
- await db.collection('property').add({kind,type,name:nm,phone:ph,area,rent,bhk,description:desc,pic,code,status:'pending',active:true,createdAt:today()});
+ await db.collection('property').add({kind,type,name:nm,phone:ph,area,rent,bhk,description:desc,pics,pic:pics[0]||'',code,status:'pending',active:true,createdAt:today()});
  busy(false); showPropForm=false;
  alert('✅ Listing submit हो गई!\\n\\n🔑 यह CODE संभाल के रखो: '+code+'\\n(इससे बाद में listing ON/OFF कर पाओगे)\\n\\nAdmin approval के बाद live होगी।');
  renderApp();
@@ -1720,9 +1765,17 @@ async function toggleMyProperty(){
  alert(p.active!==false ? '✅ Listing अब INACTIVE कर दी गई' : '✅ Listing अब ACTIVE कर दी गई');
  showManageProp=false; renderApp();
 }
+function propGallery(p){
+ const pics = (p.pics && p.pics.length) ? p.pics : (p.pic ? [p.pic] : []);
+ if(!pics.length) return '';
+ if(pics.length===1) return '<img src="'+pics[0]+'" class="w-full h-44 object-cover">';
+ return '<div class="flex overflow-x-auto snap-x snap-mandatory h-44" style="scroll-snap-type:x mandatory;">'+
+  pics.map(u=>'<img src="'+u+'" class="w-full h-44 object-cover flex-shrink-0" style="scroll-snap-align:start;">').join('')+
+  '</div><p class="text-center text-[10px] text-gray-400 py-0.5">👉 स्वाइप करो — '+pics.length+' फोटो</p>';
+}
 function propCard(p){
  return '<div class="bg-white border-2 border-purple-300 rounded-lg overflow-hidden shadow-md hover:shadow-lg">'+
- (p.pic?'<img src="'+p.pic+'" class="w-full h-44 object-cover">':'')+
+ propGallery(p)+
  '<div class="p-4"><p class="inline-block bg-purple-200 text-purple-900 px-2 py-1 rounded text-xs font-bold mb-2">'+(p.kind==='dukan'?'🏪 दुकान':'🏠 मकान')+' - '+(p.type==='rent'?'किराए पर उपलब्ध':'चाहिए')+'</p>'+
  '<p class="font-bold text-lg">'+esc(p.name)+'</p>'+
  (p.rent?'<p class="text-xl font-bold text-green-600">₹'+esc(p.rent)+'/माह</p>':'')+
@@ -1778,8 +1831,10 @@ function renderPropertyPage(){
   '<div><label class="text-xs font-bold">Area / इलाका (Indore) *</label><input id="pp_area" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">Rent (₹/माह)</label><input id="pp_rent" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">BHK / Rooms</label><input id="pp_bhk" placeholder="जैसे: 2 BHK" class="w-full px-3 py-2 border-2 rounded"></div>'+
-  '<div><label class="text-xs font-bold">Photo 📷</label><input type="hidden" id="pp_pic"><button type="button" onclick="openCloudUpload(\'pp_pic\')" class="w-full bg-blue-600 text-white px-3 py-2 rounded font-bold text-sm">📷 Upload</button><img id="pp_pic_prev" class="hidden mt-2 h-24 object-cover rounded border-2"></div>'+
   '<div class="md:col-span-2"><label class="text-xs font-bold">Details</label><textarea id="pp_desc" rows="2" class="w-full px-3 py-2 border-2 rounded"></textarea></div></div>';
+  h += '<div class="mt-4"><label class="text-xs font-bold">📷 Photos (ज्यादा से ज्यादा 5)</label><div class="grid grid-cols-3 sm:grid-cols-5 gap-2 mt-1">'+
+  [0,1,2,3,4].map(i=>'<div><input type="hidden" id="pp_pic_'+i+'"><button type="button" onclick="openCloudUpload(\'pp_pic_'+i+'\')" class="w-full bg-blue-600 text-white px-2 py-2 rounded font-bold text-xs">📷 '+(i+1)+'</button><img id="pp_pic_'+i+'_prev" class="hidden mt-1 h-16 w-full object-cover rounded border-2"></div>').join('')+
+  '</div></div>';
   h += '<div class="flex gap-3 mt-4"><button onclick="submitProperty()" class="bg-purple-600 text-white px-8 py-3 rounded font-bold">✅ SUBMIT</button><button onclick="showPropForm=false;renderApp()" class="bg-gray-400 text-white px-8 py-3 rounded font-bold">CANCEL</button></div></div>';
  }
 
@@ -1886,16 +1941,17 @@ async function submitJob(){
 }
 function renderRozgaarPage(){
  const all = jobsData.filter(j=>j.status==='approved');
- const list = all.filter(j => (j.kind||'dena') === jobKind);
+ const list = all.filter(j => (j.kind||'dena') === jobKind || (jobKind==='freelance_dena' && j.kind==='freelance'));
  let h = '<h2 class="text-3xl font-bold mb-2">💼 ROZGAAR / रोज़गार</h2>';
  h += '<div class="flex flex-wrap gap-2 mb-4">'+
  '<button onclick="jobKind=\'dena\';renderApp()" class="px-4 py-2 rounded-lg font-bold text-sm '+(jobKind==='dena'?'bg-green-600 text-white':'bg-gray-200')+'">💼 रोज़गार देना है ('+all.filter(j=>(j.kind||'dena')==='dena').length+')</button>'+
  '<button onclick="jobKind=\'lena\';renderApp()" class="px-4 py-2 rounded-lg font-bold text-sm '+(jobKind==='lena'?'bg-green-600 text-white':'bg-gray-200')+'">🙋 रोज़गार चाहिए ('+all.filter(j=>j.kind==='lena').length+')</button>'+
- '<button onclick="jobKind=\'freelance\';renderApp()" class="px-4 py-2 rounded-lg font-bold text-sm '+(jobKind==='freelance'?'bg-green-600 text-white':'bg-gray-200')+'">💻 Freelancing ('+all.filter(j=>j.kind==='freelance').length+')</button></div>';
+ '<button onclick="jobKind=\'freelance_dena\';renderApp()" class="px-4 py-2 rounded-lg font-bold text-sm '+(jobKind==='freelance_dena'?'bg-green-600 text-white':'bg-gray-200')+'">💻 Freelancing काम देना है ('+all.filter(j=>j.kind==='freelance_dena'||j.kind==='freelance').length+')</button>'+
+ '<button onclick="jobKind=\'freelance_lena\';renderApp()" class="px-4 py-2 rounded-lg font-bold text-sm '+(jobKind==='freelance_lena'?'bg-green-600 text-white':'bg-gray-200')+'">🙋‍♂️ Freelancing काम चाहिए ('+all.filter(j=>j.kind==='freelance_lena').length+')</button></div>';
  h += '<button onclick="showJobForm=!showJobForm;renderApp()" class="mb-4 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold">➕ Post करो</button>';
  if(showJobForm){
   h += '<div class="bg-green-50 border-2 border-green-400 rounded-lg p-5 mb-6"><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
-  '<div><label class="text-xs font-bold">किस type का? *</label><select id="jb_kind" class="w-full px-3 py-2 border-2 rounded"><option value="dena">💼 रोज़गार देना है (job available)</option><option value="lena">🙋 रोज़गार चाहिए (job needed)</option><option value="freelance">💻 Freelancing काम</option></select></div>'+
+  '<div><label class="text-xs font-bold">किस type का? *</label><select id="jb_kind" class="w-full px-3 py-2 border-2 rounded"><option value="dena">💼 रोज़गार देना है (job available)</option><option value="lena">🙋 रोज़गार चाहिए (job needed)</option><option value="freelance_dena">💻 Freelancing काम देना है (hiring)</option><option value="freelance_lena">🙋‍♂️ Freelancing काम चाहिए (looking for work)</option></select></div>'+
   '<div><label class="text-xs font-bold">Job Title *</label><input id="jb_title" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">Company</label><input id="jb_company" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">Place</label><input id="jb_place" class="w-full px-3 py-2 border-2 rounded"></div>'+

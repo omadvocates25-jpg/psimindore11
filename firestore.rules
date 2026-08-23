@@ -1,0 +1,135 @@
+rules_version = '2';
+
+// ============================================================================
+// PSIM (Patidar Samaj Indore Mahanagar) — Firestore Security Rules
+//
+// यह file इस repo का हिस्सा है सिर्फ documentation/reference के लिए — Firebase
+// खुद इसे यहाँ से नहीं पढ़ता। Deploy करने के लिए इसे copy करके
+// Firebase Console → Firestore Database → Rules tab में paste करके "Publish"
+// दबाना है (ya "firebase deploy --only firestore:rules" Firebase CLI se).
+//
+// Design:
+//  - Guest browsing zaroori hai (Home/News/Pratibha/Events/Gallery/Rozgaar/OLX) —
+//    isliye kai collections public-read hain.
+//  - Members-only pages (Community/Business/Garba/Cricket/Blood/Property/Shaadi)
+//    ke data ko sirf signed-in (OTP-verified) users padh sakte hain.
+//  - Koi bhi apna khud ka data likh sakta hai, lekin "approved" status sirf
+//    Admin de sakta hai — normal member khud ko approve nahi kar sakta.
+//  - Sensitive/admin-only collections (suggestions, team_join) sirf Admin padh
+//    sakta hai.
+// ============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- Helpers ----
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.phone_number != null;
+    }
+    function isOwnPhone(phone) {
+      // Firebase phone auth token "+919876543210" जैसे रखता है — हमारा data 10-digit रखता है,
+      // isliye .replace() jaisi risky function use kiye bina सीधे concatenate करके compare करते हैं
+      return isSignedIn() && request.auth.token.phone_number == ('+91' + phone);
+    }
+    function isAdmin() {
+      return isOwnPhone('8103179376'); // ADMIN_PHONE — app.js से match होना चाहिए
+    }
+
+    // ---- members (Community directory) ----
+    match /members/{docId} {
+      allow read: if true; // guest browsing ke liye khula (privacy-filtering client-side hoti hai)
+      allow create: if isOwnPhone(request.resource.data.phone)
+                    && request.resource.data.status == 'pending'; // koi khud ko approved nahi bana sakta
+      allow update: if isAdmin()
+                    || (isOwnPhone(resource.data.phone)
+                        && request.resource.data.phone == resource.data.phone // phone badal nahi sakte
+                        && request.resource.data.status == 'pending'); // edit karne pe dobara pending
+      allow delete: if isAdmin() || isOwnPhone(resource.data.phone);
+    }
+
+    // ---- relatives / friends (connection requests) ----
+    match /relatives/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isOwnPhone(request.resource.data.fromPhone);
+      allow update: if isAdmin() || isOwnPhone(resource.data.toPhone); // accept sirf jisko request mili
+      allow delete: if isAdmin() || isOwnPhone(resource.data.toPhone) || isOwnPhone(resource.data.fromPhone);
+    }
+    match /friends/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isOwnPhone(request.resource.data.fromPhone);
+      allow update: if isAdmin() || isOwnPhone(resource.data.toPhone);
+      allow delete: if isAdmin() || isOwnPhone(resource.data.toPhone) || isOwnPhone(resource.data.fromPhone);
+    }
+
+    // ---- Open-to-guest content (public read; members submit, admin approves) ----
+    match /news/{docId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.status == 'pending';
+      allow update, delete: if isAdmin();
+    }
+    match /pratibha/{docId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.status == 'pending';
+      allow update, delete: if isAdmin();
+    }
+    match /jobs/{docId} { // Rozgaar — open to all, no login needed to post
+      allow read: if true;
+      allow create: if request.resource.data.status == 'pending';
+      allow update, delete: if isAdmin();
+    }
+    match /olditems/{docId} { // अपना OLX — members-only posting
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.status == 'pending';
+      allow update, delete: if isAdmin();
+    }
+    match /events/{docId} { allow read: if true; allow write: if isAdmin(); }
+    match /photos/{docId} { allow read: if true; allow write: if isAdmin(); }
+    match /committee/{docId} { allow read: if true; allow write: if isAdmin(); }
+
+    // ---- Members-only pages (locked in the app) ----
+    match /property/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isOwnPhone(request.resource.data.phone) && request.resource.data.status == 'pending';
+      allow update: if isAdmin() || isOwnPhone(resource.data.phone); // apni listing on/off
+      allow delete: if isAdmin();
+    }
+    match /shaadi/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin(); // profiles सिर्फ Admin add करता है
+    }
+    match /blood/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    match /cricket/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isOwnPhone(request.resource.data.phone);
+      allow update, delete: if isAdmin();
+    }
+    match /garba_regs/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isOwnPhone(request.resource.data.phone) && request.resource.data.status == 'pending';
+      allow update, delete: if isAdmin();
+    }
+    match /garba_team/{docId} { allow read: if isSignedIn(); allow write: if isAdmin(); }
+    match /garba_coords/{docId} { allow read: if isSignedIn(); allow write: if isAdmin(); }
+
+    // ---- Admin-only visibility ----
+    match /suggestions/{docId} {
+      allow read: if isAdmin();
+      allow create: if true; // login zaroori nahi — koi bhi सलाह दे सकता है
+      allow update, delete: if isAdmin();
+    }
+    match /team_join/{docId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    // ---- Site-wide settings (ticker, About Us, ad slots, sub-admins list) ----
+    match /meta/{docId} {
+      allow read: if true; // site render karne ke liye guests ko bhi chahiye
+      allow write: if isAdmin();
+    }
+  }
+}
