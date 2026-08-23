@@ -44,7 +44,7 @@ let friendSearchQ = '';
 let whomQuery = '';
 
 let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], garbaCoords=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[], teamJoinData=[];
-let siteMeta = { ticker:'', aboutUs:'', fb:'', insta:'', youtube:'', committee:'', expiryDays:30, propertyValidityDays:365, propertyFee:'500', razorpayButtonId:'', razorpayMakan:'', razorpayDukan:'', shaadiFee:'500', shaadiValidityDays:180, razorpayShaadi:'', jobsFee:'100', razorpayJobs:'', bizPromoFee:'100', bizPromoValidityDays:30, razorpayBizPromo:'', blocked:[], garbaFormOpen:true, ads:[{},{},{},{},{}], subAdmins:[], texts:{} };
+let siteMeta = { ticker:'', aboutUs:'', fb:'', insta:'', youtube:'', committee:'', expiryDays:30, propertyValidityDays:365, propertyFeeRent:'500', propertyFeeWanted:'11', razorpayPropRent:'', razorpayPropWanted:'', shaadiFee:'500', shaadiValidityDays:180, razorpayShaadi:'', jobsFeeSeeker:'11', razorpayJobsSeeker:'', bizPromoFee:'100', bizPromoValidityDays:30, razorpayBizPromo:'', blocked:[], garbaFormOpen:true, ads:[{},{},{},{},{}], subAdmins:[], texts:{} };
 
 function isSuperAdmin(){ return currentUser === ADMIN_PHONE || localStorage.getItem('psim_admin_ok') === 'true'; }
 function subAdminInfo(){ if(!currentUser) return null; return (siteMeta.subAdmins||[]).find(s => fmtPhone(s.phone) === currentUser) || null; }
@@ -69,14 +69,17 @@ function referrerNameOf(phone){
  const m = findApprovedByPhone(phone);
  return m ? (m.name+' '+m.surname) : phone;
 }
+const JOB_SEEKER_KINDS = ['lena', 'freelance_lena']; // इनके लिए ही fee लगता है, "देना है" वाले हमेशा free
+function feeForProperty(p){ return parseFloat(p.type==='rent' ? siteMeta.propertyFeeRent : siteMeta.propertyFeeWanted)||0; }
+function feeForJob(j){ return JOB_SEEKER_KINDS.includes(j.kind) ? (parseFloat(siteMeta.jobsFeeSeeker)||0) : 0; }
 function computeReferralLeaderboard(){
  const rows = [];
  const push = (list, feeKey) => {
   const fee = parseFloat(siteMeta[feeKey])||0;
   (list||[]).forEach(item => { if(item.referredBy) rows.push({phone:item.referredBy, amount:fee}); });
  };
- push(propertyData.filter(p=>p.status==='approved'), 'propertyFee');
- push(jobsData.filter(j=>j.status==='approved'), 'jobsFee');
+ propertyData.filter(p=>p.status==='approved').forEach(p => { if(p.referredBy) rows.push({phone:p.referredBy, amount:feeForProperty(p)}); });
+ jobsData.filter(j=>j.status==='approved').forEach(j => { if(j.referredBy) rows.push({phone:j.referredBy, amount:feeForJob(j)}); });
  push(shaadiData.filter(s=>s.status==='approved'), 'shaadiFee');
  membersData.filter(m=>m.biz_promo_status==='active').forEach(m => {
   if(m.biz_promo_referredBy) rows.push({phone:m.biz_promo_referredBy, amount:parseFloat(siteMeta.bizPromoFee)||0});
@@ -1868,22 +1871,26 @@ function renderPropertyPage(){
  const nMakan = all.filter(p=>(p.kind||'makan')==='makan').length;
  const nDukan = all.filter(p=>p.kind==='dukan').length;
  const isMakan = propKind==='makan';
- const fee = siteMeta.propertyFee||'500';
+ const feeRent = siteMeta.propertyFeeRent||'500', feeWanted = siteMeta.propertyFeeWanted||'11';
  let h = '<h2 class="text-3xl font-bold mb-2">🏠 मकानमालिक - किरायेदार / दुकान</h2>';
  h += '<p class="text-gray-500 mb-4">दो अलग portal — जो चाहिए उस पर click करो</p>';
  h += '<div class="grid grid-cols-2 gap-3 mb-5">'+
  '<button onclick="setPropKind(\'makan\')" class="px-4 py-5 rounded-xl font-bold text-center '+(isMakan?'bg-purple-600 text-white shadow-lg':'bg-white border-2 border-purple-300 text-purple-700')+'"><p class="text-3xl mb-1">🏠</p><p>मकान</p><p class="text-xs font-normal">House / किराया ('+nMakan+')</p></button>'+
  '<button onclick="setPropKind(\'dukan\')" class="px-4 py-5 rounded-xl font-bold text-center '+(!isMakan?'bg-purple-600 text-white shadow-lg':'bg-white border-2 border-purple-300 text-purple-700')+'"><p class="text-3xl mb-1">🏪</p><p>दुकान</p><p class="text-xs font-normal">Shop / किराया ('+nDukan+')</p></button></div>';
 
- // ===== JOIN US + ₹Fee + Razorpay (हर portal के लिए अलग) =====
+ // ===== JOIN US + ₹Fee + Razorpay (देने वाले / चाहिए वाले — दो अलग fee) =====
  h += '<div class="bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl shadow-lg p-6 mb-6 text-center">'+
   '<h3 class="text-2xl font-bold mb-1">🤝 JOIN US — '+(isMakan?'🏠 मकान':'🏪 दुकान')+' Listing</h3>'+
-  '<p class="text-purple-100 mb-3">अपना '+(isMakan?'मकान':'दुकान')+' यहाँ list करो — पूरे समाज तक पहुँचेगा</p>'+
-  '<p class="text-3xl font-bold mb-3">₹'+esc(fee)+' <span class="text-base font-normal">/ साल</span></p>'+
-  '<div id="razorpayBtnContainer" class="flex justify-center mb-3"></div>'+
-  (((isMakan?siteMeta.razorpayMakan:siteMeta.razorpayDukan)||siteMeta.razorpayButtonId) ? '' :
-    '<div class="bg-white/20 rounded-lg p-3 text-sm mb-3">💳 Payment button जल्द चालू होगा — तब तक Admin से बात करो: '+CONTACT_PHONE+'</div>')+
-  '<button onclick="showPropForm=!showPropForm;renderApp()" class="bg-white text-purple-700 px-8 py-3 rounded-lg font-bold text-lg">➕ Payment के बाद यहाँ Listing डालो</button>'+
+  '<p class="text-purple-100 mb-4">अपना '+(isMakan?'मकान':'दुकान')+' यहाँ list करो — पूरे समाज तक पहुँचेगा</p>'+
+  '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+  '<div class="bg-white/10 rounded-lg p-4"><p class="font-bold mb-1">🔑 किराए पर देना है</p><p class="text-2xl font-bold mb-2">₹'+esc(feeRent)+' <span class="text-sm font-normal">/ साल</span></p>'+
+   (siteMeta.razorpayPropRent?'<div id="razorpayPropRentBox" class="flex justify-center"></div>':'<p class="text-xs text-purple-100">Payment button जल्द चालू होगा — तब तक Admin से बात करो: '+CONTACT_PHONE+'</p>')+
+  '</div>'+
+  '<div class="bg-white/10 rounded-lg p-4"><p class="font-bold mb-1">🙋 किराए पर चाहिए</p><p class="text-2xl font-bold mb-2">₹'+esc(feeWanted)+' <span class="text-sm font-normal">/ साल</span></p>'+
+   (siteMeta.razorpayPropWanted?'<div id="razorpayPropWantedBox" class="flex justify-center"></div>':'<p class="text-xs text-purple-100">Payment button जल्द चालू होगा — तब तक Admin से बात करो: '+CONTACT_PHONE+'</p>')+
+  '</div></div>'+
+  '<p class="text-xs text-purple-200 mt-3">💡 किराए पर चाहिए वालों के लिए fee छोटा रखा है — सिर्फ faltu/spam listings रोकने के लिए</p>'+
+  '<button onclick="showPropForm=!showPropForm;renderApp()" class="mt-4 bg-white text-purple-700 px-8 py-3 rounded-lg font-bold text-lg">➕ Payment के बाद यहाँ Listing डालो</button>'+
   '</div>';
  h += '<div class="flex flex-wrap gap-3 mb-6">';
  h += '<button onclick="showManageProp=!showManageProp;renderApp()" class="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-bold">🔑 अपनी Listing Manage करो</button>';
@@ -1898,7 +1905,7 @@ function renderPropertyPage(){
 
  if(showPropForm){
   h += '<div class="bg-purple-50 border-2 border-purple-400 rounded-lg p-6 mb-8"><h3 class="text-xl font-bold mb-4">➕ ADD LISTING</h3>';
-  h += '<div class="bg-yellow-100 border border-yellow-400 rounded p-3 mb-4 text-sm">💳 Fee: ₹'+(siteMeta.propertyFee||'500')+'/साल — Payment ऊपर Razorpay से करो, फिर यह form भरो</div>';
+  h += '<div class="bg-yellow-100 border border-yellow-400 rounded p-3 mb-4 text-sm">💳 Fee: किराए पर देना है = ₹'+esc(feeRent)+'/साल | किराए पर चाहिए = ₹'+esc(feeWanted)+'/साल — Payment ऊपर Razorpay से करो, फिर यह form भरो</div>';
   h += '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
   '<div><label class="text-xs font-bold">क्या? *</label><select id="pp_kind" class="w-full px-3 py-2 border-2 rounded"><option value="makan" '+(propKind==='makan'?'selected':'')+'>🏠 मकान</option><option value="dukan" '+(propKind==='dukan'?'selected':'')+'>🏪 दुकान</option></select></div>'+
   '<div><label class="text-xs font-bold">Type *</label><select id="pp_type" class="w-full px-3 py-2 border-2 rounded"><option value="rent">किराए पर देना है</option><option value="wanted">मुझे किराए पर चाहिए</option></select></div>'+
@@ -2025,9 +2032,9 @@ function renderRozgaarPage(){
  '<button onclick="jobKind=\'lena\';renderApp()" class="px-4 py-2 rounded-lg font-bold text-sm '+(jobKind==='lena'?'bg-green-600 text-white':'bg-gray-200')+'">🙋 रोज़गार चाहिए ('+all.filter(j=>j.kind==='lena').length+')</button>'+
  '<button onclick="jobKind=\'freelance_dena\';renderApp()" class="px-4 py-2 rounded-lg font-bold text-sm '+(jobKind==='freelance_dena'?'bg-green-600 text-white':'bg-gray-200')+'">💻 Freelancing काम देना है ('+all.filter(j=>j.kind==='freelance_dena'||j.kind==='freelance').length+')</button>'+
  '<button onclick="jobKind=\'freelance_lena\';renderApp()" class="px-4 py-2 rounded-lg font-bold text-sm '+(jobKind==='freelance_lena'?'bg-green-600 text-white':'bg-gray-200')+'">🙋‍♂️ Freelancing काम चाहिए ('+all.filter(j=>j.kind==='freelance_lena').length+')</button></div>';
- const jobsFee = siteMeta.jobsFee||'100';
- h += '<div class="bg-yellow-100 border border-yellow-400 rounded p-3 mb-4 text-sm">💳 Post Fee: ₹'+esc(jobsFee)+' — Payment करके नीचे form भरो</div>';
- if(siteMeta.razorpayJobs) h += '<div id="razorpayJobsBox" class="flex justify-center mb-4"></div>';
+ const jobsFeeSeeker = siteMeta.jobsFeeSeeker||'11';
+ h += '<div class="bg-yellow-100 border border-yellow-400 rounded p-3 mb-4 text-sm">💼 रोज़गार/Freelancing <b>देना है</b> — बिल्कुल FREE 🆓<br>🙋 रोज़गार/Freelancing <b>चाहिए</b> — ₹'+esc(jobsFeeSeeker)+' (सिर्फ faltu/spam posts रोकने के लिए)</div>';
+ if(siteMeta.razorpayJobsSeeker) h += '<p class="text-xs text-gray-500 text-center mb-1">👇 सिर्फ "चाहिए" वाले ही pay करें</p><div id="razorpayJobsSeekerBox" class="flex justify-center mb-4"></div>';
  h += '<button onclick="showJobForm=!showJobForm;renderApp()" class="mb-4 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold">➕ Post करो</button>';
  if(showJobForm){
   h += '<div class="bg-green-50 border-2 border-green-400 rounded-lg p-5 mb-6"><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
@@ -2527,15 +2534,15 @@ async function saveSiteMeta(){
  siteMeta.youtube = document.getElementById('st_yt').value.trim();
  siteMeta.expiryDays = parseInt(document.getElementById('st_expiry').value)||30;
  siteMeta.propertyValidityDays = parseInt(document.getElementById('st_propdays').value)||365;
- siteMeta.propertyFee = document.getElementById('st_propfee').value.trim()||'500';
- siteMeta.razorpayButtonId = document.getElementById('st_razorpay').value.trim();
- siteMeta.razorpayMakan = document.getElementById('st_rz_makan').value.trim();
- siteMeta.razorpayDukan = document.getElementById('st_rz_dukan').value.trim();
+ siteMeta.propertyFeeRent = document.getElementById('st_propfeerent').value.trim()||'500';
+ siteMeta.propertyFeeWanted = document.getElementById('st_propfeewanted').value.trim()||'11';
+ siteMeta.razorpayPropRent = document.getElementById('st_rz_proprent').value.trim();
+ siteMeta.razorpayPropWanted = document.getElementById('st_rz_propwanted').value.trim();
  siteMeta.shaadiFee = document.getElementById('st_shaadifee').value.trim();
  siteMeta.shaadiValidityDays = parseInt(document.getElementById('st_shaadidays').value)||180;
  siteMeta.razorpayShaadi = document.getElementById('st_rz_shaadi').value.trim();
- siteMeta.jobsFee = document.getElementById('st_jobsfee').value.trim()||'100';
- siteMeta.razorpayJobs = document.getElementById('st_rz_jobs').value.trim();
+ siteMeta.jobsFeeSeeker = document.getElementById('st_jobsfeeseeker').value.trim()||'11';
+ siteMeta.razorpayJobsSeeker = document.getElementById('st_rz_jobsseeker').value.trim();
  siteMeta.bizPromoFee = document.getElementById('st_bizpromofee').value.trim()||'100';
  siteMeta.bizPromoValidityDays = parseInt(document.getElementById('st_bizpromodays').value)||30;
  siteMeta.razorpayBizPromo = document.getElementById('st_rz_bizpromo').value.trim();
@@ -2768,18 +2775,22 @@ function renderAdmin(){
   '<div class="grid grid-cols-1 md:grid-cols-3 gap-4">'+
   '<div><label class="text-xs font-bold">⏰ पुराना सामान expiry (दिन)</label><input type="number" id="st_expiry" value="'+(siteMeta.expiryDays||30)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">⏰ Property validity (दिन)</label><input type="number" id="st_propdays" value="'+(siteMeta.propertyValidityDays||365)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
-  '<div><label class="text-xs font-bold">💰 Property Fee (₹)</label><input id="st_propfee" value="'+esc(siteMeta.propertyFee||'500')+'" class="w-full px-3 py-2 border-2 rounded"></div></div>'+
-  '<div><label class="text-xs font-bold">💳 Razorpay Button ID (Default / सभी के लिए)</label><input id="st_razorpay" value="'+esc(siteMeta.razorpayButtonId||'')+'" placeholder="pl_XXXXXXXXXXXXXX" class="w-full px-3 py-2 border-2 rounded"><p class="text-[10px] text-gray-400 mt-1">Razorpay Dashboard → Payment Button बनाओ → ID यहाँ paste करो</p></div>'+
+  '<div></div></div>'+
+  '<div class="border-t-2 pt-4 mt-2"><p class="font-bold text-lg mb-3">🏠 Property — देने वाले / चाहिए वाले अलग Fee</p><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+  '<div><label class="text-xs font-bold">🔑 किराए पर देना है — Fee (₹)</label><input id="st_propfeerent" value="'+esc(siteMeta.propertyFeeRent||'500')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">🔑 देना है — Razorpay Button ID</label><input id="st_rz_proprent" value="'+esc(siteMeta.razorpayPropRent||'')+'" placeholder="pl_XXXX" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">🙋 किराए पर चाहिए — Fee (₹, spam रोकने के लिए छोटा रखो)</label><input id="st_propfeewanted" value="'+esc(siteMeta.propertyFeeWanted||'11')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">🙋 चाहिए — Razorpay Button ID</label><input id="st_rz_propwanted" value="'+esc(siteMeta.razorpayPropWanted||'')+'" placeholder="pl_XXXX" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '</div></div>'+
   '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
-  '<div><label class="text-xs font-bold">🏠 मकान Portal — Razorpay Button ID</label><input id="st_rz_makan" value="'+esc(siteMeta.razorpayMakan||'')+'" placeholder="pl_XXXX (खाली = default)" class="w-full px-3 py-2 border-2 rounded"></div>'+
-  '<div><label class="text-xs font-bold">🏪 दुकान Portal — Razorpay Button ID</label><input id="st_rz_dukan" value="'+esc(siteMeta.razorpayDukan||'')+'" placeholder="pl_XXXX (खाली = default)" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">💍 Shaadi Profile Fee (₹)</label><input id="st_shaadifee" value="'+esc(siteMeta.shaadiFee||'500')+'" placeholder="जैसे 500" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">💍 Shaadi — Razorpay Button ID</label><input id="st_rz_shaadi" value="'+esc(siteMeta.razorpayShaadi||'')+'" placeholder="pl_XXXX" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">💍 Shaadi Validity (दिन)</label><input type="number" id="st_shaadidays" value="'+(siteMeta.shaadiValidityDays||180)+'" class="w-full px-3 py-2 border-2 rounded"></div></div>'+
-  '<div class="border-t-2 pt-4 mt-2"><p class="font-bold text-lg mb-3">💰 Rozgaar / Business Promotion — Fee Settings</p><div class="grid grid-cols-1 md:grid-cols-3 gap-4">'+
-  '<div><label class="text-xs font-bold">💼 Rozgaar Post Fee (₹)</label><input id="st_jobsfee" value="'+esc(siteMeta.jobsFee||'100')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
-  '<div><label class="text-xs font-bold">💼 Rozgaar — Razorpay Button ID</label><input id="st_rz_jobs" value="'+esc(siteMeta.razorpayJobs||'')+'" placeholder="pl_XXXX" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div class="border-t-2 pt-4 mt-2"><p class="font-bold text-lg mb-1">💼 Rozgaar (देना है FREE, चाहिए वालों का spam-रोकने Fee) / 🚀 Business Promotion</p><div class="grid grid-cols-1 md:grid-cols-3 gap-4">'+
+  '<div><label class="text-xs font-bold">🙋 रोज़गार चाहिए — Fee (₹)</label><input id="st_jobsfeeseeker" value="'+esc(siteMeta.jobsFeeSeeker||'11')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">🙋 चाहिए — Razorpay Button ID</label><input id="st_rz_jobsseeker" value="'+esc(siteMeta.razorpayJobsSeeker||'')+'" placeholder="pl_XXXX" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div></div>'+
+  '<p class="text-xs text-gray-500 md:col-span-3">💼 "रोज़गार/Freelancing देना है" हमेशा FREE रहेगा — koi fee/button नहीं है</p>'+
   '<div><label class="text-xs font-bold">🚀 Business Promotion Fee (₹)</label><input id="st_bizpromofee" value="'+esc(siteMeta.bizPromoFee||'100')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">🚀 Business Promotion Validity (दिन)</label><input type="number" id="st_bizpromodays" value="'+(siteMeta.bizPromoValidityDays||30)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">🚀 Business Promotion — Razorpay Button ID</label><input id="st_rz_bizpromo" value="'+esc(siteMeta.razorpayBizPromo||'')+'" placeholder="pl_XXXX" class="w-full px-3 py-2 border-2 rounded"></div>'+
@@ -2863,11 +2874,11 @@ function renderApp(){
  renderRandProfile();
  if(currentPage==='community') renderMemberGrid();
  if(currentPage==='property'){
-  const rid = (propKind==='makan' ? siteMeta.razorpayMakan : siteMeta.razorpayDukan) || siteMeta.razorpayButtonId;
-  if(rid) setTimeout(()=>mountRazorpayButton(rid,'razorpayBtnContainer'),30);
+  if(siteMeta.razorpayPropRent) setTimeout(()=>mountRazorpayButton(siteMeta.razorpayPropRent,'razorpayPropRentBox'),30);
+  if(siteMeta.razorpayPropWanted) setTimeout(()=>mountRazorpayButton(siteMeta.razorpayPropWanted,'razorpayPropWantedBox'),30);
  }
  if(currentPage==='shaadi' && siteMeta.razorpayShaadi) setTimeout(()=>mountRazorpayButton(siteMeta.razorpayShaadi,'razorpayShaadiBox'),30);
- if(currentPage==='rozgaar' && siteMeta.razorpayJobs) setTimeout(()=>mountRazorpayButton(siteMeta.razorpayJobs,'razorpayJobsBox'),30);
+ if(currentPage==='rozgaar' && siteMeta.razorpayJobsSeeker) setTimeout(()=>mountRazorpayButton(siteMeta.razorpayJobsSeeker,'razorpayJobsSeekerBox'),30);
  setTimeout(()=>{
   document.querySelectorAll('select[id$="gender"]').forEach(sel=>{
    const prefix = sel.id.slice(0,-6);
