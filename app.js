@@ -43,8 +43,8 @@ let relSearchQ = '';
 let friendSearchQ = '';
 let whomQuery = '';
 
-let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], garbaCoords=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[], teamJoinData=[];
-let siteMeta = { ticker:'', aboutUs:'', fb:'', insta:'', youtube:'', committee:'', expiryDays:30, propertyValidityDays:365, propertyFee:'500', razorpayButtonId:'', razorpayMakan:'', razorpayDukan:'', shaadiFee:'500', shaadiValidityDays:180, razorpayShaadi:'', jobsFee:'100', razorpayJobs:'', bizPromoFee:'100', bizPromoValidityDays:30, razorpayBizPromo:'', blocked:[], garbaFormOpen:true, ads:[{},{},{},{},{}], subAdmins:[], texts:{} };
+let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], garbaCoords=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[], teamJoinData=[], labhData=[];
+let siteMeta = { ticker:'', aboutUs:'', fb:'', insta:'', youtube:'', committee:'', expiryDays:30, propertyValidityDays:365, propertyFeeRent:'500', propertyFeeWanted:'11', razorpayPropRent:'', razorpayPropWanted:'', shaadiFee:'500', shaadiValidityDays:180, razorpayShaadi:'', jobsFeeSeeker:'11', razorpayJobsSeeker:'', bizPromoFee:'300', bizPromoValidityDays:365, razorpayBizPromo:'', olxExtraItemFee:'100', razorpayOlxExtra:'', olxPromoFee:'100', razorpayOlxPromo:'', blocked:[], garbaFormOpen:true, ads:[{},{},{},{},{}], subAdmins:[], texts:{} };
 
 function isSuperAdmin(){ return currentUser === ADMIN_PHONE || localStorage.getItem('psim_admin_ok') === 'true'; }
 function subAdminInfo(){ if(!currentUser) return null; return (siteMeta.subAdmins||[]).find(s => fmtPhone(s.phone) === currentUser) || null; }
@@ -69,14 +69,24 @@ function referrerNameOf(phone){
  const m = findApprovedByPhone(phone);
  return m ? (m.name+' '+m.surname) : phone;
 }
+const JOB_SEEKER_KINDS = ['lena', 'freelance_lena']; // इनके लिए ही fee लगता है, "देना है" वाले हमेशा free
+function feeForProperty(p){ return parseFloat(p.type==='rent' ? siteMeta.propertyFeeRent : siteMeta.propertyFeeWanted)||0; }
+function feeForJob(j){ return JOB_SEEKER_KINDS.includes(j.kind) ? (parseFloat(siteMeta.jobsFeeSeeker)||0) : 0; }
+function feeForOldItem(o){
+ let f = 0;
+ if(o.extraFee) f += parseFloat(siteMeta.olxExtraItemFee)||0; // पहली listing free, अगली पर fee
+ if(o.promoted) f += parseFloat(siteMeta.olxPromoFee)||0;
+ return f;
+}
 function computeReferralLeaderboard(){
  const rows = [];
  const push = (list, feeKey) => {
   const fee = parseFloat(siteMeta[feeKey])||0;
   (list||[]).forEach(item => { if(item.referredBy) rows.push({phone:item.referredBy, amount:fee}); });
  };
- push(propertyData.filter(p=>p.status==='approved'), 'propertyFee');
- push(jobsData.filter(j=>j.status==='approved'), 'jobsFee');
+ propertyData.filter(p=>p.status==='approved').forEach(p => { if(p.referredBy) rows.push({phone:p.referredBy, amount:feeForProperty(p)}); });
+ jobsData.filter(j=>j.status==='approved').forEach(j => { if(j.referredBy) rows.push({phone:j.referredBy, amount:feeForJob(j)}); });
+ oldItems.filter(o=>o.status==='approved').forEach(o => { if(o.referredBy) rows.push({phone:o.referredBy, amount:feeForOldItem(o)}); });
  push(shaadiData.filter(s=>s.status==='approved'), 'shaadiFee');
  membersData.filter(m=>m.biz_promo_status==='active').forEach(m => {
   if(m.biz_promo_referredBy) rows.push({phone:m.biz_promo_referredBy, amount:parseFloat(siteMeta.bizPromoFee)||0});
@@ -88,8 +98,36 @@ function computeReferralLeaderboard(){
  });
  return Object.values(byPhone).sort((a,b) => b.count-a.count || b.amount-a.amount);
 }
+
+// ================= लाभ (business trust-endorsement, ₹1 = 1 discount credit) =================
+const LABH_DAILY_LIMIT = 10;
+const LABH_INACTIVE_DAYS = 30;
+function isLabhActive(l){
+ const giver = membersData.find(m => m.phone===l.fromPhone);
+ if(!giver) return false; // giver ka account हटाया जा चुका — count नहीं होगा
+ const cutoff = new Date(Date.now() - LABH_INACTIVE_DAYS*86400000).toISOString().slice(0,10);
+ return (giver.lastActiveAt||giver.createdAt||'0000-00-00') >= cutoff; // 30 दिन inactive => expire
+}
+function labhReceivedBy(phone){ return labhData.filter(l => l.toPhone===phone); }
+function labhActiveReceivedBy(phone){ return labhReceivedBy(phone).filter(isLabhActive); }
+function labhGivenToday(phone){ return labhData.filter(l => l.fromPhone===phone && l.createdAt===today()).length; }
+function labhReceivedToday(phone){ return labhData.filter(l => l.toPhone===phone && l.createdAt===today()).length; }
+function hasGivenLabh(fromPhone, toPhone){ return labhData.some(l => l.fromPhone===fromPhone && l.toPhone===toPhone); }
+async function giveLabh(toId, toPhone, toName){
+ const me = myMember();
+ if(!me || me.status!=='approved'){ showRegisterPrompt('लाभ देने के लिए पहले Community member बनो।'); return; }
+ if(me.phone===toPhone){ alert('❌ खुद को लाभ नहीं दे सकते'); return; }
+ if(hasGivenLabh(me.phone, toPhone)){ alert('❌ आप पहले ही इस Business को लाभ दे चुके हो — एक बार ही दे सकते हो'); return; }
+ if(labhGivenToday(me.phone) >= LABH_DAILY_LIMIT){ alert('⏰ आज आपकी 10 लाभ देने की limit पूरी हो गई — कल फिर दे सकते हो'); return; }
+ if(labhReceivedToday(toPhone) >= LABH_DAILY_LIMIT){ alert('⏰ आज इस Business की 10 लाभ लेने की limit पूरी हो गई — कल कोशिश करो'); return; }
+ busy(true);
+ await db.collection('labh').add({fromPhone:me.phone, fromName:me.name+' '+me.surname, toPhone, toId, toName, createdAt:today()});
+ busy(false);
+ alert('✅ धन्यवाद! आपने '+toName+' को लाभ दिया।');
+ renderApp();
+}
 async function approveBizPromo(id){
- const until = new Date(Date.now() + (siteMeta.bizPromoValidityDays||30)*86400000).toISOString().slice(0,10);
+ const until = new Date(Date.now() + (siteMeta.bizPromoValidityDays||365)*86400000).toISOString().slice(0,10);
  busy(true);
  await db.collection('members').doc(id).update({biz_promo_status:'active', biz_promo_until:until});
  busy(false); renderApp();
@@ -221,6 +259,7 @@ function setupRealtimeListeners(){
  watch('cricket', d => cricketData = d);
  watch('property', d => propertyData = d);
  watch('blood', d => bloodData = d);
+ watch('labh', d => labhData = d);
  db.collection('meta').doc('site').onSnapshot(doc => {
   if(doc.exists) siteMeta = Object.assign(siteMeta, doc.data());
   if(!siteMeta.ads || siteMeta.ads.length<5) siteMeta.ads = [{},{},{},{},{}];
@@ -243,7 +282,16 @@ function goPage(p){
  }
  location.hash = p;
 }
+let _lastActiveStamped = false;
+function stampLastActiveIfNeeded(){
+ if(_lastActiveStamped || !currentUser) return;
+ const me = membersData.find(m => m.phone===currentUser);
+ if(!me) return; // members अभी load नहीं हुए — अगले route() पर फिर try होगा
+ _lastActiveStamped = true;
+ if(me.lastActiveAt !== today()) db.collection('members').doc(me.id).update({lastActiveAt: today()}).catch(()=>{});
+}
 function route(){
+ stampLastActiveIfNeeded();
  let h = (location.hash||'#home').replace('#','');
  if(h.startsWith('news/')){ selectedNewsId = h.split('/')[1]; h = 'news'; }
  if(h==='admin' && !isAdmin()){ h='home'; }
@@ -948,7 +996,7 @@ function whomResultsHTML(){
   if(hay.includes(q)) score += 10;
   qWords.forEach(w=>{ if(hay.includes(w)) score += 1; });
   return {b, score};
- }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,10);
+ }).filter(x=>x.score>0).sort((a,b)=>(b.b.promoted?1:0)-(a.b.promoted?1:0) || b.score-a.score).slice(0,10);
  if(!scored.length) return '<p class="text-white text-sm">कोई match नहीं मिला</p>';
  return '<div class="flex gap-3 overflow-x-auto pb-2 noscroll justify-start md:justify-center">'+scored.map(x=>bizMiniCard(x.b)).join('')+'</div>';
 }
@@ -963,8 +1011,31 @@ function portalTile(p){
   '<span class="absolute top-1.5 right-1.5 bg-emerald-700 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">🔓</span>';
  return '<div class="relative bg-gradient-to-br from-'+p[1]+'-500 to-'+p[1]+'-600 text-white rounded-2xl p-3 md:p-4 text-center cursor-pointer shadow-md hover:shadow-2xl transform hover:scale-105 transition-all '+ring+'" onclick="goPage(\''+p[0]+'\')">'+badge+'<div class="h-10 w-10 md:h-12 md:w-12 mx-auto mb-1.5 rounded-full bg-white/25 flex items-center justify-center text-xl md:text-2xl">'+p[2]+'</div><p class="font-bold text-[11px] md:text-xs leading-tight">'+p[3]+'</p><p class="text-[9px] md:text-[10px] mt-1 text-'+p[1]+'-100">'+p[4]+'</p></div>';
 }
+function promoBizCardHTML(b){
+ return '<div onclick="openBiz(\''+b.id+'\')" class="w-60 shrink-0 rounded-2xl overflow-hidden shadow-xl cursor-pointer transform hover:scale-105 transition-all border-2 border-amber-500" style="background:linear-gradient(160deg,#FFF3C4,#F5B92B);">'+
+  (b.pic?'<img src="'+b.pic+'" class="w-full h-28 object-cover">':'<div class="w-full h-20 flex items-center justify-center text-4xl">🏪</div>')+
+  '<div class="p-3"><span class="inline-block bg-white/80 text-amber-900 text-[9px] font-bold px-2 py-0.5 rounded-full mb-1">🚀 BUSINESS</span>'+
+  '<p class="font-bold text-amber-950 text-sm truncate">'+esc(b.name)+'</p><p class="text-[11px] text-amber-900 truncate">'+esc(b.type)+'</p></div></div>';
+}
+function promoOlxCardHTML(o){
+ return '<div onclick="goPage(\'olditems\')" class="w-60 shrink-0 rounded-2xl overflow-hidden shadow-xl cursor-pointer transform hover:scale-105 transition-all border-2 border-amber-500" style="background:linear-gradient(160deg,#FFF3C4,#F5B92B);">'+
+  (o.pic?'<img src="'+o.pic+'" class="w-full h-28 object-cover">':'<div class="w-full h-20 flex items-center justify-center text-4xl">🛒</div>')+
+  '<div class="p-3"><span class="inline-block bg-white/80 text-amber-900 text-[9px] font-bold px-2 py-0.5 rounded-full mb-1">🚀 OLX</span>'+
+  '<p class="font-bold text-amber-950 text-sm truncate">'+esc(o.title)+'</p><p class="text-sm font-bold text-amber-900">₹'+esc(o.price)+'</p></div></div>';
+}
+function promotedCarouselHTML(){
+ const promoBiz = allBusinesses().filter(b => b.promoted);
+ const promoItems = activeOldItems().filter(o => o.promoted);
+ let combined = promoBiz.map(b => ({kind:'biz', d:b})).concat(promoItems.map(o => ({kind:'olx', d:o})));
+ if(!combined.length) return '';
+ combined = combined.sort(() => Math.random()-0.5);
+ const cards = combined.map(e => e.kind==='biz' ? promoBizCardHTML(e.d) : promoOlxCardHTML(e.d)).join('');
+ return '<div class="mb-6"><h3 class="text-lg md:text-xl font-bold mb-3 flex items-center gap-2"><span>🌟</span><span>Featured — पाटीदार बंधुओं की खास पेशकश</span></h3>'+
+  '<div class="flex gap-4 overflow-x-auto pb-3 noscroll">'+cards+'</div></div>';
+}
 function renderHome(){
  let h = '<div class="text-center mb-5"><h2 class="text-3xl md:text-5xl font-bold">🙏 पाटीदार परिवार में आपका स्वागत है</h2><p class="text-lg text-gray-500">Welcome to Patidar Family</p></div>';
+ h += promotedCarouselHTML();
  if(!currentUser){
   h += '<div class="grid grid-cols-4 gap-3 mb-2">';
   h += '<div class="col-span-3 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-2xl p-6 md:p-8 text-center cursor-pointer shadow-lg hover:shadow-2xl transform hover:scale-[1.02] transition-all flex items-center justify-center" onclick="startRegister()"><p class="text-xl md:text-3xl font-bold">📝 Register Now</p></div>';
@@ -1018,15 +1089,16 @@ function renderHome(){
  // 🏪 BUSINESS SPOTLIGHT (random - हर बार अलग | बिना search किए भी दिखे)
  const biz = allBusinesses();
  if(biz.length){
-  const shuffled = biz.slice().sort(()=>Math.random()-0.5).slice(0,6);
+  const shuffled = shufflePromotedFirst(biz).slice(0,6);
   h += '<div class="bg-gradient-to-br from-yellow-50 to-orange-50 border-2 border-yellow-300 rounded-xl shadow-lg p-6 mb-8">';
   h += '<h3 class="text-2xl font-bold mb-1 text-center">🏪 पाटीदार बंधुओं के व्यापार / Business Spotlight</h3>';
   h += '<p class="text-center text-gray-500 text-sm mb-4">हर बार अलग-अलग businesses — card पर click करो, पूरी details + Call/WhatsApp मिलेगा</p>';
   h += '<div class="grid grid-cols-2 md:grid-cols-3 gap-4">';
   shuffled.forEach(b => {
-   h += '<div onclick="openBiz(\''+b.id+'\')" class="bg-white border-2 border-yellow-300 rounded-lg overflow-hidden shadow cursor-pointer hover:shadow-xl transform hover:scale-105 transition-all">'+
+   h += '<div onclick="openBiz(\''+b.id+'\')" class="relative border-2 rounded-lg overflow-hidden shadow cursor-pointer hover:shadow-xl transform hover:scale-105 transition-all '+(b.promoted?'border-amber-500':'bg-white border-yellow-300')+'" '+(b.promoted?'style="background:linear-gradient(160deg,#FEF3C7,#FDE68A);"':'')+'>'+
+   (b.promoted?'<span class="absolute top-1.5 left-1.5 z-10 bg-amber-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow">🚀</span>':'')+
    (b.pic?'<img src="'+b.pic+'" class="w-full h-32 object-cover">':'<div class="w-full h-20 bg-yellow-100 flex items-center justify-center text-4xl">🏪</div>')+
-   '<div class="p-3"><p class="font-bold text-yellow-800 text-sm truncate">'+esc(b.name)+'</p>'+
+   '<div class="p-3"><p class="font-bold text-yellow-900 text-sm truncate">'+esc(b.name)+'</p>'+
    '<p class="text-[10px] bg-yellow-200 inline-block px-2 py-0.5 rounded font-bold mt-1">'+esc(b.type)+'</p>'+
    '<p class="text-[11px] text-gray-600 mt-1 truncate">👤 '+esc(b.owner)+'</p>'+
    (b.place?'<p class="text-[11px] text-gray-500 truncate">📍 '+esc(b.place)+'</p>':'')+'</div></div>';
@@ -1378,6 +1450,12 @@ const SAMPLE_BUSINESSES = [
  {id:'sample_5', name:'ग्लैमर ब्यूटी सलून', type:'Salon/Beauty', owner:'रीना पटेल', phone:'9876543214', place:'पुष्पराज नगर, इंदौर', description:'हेयर, मेहंदी, ब्राइडल मेकअप। होम सर्विस भी।', village:'Indore', city:'Indore'}
 ];
 function isBizPromoActive(m){ return m && m.biz_promo_status==='active' && (m.biz_promo_until||'0000-00-00') >= today(); }
+function shufflePromotedFirst(list){
+ // 🚀 Promoted (paid) वाले हमेशा पहले — बस promoted-promoted और free-free के अंदर random order रहे
+ const promoted = list.filter(x=>x.promoted).sort(()=>Math.random()-0.5);
+ const free = list.filter(x=>!x.promoted).sort(()=>Math.random()-0.5);
+ return promoted.concat(free);
+}
 function allBusinesses(){
  const real = publicMembers().filter(m => m.business_name).map(m => ({
   id:m.id,
@@ -1390,6 +1468,22 @@ function allBusinesses(){
  return real.length > 0 ? real : SAMPLE_BUSINESSES;
 }
 // ===== BUSINESS DETAIL MODAL (कहीं से भी click => पूरी details) =====
+function labhBadgeHTML(b){
+ const count = labhActiveReceivedBy(b.ownerPhone).length;
+ let h = '<div class="mt-4 flex items-center gap-3 bg-yellow-50 border border-yellow-300 rounded-lg px-4 py-3">'+
+  '<div class="text-2xl">🏅</div>'+
+  '<p class="font-bold text-yellow-800">'+count+' लोगों को इनसे लाभ मिला</p>'+
+  '</div>';
+ if(currentUser && currentUser!==b.ownerPhone){
+  if(hasGivenLabh(currentUser, b.ownerPhone)){
+   h += '<button class="w-full mt-2 bg-green-100 text-green-700 px-4 py-3 rounded-lg font-bold" disabled>✔️ आपने लाभ दिया — धन्यवाद!</button>';
+  } else {
+   h += '<button onclick="giveLabh(\''+b.id+'\',\''+esc(b.ownerPhone)+'\',\''+esc(b.name)+'\')" class="w-full mt-2 bg-orange-500 hover:bg-orange-600 text-white px-4 py-3 rounded-lg font-bold">✅ मुझे लाभ मिला</button>'+
+    '<p class="text-[10px] text-gray-400 text-center mt-1">सिर्फ एक बार — deal के बाद ही दबाओ</p>';
+  }
+ }
+ return h;
+}
 function bizDetailHTML(b){
  return (b.pic?'<img src="'+b.pic+'" class="w-full h-56 object-cover rounded-t-2xl">':'<div class="w-full h-28 bg-yellow-100 flex items-center justify-center text-6xl rounded-t-2xl">🏪</div>')+
   '<div class="p-6">'+
@@ -1401,6 +1495,7 @@ function bizDetailHTML(b){
   (b.village?'<p>🏡 गाँव: '+esc(b.village)+'</p>':'')+
   '<p>📱 '+esc(b.phone)+'</p></div>'+
   (b.description?'<p class="text-sm text-gray-700 mt-3 bg-gray-50 rounded-lg p-3 whitespace-pre-line">'+esc(b.description)+'</p>':'')+
+  (b.ownerPhone ? labhBadgeHTML(b) : '')+
   (currentUser && currentUser!==b.ownerPhone && membersData.find(x=>x.id===b.id) ?
    '<div class="flex gap-2 flex-wrap mt-4"><button onclick="sendFriendRequest(\''+b.id+'\')" class="bg-purple-100 text-purple-700 border border-purple-300 px-3 py-1.5 rounded-lg text-xs font-bold">➕ मित्र</button><button onclick="openRelPicker(\''+b.id+'\')" class="bg-indigo-100 text-indigo-700 border border-indigo-300 px-3 py-1.5 rounded-lg text-xs font-bold">👨‍👩‍👧 रिश्तेदार</button></div>' : '')+
   '<div class="grid grid-cols-1 gap-2 mt-5">'+
@@ -1516,14 +1611,33 @@ function myAcc_business(){
   owner: me.name+' '+me.surname, phone: me.business_phone||me.phone, place: me.business_place||me.present_city||'',
   gmap: me.business_gmap||'', pic: me.business_pic1||'', description: me.business_details||'', ownerPhone: me.phone
  };
- box.innerHTML = bizDetailHTML(b) + bizPromoPanelHTML(me);
+ box.innerHTML = bizDetailHTML(b) + labhListPanelHTML(me) + bizPromoPanelHTML(me);
  document.getElementById('bizModal').classList.remove('hidden');
  if(me.biz_promo_status!=='active' && me.biz_promo_status!=='pending' && siteMeta.razorpayBizPromo){
   setTimeout(()=>mountRazorpayButton(siteMeta.razorpayBizPromo,'razorpayBizPromoBox'),30);
  }
 }
+function labhListPanelHTML(me){
+ const active = labhActiveReceivedBy(me.phone);
+ const list = active.slice().sort((a,b) => (b.createdAt||'').localeCompare(a.createdAt||''));
+ let h = '<div class="mx-6 mb-6 bg-yellow-50 border-2 border-yellow-300 rounded-lg p-4">'+
+  '<p class="font-bold text-yellow-800 mb-1">🏅 आपको मिले लाभ ('+active.length+')</p>';
+ if(active.length){
+  h += '<p class="text-sm text-green-700 font-bold mb-3">₹'+active.length+' discount अगली Business Promotion Renewal पर</p>'+
+   '<div class="space-y-1.5 max-h-40 overflow-y-auto">'+list.map(l =>
+    '<div class="flex justify-between items-center bg-white rounded px-3 py-1.5 text-sm"><span>'+esc(l.fromName)+'</span><span class="text-xs text-gray-400">'+esc(l.createdAt)+'</span></div>'
+   ).join('')+'</div>';
+ } else {
+  h += '<p class="text-xs text-gray-500">अभी किसी ने लाभ नहीं दिया — जब कोई deal के बाद "मुझे लाभ मिला" दबाएगा, यहाँ दिखेगा</p>';
+ }
+ h += '<div class="flex items-center gap-2 mt-3 pt-3 border-t border-yellow-200">'+
+  '<div class="flex-1 h-1.5 rounded-full bg-yellow-200 overflow-hidden"><div class="h-full bg-yellow-500" style="width:'+(labhReceivedToday(me.phone)*10)+'%"></div></div>'+
+  '<span class="text-[10px] font-bold text-yellow-700">आज मिले '+labhReceivedToday(me.phone)+'/'+LABH_DAILY_LIMIT+'</span></div>';
+ h += '</div>';
+ return h;
+}
 function bizPromoPanelHTML(me){
- const fee = siteMeta.bizPromoFee||'100', days = siteMeta.bizPromoValidityDays||30;
+ const fee = siteMeta.bizPromoFee||'300', days = siteMeta.bizPromoValidityDays||365;
  if(me.biz_promo_status==='active' && (me.biz_promo_until||'0000-00-00')>=today()){
   return '<div class="mx-6 mb-6 bg-orange-50 border-2 border-orange-400 rounded-lg p-4 text-center"><p class="font-bold text-orange-800">🚀 आपका Business अभी Promoted है</p><p class="text-xs text-orange-600 mt-1">Valid until: '+esc(me.biz_promo_until)+'</p></div>';
  }
@@ -1532,7 +1646,8 @@ function bizPromoPanelHTML(me){
  }
  return '<div class="mx-6 mb-6 bg-orange-50 border-2 border-orange-300 rounded-lg p-4">'+
   '<p class="font-bold text-orange-800 mb-1">🚀 अपना Business Promote करो</p>'+
-  '<p class="text-xs text-gray-600 mb-3">₹'+esc(fee)+' / '+days+' दिन — Business list में सबसे ऊपर दिखेगा</p>'+
+  '<p class="text-xs text-gray-500 mb-2">आपका Business list में free में already दिखता है — Promote करने पर सबसे ऊपर, सबसे पहले दिखेगा</p>'+
+  '<p class="text-xs text-gray-600 mb-3 font-bold">₹'+esc(fee)+' / '+(days>=365?Math.round(days/365)+' साल':days+' दिन')+'</p>'+
   (siteMeta.razorpayBizPromo?'<div id="razorpayBizPromoBox" class="flex justify-center mb-3"></div>':'<p class="text-xs text-gray-400 mb-3">💳 Payment button जल्द चालू होगा — तब तक Admin से बात करो: '+CONTACT_PHONE+'</p>')+
   referrerSelectHTML('bp_ref')+
   '<button onclick="submitBizPromo()" class="w-full mt-3 bg-orange-600 hover:bg-orange-700 text-white px-6 py-3 rounded-lg font-bold">✅ Payment के बाद यहाँ Confirm करो</button>'+
@@ -1637,7 +1752,7 @@ function myAcc_mitra(){
 function businessStrip(){
  const biz = allBusinesses();
  if(!biz.length) return '';
- const sh = biz.slice().sort(()=>Math.random()-0.5);
+ const sh = shufflePromotedFirst(biz);
  const cards = sh.map(bizMiniCard).join('');
  return '<div class="mt-10 bg-gradient-to-br from-yellow-50 to-orange-50 border-t-4 border-yellow-400 rounded-xl p-5 shadow-inner">'+
   '<h3 class="text-xl md:text-2xl font-bold text-center mb-1">🏪 पाटीदार बंधुओं के व्यापार</h3>'+
@@ -1651,8 +1766,8 @@ function renderBusinessPage(){
  '<p class="text-gray-500 mb-4">Members की business details automatic दिखती हैं</p>'+
  '<button onclick="openSwipeView(\'business\')" class="w-full mb-6 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl">🔀 Businesses Explore करें</button>'+
  '<div class="flex gap-5 overflow-x-auto pb-3 noscroll">'+
- list.map(b => '<div class="w-72 shrink-0 bg-white border-2 '+(b.promoted?'border-orange-400':'border-yellow-300')+' rounded-lg overflow-hidden shadow-md hover:shadow-xl relative">'+
-  (b.promoted?'<span class="absolute top-2 left-2 z-10 bg-orange-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow">🚀 PROMOTED</span>':'')+
+ list.map(b => '<div class="w-72 shrink-0 border-2 '+(b.promoted?'border-amber-500':'bg-white border-yellow-300')+' rounded-lg overflow-hidden shadow-md hover:shadow-xl relative" '+(b.promoted?'style="background:linear-gradient(160deg,#FFF9E6,#FDE68A);"':'')+'>'+
+  (b.promoted?'<span class="absolute top-2 left-2 z-10 bg-gradient-to-r from-amber-500 to-yellow-600 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-lg">🚀 PROMOTED</span>':'')+
   '<div onclick="openBiz(\''+b.id+'\')" class="cursor-pointer transform hover:scale-[1.01] transition-all">'+
   (b.pic?'<img src="'+b.pic+'" class="w-full h-44 object-cover">':'')+
   '<div class="p-5"><p class="font-bold text-xl text-yellow-700">'+esc(b.name)+'</p>'+
@@ -1816,7 +1931,7 @@ function activeShaadis(){
 async function submitProperty(){
  const me = myMember();
  if(!me || me.status!=='approved'){ showRegisterPrompt('Listing डालने के लिए पहले Community member बनो।'); return; }
- if(propertyData.find(p => p.phone===me.phone && p.status!=='rejected')){ alert('❌ आप पहले से एक Listing डाल चुके हो — एक member सिर्फ एक ही listing डाल सकता है।'); return; }
+ // एक से ज़्यादा listing डाल सकते हो — हर listing की अपनी अलग Fee लगती है (ऊपर देना है/चाहिए wale Razorpay button)
  const type=document.getElementById('pp_type').value;
  const nm=fmtName(document.getElementById('pp_name').value);
  const ph=fmtPhone(document.getElementById('pp_phone').value);
@@ -1873,22 +1988,26 @@ function renderPropertyPage(){
  const nMakan = all.filter(p=>(p.kind||'makan')==='makan').length;
  const nDukan = all.filter(p=>p.kind==='dukan').length;
  const isMakan = propKind==='makan';
- const fee = siteMeta.propertyFee||'500';
+ const feeRent = siteMeta.propertyFeeRent||'500', feeWanted = siteMeta.propertyFeeWanted||'11';
  let h = '<h2 class="text-3xl font-bold mb-2">🏠 मकानमालिक - किरायेदार / दुकान</h2>';
  h += '<p class="text-gray-500 mb-4">दो अलग portal — जो चाहिए उस पर click करो</p>';
  h += '<div class="grid grid-cols-2 gap-3 mb-5">'+
  '<button onclick="setPropKind(\'makan\')" class="px-4 py-5 rounded-xl font-bold text-center '+(isMakan?'bg-purple-600 text-white shadow-lg':'bg-white border-2 border-purple-300 text-purple-700')+'"><p class="text-3xl mb-1">🏠</p><p>मकान</p><p class="text-xs font-normal">House / किराया ('+nMakan+')</p></button>'+
  '<button onclick="setPropKind(\'dukan\')" class="px-4 py-5 rounded-xl font-bold text-center '+(!isMakan?'bg-purple-600 text-white shadow-lg':'bg-white border-2 border-purple-300 text-purple-700')+'"><p class="text-3xl mb-1">🏪</p><p>दुकान</p><p class="text-xs font-normal">Shop / किराया ('+nDukan+')</p></button></div>';
 
- // ===== JOIN US + ₹Fee + Razorpay (हर portal के लिए अलग) =====
+ // ===== JOIN US + ₹Fee + Razorpay (देने वाले / चाहिए वाले — दो अलग fee) =====
  h += '<div class="bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl shadow-lg p-6 mb-6 text-center">'+
   '<h3 class="text-2xl font-bold mb-1">🤝 JOIN US — '+(isMakan?'🏠 मकान':'🏪 दुकान')+' Listing</h3>'+
-  '<p class="text-purple-100 mb-3">अपना '+(isMakan?'मकान':'दुकान')+' यहाँ list करो — पूरे समाज तक पहुँचेगा</p>'+
-  '<p class="text-3xl font-bold mb-3">₹'+esc(fee)+' <span class="text-base font-normal">/ साल</span></p>'+
-  '<div id="razorpayBtnContainer" class="flex justify-center mb-3"></div>'+
-  (((isMakan?siteMeta.razorpayMakan:siteMeta.razorpayDukan)||siteMeta.razorpayButtonId) ? '' :
-    '<div class="bg-white/20 rounded-lg p-3 text-sm mb-3">💳 Payment button जल्द चालू होगा — तब तक Admin से बात करो: '+CONTACT_PHONE+'</div>')+
-  '<button onclick="showPropForm=!showPropForm;renderApp()" class="bg-white text-purple-700 px-8 py-3 rounded-lg font-bold text-lg">➕ Payment के बाद यहाँ Listing डालो</button>'+
+  '<p class="text-purple-100 mb-4">अपना '+(isMakan?'मकान':'दुकान')+' यहाँ list करो — पूरे समाज तक पहुँचेगा</p>'+
+  '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+  '<div class="bg-white/10 rounded-lg p-4"><p class="font-bold mb-1">🔑 किराए पर देना है</p><p class="text-2xl font-bold mb-2">₹'+esc(feeRent)+' <span class="text-sm font-normal">/ साल</span></p>'+
+   (siteMeta.razorpayPropRent?'<div id="razorpayPropRentBox" class="flex justify-center"></div>':'<p class="text-xs text-purple-100">Payment button जल्द चालू होगा — तब तक Admin से बात करो: '+CONTACT_PHONE+'</p>')+
+  '</div>'+
+  '<div class="bg-white/10 rounded-lg p-4"><p class="font-bold mb-1">🙋 किराए पर चाहिए</p><p class="text-2xl font-bold mb-2">₹'+esc(feeWanted)+' <span class="text-sm font-normal">/ साल</span></p>'+
+   (siteMeta.razorpayPropWanted?'<div id="razorpayPropWantedBox" class="flex justify-center"></div>':'<p class="text-xs text-purple-100">Payment button जल्द चालू होगा — तब तक Admin से बात करो: '+CONTACT_PHONE+'</p>')+
+  '</div></div>'+
+  '<p class="text-xs text-purple-200 mt-3">💡 किराए पर चाहिए वालों के लिए fee छोटा रखा है — सिर्फ faltu/spam listings रोकने के लिए</p>'+
+  '<button onclick="showPropForm=!showPropForm;renderApp()" class="mt-4 bg-white text-purple-700 px-8 py-3 rounded-lg font-bold text-lg">➕ Payment के बाद यहाँ Listing डालो</button>'+
   '</div>';
  h += '<div class="flex flex-wrap gap-3 mb-6">';
  h += '<button onclick="showManageProp=!showManageProp;renderApp()" class="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-bold">🔑 अपनी Listing Manage करो</button>';
@@ -1903,7 +2022,7 @@ function renderPropertyPage(){
 
  if(showPropForm){
   h += '<div class="bg-purple-50 border-2 border-purple-400 rounded-lg p-6 mb-8"><h3 class="text-xl font-bold mb-4">➕ ADD LISTING</h3>';
-  h += '<div class="bg-yellow-100 border border-yellow-400 rounded p-3 mb-4 text-sm">💳 Fee: ₹'+(siteMeta.propertyFee||'500')+'/साल — Payment ऊपर Razorpay से करो, फिर यह form भरो</div>';
+  h += '<div class="bg-yellow-100 border border-yellow-400 rounded p-3 mb-4 text-sm">💳 Fee: किराए पर देना है = ₹'+esc(feeRent)+'/साल | किराए पर चाहिए = ₹'+esc(feeWanted)+'/साल — Payment ऊपर Razorpay से करो, फिर यह form भरो</div>';
   h += '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
   '<div><label class="text-xs font-bold">क्या? *</label><select id="pp_kind" class="w-full px-3 py-2 border-2 rounded"><option value="makan" '+(propKind==='makan'?'selected':'')+'>🏠 मकान</option><option value="dukan" '+(propKind==='dukan'?'selected':'')+'>🏪 दुकान</option></select></div>'+
   '<div><label class="text-xs font-bold">Type *</label><select id="pp_type" class="w-full px-3 py-2 border-2 rounded"><option value="rent">किराए पर देना है</option><option value="wanted">मुझे किराए पर चाहिए</option></select></div>'+
@@ -2061,9 +2180,9 @@ function renderRozgaarPage(){
  '<button onclick="jobKind=\'lena\';renderApp()" class="px-4 py-2 rounded-lg font-bold text-sm '+(jobKind==='lena'?'bg-green-600 text-white':'bg-gray-200')+'">🙋 रोज़गार चाहिए ('+all.filter(j=>j.kind==='lena').length+')</button>'+
  '<button onclick="jobKind=\'freelance_dena\';renderApp()" class="px-4 py-2 rounded-lg font-bold text-sm '+(jobKind==='freelance_dena'?'bg-green-600 text-white':'bg-gray-200')+'">💻 Freelancing काम देना है ('+all.filter(j=>j.kind==='freelance_dena'||j.kind==='freelance').length+')</button>'+
  '<button onclick="jobKind=\'freelance_lena\';renderApp()" class="px-4 py-2 rounded-lg font-bold text-sm '+(jobKind==='freelance_lena'?'bg-green-600 text-white':'bg-gray-200')+'">🙋‍♂️ Freelancing काम चाहिए ('+all.filter(j=>j.kind==='freelance_lena').length+')</button></div>';
- const jobsFee = siteMeta.jobsFee||'100';
- h += '<div class="bg-yellow-100 border border-yellow-400 rounded p-3 mb-4 text-sm">💳 Post Fee: ₹'+esc(jobsFee)+' — Payment करके नीचे form भरो</div>';
- if(siteMeta.razorpayJobs) h += '<div id="razorpayJobsBox" class="flex justify-center mb-4"></div>';
+ const jobsFeeSeeker = siteMeta.jobsFeeSeeker||'11';
+ h += '<div class="bg-yellow-100 border border-yellow-400 rounded p-3 mb-4 text-sm">💼 रोज़गार/Freelancing <b>देना है</b> — बिल्कुल FREE 🆓<br>🙋 रोज़गार/Freelancing <b>चाहिए</b> — ₹'+esc(jobsFeeSeeker)+' (सिर्फ faltu/spam posts रोकने के लिए)</div>';
+ if(siteMeta.razorpayJobsSeeker) h += '<p class="text-xs text-gray-500 text-center mb-1">👇 सिर्फ "चाहिए" वाले ही pay करें</p><div id="razorpayJobsSeekerBox" class="flex justify-center mb-4"></div>';
  h += '<button onclick="showJobForm=!showJobForm;renderApp()" class="mb-4 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold">➕ Post करो</button>';
  if(showJobForm){
   h += '<div class="bg-green-50 border-2 border-green-400 rounded-lg p-5 mb-6"><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
@@ -2092,7 +2211,9 @@ function renderRozgaarPage(){
 function activeOldItems(){
  const days = siteMeta.expiryDays || 30;
  const cutoff = new Date(Date.now() - days*86400000).toISOString().slice(0,10);
- return oldItems.filter(o => o.status==='approved' && (o.createdAt||'9999') >= cutoff);
+ const list = oldItems.filter(o => o.status==='approved' && (o.createdAt||'9999') >= cutoff);
+ list.sort((a,b) => (b.promoted?1:0)-(a.promoted?1:0));
+ return list;
 }
 async function submitOldItem(){
  const me = myMember();
@@ -2101,9 +2222,12 @@ async function submitOldItem(){
   ph=fmtPhone(document.getElementById('it_phone').value), ds=document.getElementById('it_desc').value.trim(),
   pic=document.getElementById('it_pic').value;
  if(!t||!pr||!ph){ alert('❌ Item, Price, Contact जरूरी!'); return; }
- busy(true);
  const olx=document.getElementById('it_olx').value.trim();
- await db.collection('olditems').add({title:t,price:pr,phone:ph,description:ds,pic:pic,olx_link:olx,status:'pending',createdAt:today()});
+ const ref=document.getElementById('it_ref').value;
+ const promoted=document.getElementById('it_promote').checked;
+ const isExtra = oldItems.some(o => o.phone===me.phone && o.status!=='rejected');
+ busy(true);
+ await db.collection('olditems').add({title:t,price:pr,phone:ph,description:ds,pic:pic,olx_link:olx,referredBy:ref,promoted,extraFee:isExtra,status:'pending',createdAt:today()});
  busy(false); showItemForm=false;
  alert('✅ Item submit! Admin approval के बाद '+(siteMeta.expiryDays||30)+' दिन live रहेगा।'); renderApp();
 }
@@ -2118,6 +2242,17 @@ function renderOldItemsPage(){
  } else {
   h += '<div class="bg-purple-50 border-2 border-purple-300 rounded-lg p-4 mb-4 text-center text-sm">🔒 सामान बेचने के लिए पहले <button onclick="showRegisterPrompt(\'सामान बेचने के लिए पहले Community member बनो।\')" class="underline font-bold text-purple-700">Register करो</button></div>';
  }
+ if(isMember){
+  const hasItem = oldItems.some(o => o.phone===me.phone && o.status!=='rejected');
+  if(hasItem){
+   h += '<div class="bg-yellow-100 border border-yellow-400 rounded p-3 mb-3 text-sm">💳 आपकी पहली listing free थी — अगली/extra listing के लिए ₹'+esc(siteMeta.olxExtraItemFee||'100')+' लगेंगे</div>';
+   if(siteMeta.razorpayOlxExtra) h += '<div id="razorpayOlxExtraBox" class="flex justify-center mb-3"></div>';
+  } else {
+   h += '<div class="bg-green-100 border border-green-400 rounded p-3 mb-3 text-sm">🆓 आपकी पहली Listing बिल्कुल FREE है</div>';
+  }
+  h += '<div class="bg-orange-50 border border-orange-300 rounded p-3 mb-4 text-sm">🚀 सबसे ऊपर दिखाना है? ₹'+esc(siteMeta.olxPromoFee||'100')+' — नीचे form में checkbox से चुनो</div>';
+  if(siteMeta.razorpayOlxPromo) h += '<div id="razorpayOlxPromoBox" class="flex justify-center mb-4"></div>';
+ }
  if(showItemForm && isMember){
   h += '<div class="bg-purple-50 border-2 border-purple-400 rounded-lg p-5 mb-6"><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
   '<div><label class="text-xs font-bold">Item Name *</label><input id="it_title" class="w-full px-3 py-2 border-2 rounded"></div>'+
@@ -2125,12 +2260,15 @@ function renderOldItemsPage(){
   '<div><label class="text-xs font-bold">Contact *</label><input id="it_phone" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">Photo 📷</label><input type="hidden" id="it_pic"><button type="button" onclick="openCloudUpload(\'it_pic\')" class="w-full bg-blue-600 text-white px-3 py-2 rounded font-bold text-sm">📷 Upload</button><img id="it_pic_prev" class="hidden mt-2 h-24 object-cover rounded border-2"></div>'+
   '<div><label class="text-xs font-bold">🔗 OLX Link (optional — OLX पर भी डाला हो तो)</label><input id="it_olx" placeholder="https://www.olx.in/item/..." class="w-full px-3 py-2 border-2 rounded"><p class="text-[10px] text-gray-400 mt-0.5">यहाँ link डालोगे तो सामान पर "OLX पर देखो" button आएगा जो सीधे OLX पर ले जाएगा</p></div>'+
-  '<div class="md:col-span-2"><label class="text-xs font-bold">Details</label><textarea id="it_desc" rows="2" class="w-full px-3 py-2 border-2 rounded"></textarea></div></div>'+
+  referrerSelectHTML('it_ref')+
+  '<div class="md:col-span-2"><label class="text-xs font-bold">Details</label><textarea id="it_desc" rows="2" class="w-full px-3 py-2 border-2 rounded"></textarea></div>'+
+  '<label class="md:col-span-2 flex items-center gap-2 text-sm font-bold bg-orange-50 border border-orange-300 rounded px-3 py-2"><input type="checkbox" id="it_promote" class="h-4 w-4"> 🚀 इसे सबसे ऊपर दिखाओ (Promote — ₹'+esc(siteMeta.olxPromoFee||'100')+', payment ऊपर करके ही टिक करो)</label></div>'+
   '<div class="flex gap-3 mt-4"><button onclick="submitOldItem()" class="bg-purple-600 text-white px-8 py-3 rounded font-bold">✅ SUBMIT</button><button onclick="showItemForm=false;renderApp()" class="bg-gray-400 text-white px-8 py-3 rounded font-bold">CANCEL</button></div></div>';
  }
  if(!approved.length) h += '<div class="bg-white rounded-lg p-10 text-center shadow"><p class="text-4xl mb-3">🛒</p><p class="text-lg font-bold text-gray-600">अभी कोई item नहीं - पहला आप डालो!</p></div>';
  else if(isMember) h += '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">'+approved.map(o =>
-  '<div class="bg-white border-2 border-purple-300 rounded-lg overflow-hidden shadow-md hover:shadow-lg">'+
+  '<div class="border-2 '+(o.promoted?'border-amber-500':'bg-white border-purple-300')+' rounded-lg overflow-hidden shadow-md hover:shadow-lg relative" '+(o.promoted?'style="background:linear-gradient(160deg,#FFF9E6,#FDE68A);"':'')+'>'+
+  (o.promoted?'<span class="absolute top-2 left-2 z-10 bg-gradient-to-r from-amber-500 to-yellow-600 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-lg">🚀 PROMOTED</span>':'')+
   (o.pic?'<img src="'+o.pic+'" class="w-full h-44 object-cover">':'')+
   '<div class="p-4"><p class="font-bold text-lg text-purple-700">'+esc(o.title)+'</p>'+
   '<p class="text-2xl font-bold text-green-600 mt-1">₹ '+esc(o.price)+'</p>'+
@@ -2140,7 +2278,8 @@ function renderOldItemsPage(){
   '<button onclick="shareWA(\'🛒 '+esc(o.title).replace(/\'/g,'')+' - ₹'+esc(o.price)+' | अपना OLX: \'+pageLink(\'olditems\'))" class="block w-full text-center mt-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-bold text-sm">📤 WhatsApp Share</button>'+
   '</div></div>').join('')+'</div>';
  else h += '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">'+approved.map(o =>
-  '<div class="bg-white border-2 border-purple-200 rounded-lg overflow-hidden shadow-md">'+
+  '<div class="border-2 '+(o.promoted?'border-amber-500':'bg-white border-purple-200')+' rounded-lg overflow-hidden shadow-md relative" '+(o.promoted?'style="background:linear-gradient(160deg,#FFF9E6,#FDE68A);"':'')+'>'+
+  (o.promoted?'<span class="absolute top-2 left-2 z-10 bg-gradient-to-r from-amber-500 to-yellow-600 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-lg">🚀 PROMOTED</span>':'')+
   (o.pic?'<img src="'+o.pic+'" class="w-full h-44 object-cover">':'')+
   '<div class="p-4"><p class="font-bold text-lg text-purple-700">'+esc(o.title)+'</p>'+
   (o.description?'<p class="text-sm text-gray-500 mt-1">'+esc(o.description).slice(0,60)+(o.description.length>60?'...':'')+'</p>':'')+
@@ -2563,18 +2702,22 @@ async function saveSiteMeta(){
  siteMeta.youtube = document.getElementById('st_yt').value.trim();
  siteMeta.expiryDays = parseInt(document.getElementById('st_expiry').value)||30;
  siteMeta.propertyValidityDays = parseInt(document.getElementById('st_propdays').value)||365;
- siteMeta.propertyFee = document.getElementById('st_propfee').value.trim()||'500';
- siteMeta.razorpayButtonId = document.getElementById('st_razorpay').value.trim();
- siteMeta.razorpayMakan = document.getElementById('st_rz_makan').value.trim();
- siteMeta.razorpayDukan = document.getElementById('st_rz_dukan').value.trim();
+ siteMeta.propertyFeeRent = document.getElementById('st_propfeerent').value.trim()||'500';
+ siteMeta.propertyFeeWanted = document.getElementById('st_propfeewanted').value.trim()||'11';
+ siteMeta.razorpayPropRent = document.getElementById('st_rz_proprent').value.trim();
+ siteMeta.razorpayPropWanted = document.getElementById('st_rz_propwanted').value.trim();
  siteMeta.shaadiFee = document.getElementById('st_shaadifee').value.trim();
  siteMeta.shaadiValidityDays = parseInt(document.getElementById('st_shaadidays').value)||180;
  siteMeta.razorpayShaadi = document.getElementById('st_rz_shaadi').value.trim();
- siteMeta.jobsFee = document.getElementById('st_jobsfee').value.trim()||'100';
- siteMeta.razorpayJobs = document.getElementById('st_rz_jobs').value.trim();
- siteMeta.bizPromoFee = document.getElementById('st_bizpromofee').value.trim()||'100';
- siteMeta.bizPromoValidityDays = parseInt(document.getElementById('st_bizpromodays').value)||30;
+ siteMeta.jobsFeeSeeker = document.getElementById('st_jobsfeeseeker').value.trim()||'11';
+ siteMeta.razorpayJobsSeeker = document.getElementById('st_rz_jobsseeker').value.trim();
+ siteMeta.bizPromoFee = document.getElementById('st_bizpromofee').value.trim()||'300';
+ siteMeta.bizPromoValidityDays = parseInt(document.getElementById('st_bizpromodays').value)||365;
  siteMeta.razorpayBizPromo = document.getElementById('st_rz_bizpromo').value.trim();
+ siteMeta.olxExtraItemFee = document.getElementById('st_olxextrafee').value.trim()||'100';
+ siteMeta.razorpayOlxExtra = document.getElementById('st_rz_olxextra').value.trim();
+ siteMeta.olxPromoFee = document.getElementById('st_olxpromofee').value.trim()||'100';
+ siteMeta.razorpayOlxPromo = document.getElementById('st_rz_olxpromo').value.trim();
  siteMeta.texts = Object.assign({}, siteMeta.texts, {
   objective: document.getElementById('tx_objective').value.trim(),
   inviteMsg: document.getElementById('tx_invite').value.trim()
@@ -2670,6 +2813,14 @@ function renderAdmin(){
   h += '<div class="bg-white rounded-lg shadow p-6"><h3 class="text-2xl font-bold mb-1">🎗️ REFERRAL LEADERBOARD</h3><p class="text-xs text-gray-500 mb-4">Property/Jobs/Shaadi/Business-Promotion — approved paid items जिनमें referrer select हुआ था</p>';
   h += !board.length ? '<p class="text-gray-400 text-center py-8">अभी कोई referral नहीं</p>' :
    '<div class="space-y-2">'+board.map((r,i)=>'<div class="flex justify-between items-center bg-orange-50 border border-orange-200 rounded-lg px-4 py-3"><span class="font-bold">#'+(i+1)+' '+esc(referrerNameOf(r.phone))+' <span class="text-xs text-gray-500 font-normal">('+esc(r.phone)+')</span></span><span class="font-bold text-orange-700">'+r.count+' referrals · ₹'+r.amount+'</span></div>').join('')+'</div>';
+  h += '</div>';
+  const labhSorted = labhData.slice().sort((a,b) => (b.createdAt||'').localeCompare(a.createdAt||''));
+  h += '<div class="bg-white rounded-lg shadow p-6 mt-6"><h3 class="text-2xl font-bold mb-1">🏅 लाभ AUDIT TRAIL ('+labhData.length+')</h3><p class="text-xs text-gray-500 mb-4">किसने किसको कब लाभ दिया — verification calls के लिए। Active = 30 दिन के अंदर देने वाला active था</p>';
+  h += !labhSorted.length ? '<p class="text-gray-400 text-center py-8">अभी कोई लाभ नहीं दिया गया</p>' :
+   '<div class="space-y-2 max-h-96 overflow-y-auto">'+labhSorted.map(l => {
+    const active = isLabhActive(l);
+    return '<div class="flex justify-between items-center bg-gray-50 border rounded-lg px-4 py-2.5 flex-wrap gap-2"><span class="text-sm"><b>'+esc(l.fromName)+'</b> ('+esc(l.fromPhone)+') → <b>'+esc(l.toName)+'</b> ('+esc(l.toPhone)+') <span class="text-gray-400">— '+esc(l.createdAt)+'</span> '+(active?'<span class="text-[10px] bg-green-200 text-green-800 px-2 py-0.5 rounded-full font-bold ml-1">ACTIVE</span>':'<span class="text-[10px] bg-gray-300 text-gray-600 px-2 py-0.5 rounded-full font-bold ml-1">EXPIRED (30+ दिन inactive)</span>')+'</span><button onclick="delDoc(\'labh\',\''+l.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️ Revoke</button></div>';
+   }).join('')+'</div>';
   h += '</div>';
  }
 
@@ -2809,21 +2960,31 @@ function renderAdmin(){
   '<div class="grid grid-cols-1 md:grid-cols-3 gap-4">'+
   '<div><label class="text-xs font-bold">⏰ पुराना सामान expiry (दिन)</label><input type="number" id="st_expiry" value="'+(siteMeta.expiryDays||30)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">⏰ Property validity (दिन)</label><input type="number" id="st_propdays" value="'+(siteMeta.propertyValidityDays||365)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
-  '<div><label class="text-xs font-bold">💰 Property Fee (₹)</label><input id="st_propfee" value="'+esc(siteMeta.propertyFee||'500')+'" class="w-full px-3 py-2 border-2 rounded"></div></div>'+
-  '<div><label class="text-xs font-bold">💳 Razorpay Button ID (Default / सभी के लिए)</label><input id="st_razorpay" value="'+esc(siteMeta.razorpayButtonId||'')+'" placeholder="pl_XXXXXXXXXXXXXX" class="w-full px-3 py-2 border-2 rounded"><p class="text-[10px] text-gray-400 mt-1">Razorpay Dashboard → Payment Button बनाओ → ID यहाँ paste करो</p></div>'+
+  '<div></div></div>'+
+  '<div class="border-t-2 pt-4 mt-2"><p class="font-bold text-lg mb-3">🏠 Property — देने वाले / चाहिए वाले अलग Fee</p><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+  '<div><label class="text-xs font-bold">🔑 किराए पर देना है — Fee (₹)</label><input id="st_propfeerent" value="'+esc(siteMeta.propertyFeeRent||'500')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">🔑 देना है — Razorpay Button ID</label><input id="st_rz_proprent" value="'+esc(siteMeta.razorpayPropRent||'')+'" placeholder="pl_XXXX" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">🙋 किराए पर चाहिए — Fee (₹, spam रोकने के लिए छोटा रखो)</label><input id="st_propfeewanted" value="'+esc(siteMeta.propertyFeeWanted||'11')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">🙋 चाहिए — Razorpay Button ID</label><input id="st_rz_propwanted" value="'+esc(siteMeta.razorpayPropWanted||'')+'" placeholder="pl_XXXX" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '</div></div>'+
   '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
-  '<div><label class="text-xs font-bold">🏠 मकान Portal — Razorpay Button ID</label><input id="st_rz_makan" value="'+esc(siteMeta.razorpayMakan||'')+'" placeholder="pl_XXXX (खाली = default)" class="w-full px-3 py-2 border-2 rounded"></div>'+
-  '<div><label class="text-xs font-bold">🏪 दुकान Portal — Razorpay Button ID</label><input id="st_rz_dukan" value="'+esc(siteMeta.razorpayDukan||'')+'" placeholder="pl_XXXX (खाली = default)" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">💍 Shaadi Profile Fee (₹)</label><input id="st_shaadifee" value="'+esc(siteMeta.shaadiFee||'500')+'" placeholder="जैसे 500" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">💍 Shaadi — Razorpay Button ID</label><input id="st_rz_shaadi" value="'+esc(siteMeta.razorpayShaadi||'')+'" placeholder="pl_XXXX" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">💍 Shaadi Validity (दिन)</label><input type="number" id="st_shaadidays" value="'+(siteMeta.shaadiValidityDays||180)+'" class="w-full px-3 py-2 border-2 rounded"></div></div>'+
-  '<div class="border-t-2 pt-4 mt-2"><p class="font-bold text-lg mb-3">💰 Rozgaar / Business Promotion — Fee Settings</p><div class="grid grid-cols-1 md:grid-cols-3 gap-4">'+
-  '<div><label class="text-xs font-bold">💼 Rozgaar Post Fee (₹)</label><input id="st_jobsfee" value="'+esc(siteMeta.jobsFee||'100')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
-  '<div><label class="text-xs font-bold">💼 Rozgaar — Razorpay Button ID</label><input id="st_rz_jobs" value="'+esc(siteMeta.razorpayJobs||'')+'" placeholder="pl_XXXX" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div class="border-t-2 pt-4 mt-2"><p class="font-bold text-lg mb-1">💼 Rozgaar (देना है FREE, चाहिए वालों का spam-रोकने Fee) / 🚀 Business Promotion</p><div class="grid grid-cols-1 md:grid-cols-3 gap-4">'+
+  '<div><label class="text-xs font-bold">🙋 रोज़गार चाहिए — Fee (₹)</label><input id="st_jobsfeeseeker" value="'+esc(siteMeta.jobsFeeSeeker||'11')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">🙋 चाहिए — Razorpay Button ID</label><input id="st_rz_jobsseeker" value="'+esc(siteMeta.razorpayJobsSeeker||'')+'" placeholder="pl_XXXX" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div></div>'+
-  '<div><label class="text-xs font-bold">🚀 Business Promotion Fee (₹)</label><input id="st_bizpromofee" value="'+esc(siteMeta.bizPromoFee||'100')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
-  '<div><label class="text-xs font-bold">🚀 Business Promotion Validity (दिन)</label><input type="number" id="st_bizpromodays" value="'+(siteMeta.bizPromoValidityDays||30)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<p class="text-xs text-gray-500 md:col-span-3">💼 "रोज़गार/Freelancing देना है" हमेशा FREE रहेगा — koi fee/button नहीं है</p>'+
+  '<div><label class="text-xs font-bold">🚀 Business Promotion Fee (₹)</label><input id="st_bizpromofee" value="'+esc(siteMeta.bizPromoFee||'300')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">🚀 Business Promotion Validity (दिन)</label><input type="number" id="st_bizpromodays" value="'+(siteMeta.bizPromoValidityDays||365)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">🚀 Business Promotion — Razorpay Button ID</label><input id="st_rz_bizpromo" value="'+esc(siteMeta.razorpayBizPromo||'')+'" placeholder="pl_XXXX" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '</div></div>'+
+  '<div class="border-t-2 pt-4 mt-2"><p class="font-bold text-lg mb-1">🛒 अपना OLX — पहली Listing FREE, अगली Extra Fee + Promote</p><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+  '<div><label class="text-xs font-bold">🛒 Extra Item Fee (₹)</label><input id="st_olxextrafee" value="'+esc(siteMeta.olxExtraItemFee||'100')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">🛒 Extra Item — Razorpay Button ID</label><input id="st_rz_olxextra" value="'+esc(siteMeta.razorpayOlxExtra||'')+'" placeholder="pl_XXXX" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">🚀 OLX Promote Fee (₹)</label><input id="st_olxpromofee" value="'+esc(siteMeta.olxPromoFee||'100')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">🚀 OLX Promote — Razorpay Button ID</label><input id="st_rz_olxpromo" value="'+esc(siteMeta.razorpayOlxPromo||'')+'" placeholder="pl_XXXX" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '</div></div>'+
   '<div><label class="text-xs font-bold">🚫 Blocked phones</label><p class="text-sm text-gray-600">'+((siteMeta.blocked||[]).join(', ')||'कोई नहीं')+'</p></div>';
 
@@ -2904,11 +3065,15 @@ function renderApp(){
  renderRandProfile();
  if(currentPage==='community') renderMemberGrid();
  if(currentPage==='property'){
-  const rid = (propKind==='makan' ? siteMeta.razorpayMakan : siteMeta.razorpayDukan) || siteMeta.razorpayButtonId;
-  if(rid) setTimeout(()=>mountRazorpayButton(rid,'razorpayBtnContainer'),30);
+  if(siteMeta.razorpayPropRent) setTimeout(()=>mountRazorpayButton(siteMeta.razorpayPropRent,'razorpayPropRentBox'),30);
+  if(siteMeta.razorpayPropWanted) setTimeout(()=>mountRazorpayButton(siteMeta.razorpayPropWanted,'razorpayPropWantedBox'),30);
  }
  if(currentPage==='shaadi' && siteMeta.razorpayShaadi) setTimeout(()=>mountRazorpayButton(siteMeta.razorpayShaadi,'razorpayShaadiBox'),30);
- if(currentPage==='rozgaar' && siteMeta.razorpayJobs) setTimeout(()=>mountRazorpayButton(siteMeta.razorpayJobs,'razorpayJobsBox'),30);
+ if(currentPage==='rozgaar' && siteMeta.razorpayJobsSeeker) setTimeout(()=>mountRazorpayButton(siteMeta.razorpayJobsSeeker,'razorpayJobsSeekerBox'),30);
+ if(currentPage==='olditems'){
+  if(siteMeta.razorpayOlxExtra) setTimeout(()=>mountRazorpayButton(siteMeta.razorpayOlxExtra,'razorpayOlxExtraBox'),30);
+  if(siteMeta.razorpayOlxPromo) setTimeout(()=>mountRazorpayButton(siteMeta.razorpayOlxPromo,'razorpayOlxPromoBox'),30);
+ }
  setTimeout(()=>{
   document.querySelectorAll('select[id$="gender"]').forEach(sel=>{
    const prefix = sel.id.slice(0,-6);

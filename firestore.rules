@@ -51,7 +51,10 @@ service cloud.firestore {
                         // yaha self-update sirf 'pending' request bhejne तक limited hai, koi khud ko promote nahi kar sakta.
                         && request.resource.data.diff(resource.data).affectedKeys()
                              .hasOnly(['biz_promo_status', 'biz_promo_referredBy', 'biz_promo_requestedAt'])
-                        && request.resource.data.biz_promo_status == 'pending');
+                        && request.resource.data.biz_promo_status == 'pending')
+                    || (isOwnPhone(resource.data.phone)
+                        // सिर्फ अपना lastActiveAt छूता है — लाभ की 30-दिन inactivity expiry के लिए (route() पर हर session में एक बार लिखा जाता है)
+                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastActiveAt']));
       allow delete: if isAdmin() || isOwnPhone(resource.data.phone);
     }
 
@@ -129,6 +132,15 @@ service cloud.firestore {
     }
     match /garba_team/{docId} { allow read: if isSignedIn(); allow write: if isAdmin(); }
     match /garba_coords/{docId} { allow read: if isSignedIn(); allow write: if isAdmin(); }
+
+    // ---- लाभ (business trust-endorsement — daily/one-time caps client-side check karte hain, yahan sirf ownership) ----
+    match /labh/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isOwnPhone(request.resource.data.fromPhone)
+                    && request.resource.data.toPhone != request.resource.data.fromPhone;
+      allow update: if false; // कभी edit नहीं होता — सिर्फ create/delete
+      allow delete: if isAdmin(); // suspicious entry सिर्फ Admin हटा सकता है (audit trail बचा रहे)
+    }
 
     // ---- Admin-only visibility ----
     match /suggestions/{docId} {
