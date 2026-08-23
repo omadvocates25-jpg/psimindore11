@@ -1923,6 +1923,11 @@ function activeProperties(){
  const cutoff = new Date(Date.now() - days*86400000).toISOString().slice(0,10);
  return propertyData.filter(p => p.status==='approved' && p.active!==false && (p.approvedAt||p.createdAt||'9999') >= cutoff);
 }
+function activeShaadis(){
+ const days = siteMeta.shaadiValidityDays || 180;
+ const cutoff = new Date(Date.now() - days*86400000).toISOString().slice(0,10);
+ return shaadiData.filter(s => s.status==='approved' && s.paid!==false && (s.approvedAt||s.createdAt||'9999') >= cutoff);
+}
 async function submitProperty(){
  const me = myMember();
  if(!me || me.status!=='approved'){ showRegisterPrompt('Listing डालने के लिए पहले Community member बनो।'); return; }
@@ -2073,6 +2078,7 @@ function shaadiCard(s, revealed){
 }
 // दो portal: वर चाहिए (लड़के दिखेंगे) | वधू चाहिए (लड़कियाँ दिखेंगी)
 let shaadiKind = '';
+let showShaadiForm = false;
 function setShaadiKind(k, allowed){
  if(k !== allowed){
   alert(allowed==='vadhu'
@@ -2082,16 +2088,46 @@ function setShaadiKind(k, allowed){
  }
  shaadiKind = k; renderApp();
 }
+async function submitShaadiProfile(){
+ const me = myMember();
+ if(!me || me.status!=='approved'){ showRegisterPrompt('Shaadi profile डालने के लिए पहले Community member बनो।'); return; }
+ const nm=fmtName(document.getElementById('sh2_name').value), gender=document.getElementById('sh2_gender').value,
+  age=document.getElementById('sh2_age').value.trim(), edu=document.getElementById('sh2_edu').value.trim(),
+  village=fmtName(document.getElementById('sh2_village').value), district=document.getElementById('sh2_district').value.trim(),
+  contact=fmtPhone(document.getElementById('sh2_contact').value), pic=document.getElementById('sh2_pic').value,
+  details=document.getElementById('sh2_details').value.trim(), ref=document.getElementById('sh2_ref').value;
+ if(!nm||!age||!contact){ alert('❌ Name, Age और Contact जरूरी!'); return; }
+ busy(true);
+ await db.collection('shaadi').add({name:nm, gender, age, education:edu, village, district, contact, pic, details, referredBy:ref, paid:false, status:'pending', createdAt:today()});
+ busy(false); showShaadiForm=false;
+ alert('✅ Profile submit हो गई! Payment confirm होने के बाद Admin approve करेगा।'); renderApp();
+}
 function renderShaadiPage(){
  const me = myMember();
+ const fee = siteMeta.shaadiFee||'500', days = siteMeta.shaadiValidityDays||180;
  let h = '<h2 class="text-3xl font-bold mb-2">💍 SHAADI / विवाह</h2>';
- h += '<div class="bg-pink-50 border-2 border-pink-300 rounded-lg p-4 mb-6 text-center"><p class="font-bold text-pink-800">अपनी profile डलवाने के लिए संपर्क करें: '+CONTACT_PHONE+'</p><p class="text-xs text-gray-500 mt-1">सभी profiles ⭐ PAID + VERIFIED ✅ | रोज़ सिर्फ 10 profiles देख सकते हो</p>'+
-  (siteMeta.shaadiFee?'<p class="text-sm font-bold text-pink-700 mt-2">💳 Profile Fee: ₹'+esc(siteMeta.shaadiFee)+'</p>':'')+
-  (siteMeta.razorpayShaadi?'<div class="mt-3 flex justify-center" id="razorpayShaadiBox"></div>':'')+
+ h += '<div class="bg-pink-50 border-2 border-pink-300 rounded-lg p-4 mb-6 text-center"><p class="font-bold text-pink-800">सभी profiles ⭐ PAID + VERIFIED ✅</p><p class="text-xs text-gray-500 mt-1">रोज़ सिर्फ 10 profiles देख सकते हो</p>'+
+  '<p class="text-sm font-bold text-pink-700 mt-2">💳 Profile Fee: ₹'+esc(fee)+' / '+days+' दिन</p>'+
+  (siteMeta.razorpayShaadi?'<div class="mt-3 flex justify-center" id="razorpayShaadiBox"></div>':'<p class="text-xs text-gray-400 mt-2">💳 Payment button जल्द चालू होगा — तब तक Admin से बात करो: '+CONTACT_PHONE+'</p>')+
   '</div>';
  if(!me || me.status!=='approved'){
   h += '<div class="bg-white rounded-lg p-10 text-center shadow"><p class="text-4xl mb-3">🔒</p><p class="text-lg font-bold text-gray-600">Shaadi profiles देखने के लिए पहले Community member बनो</p><button onclick="startRegister()" class="mt-4 bg-pink-600 text-white px-6 py-3 rounded-lg font-bold">📝 REGISTER YOURSELF</button></div>';
   return h;
+ }
+ h += '<button onclick="showShaadiForm=!showShaadiForm;renderApp()" class="mb-6 bg-pink-600 hover:bg-pink-700 text-white px-6 py-3 rounded-lg font-bold">➕ Payment के बाद अपनी/परिवार की Profile डालो</button>';
+ if(showShaadiForm){
+  h += '<div class="bg-pink-50 border-2 border-pink-400 rounded-lg p-6 mb-8"><h3 class="text-xl font-bold mb-4">➕ ADD SHAADI PROFILE</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+  '<div><label class="text-xs font-bold">Name *</label><input id="sh2_name" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Gender *</label><select id="sh2_gender" class="w-full px-3 py-2 border-2 rounded"><option>Male / पुरुष</option><option>Female / महिला</option></select></div>'+
+  '<div><label class="text-xs font-bold">Age *</label><input id="sh2_age" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Education</label><input id="sh2_edu" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Village</label><input id="sh2_village" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">District</label><input id="sh2_district" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Family Contact *</label><input id="sh2_contact" maxlength="10" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Photo 📷</label><input type="hidden" id="sh2_pic"><button type="button" onclick="openCloudUpload(\'sh2_pic\')" class="w-full bg-blue-600 text-white px-3 py-2 rounded font-bold text-sm">📷 Upload</button><img id="sh2_pic_prev" class="hidden mt-2 h-24 object-cover rounded border-2"></div>'+
+  referrerSelectHTML('sh2_ref')+
+  '<div class="md:col-span-2"><label class="text-xs font-bold">Details</label><textarea id="sh2_details" rows="2" class="w-full px-3 py-2 border-2 rounded"></textarea></div></div>'+
+  '<div class="flex gap-3 mt-4"><button onclick="submitShaadiProfile()" class="bg-pink-600 text-white px-8 py-3 rounded font-bold">✅ SUBMIT</button><button onclick="showShaadiForm=false;renderApp()" class="bg-gray-400 text-white px-8 py-3 rounded font-bold">CANCEL</button></div></div>';
  }
  const iAmMale = (me.gender||'').indexOf('Male')===0;
  const iAmFemale = (me.gender||'').indexOf('Female')===0;
@@ -2102,9 +2138,9 @@ function renderShaadiPage(){
  // लड़कों को लड़कियाँ (वधू चाहिए), लड़कियों को लड़के (वर चाहिए)
  const allowed = iAmMale ? 'vadhu' : 'var';
  if(shaadiKind !== allowed) shaadiKind = allowed;
- const paidOf = arr => arr.filter(s => s.paid!==false);
- const varList   = paidOf(shaadiData.filter(s => s.status==='approved' && (s.gender||'').indexOf('Male')===0));
- const vadhuList = paidOf(shaadiData.filter(s => s.status==='approved' && (s.gender||'').indexOf('Female')===0));
+ const active = activeShaadis();
+ const varList   = active.filter(s => (s.gender||'').indexOf('Male')===0);
+ const vadhuList = active.filter(s => (s.gender||'').indexOf('Female')===0);
  h += '<div class="grid grid-cols-2 gap-3 mb-5">'+
   '<button onclick="setShaadiKind(\'var\',\''+allowed+'\')" class="px-4 py-4 rounded-xl font-bold text-center '+(shaadiKind==='var'?'bg-rose-600 text-white shadow-lg':'bg-gray-100 text-gray-500 border-2')+'">'+
    '<p class="text-3xl mb-1">🤵</p><p>वर चाहिए</p><p class="text-xs font-normal">Groom Profiles ('+varList.length+')</p>'+(allowed!=='var'?'<p class="text-[10px] mt-1">🔒</p>':'')+'</button>'+
@@ -2703,6 +2739,7 @@ function renderAdmin(){
  const pendJobs = jobsData.filter(j=>j.status==='pending');
  const pendGarba = garbaRegs.filter(g=>g.status==='pending');
  const pendProp = propertyData.filter(p=>p.status==='pending');
+ const pendShaadi = shaadiData.filter(s=>s.status==='pending');
  const pendRel = relativesData.filter(r=>r.status==='pending');
  const pendSuggest = suggestionsData.filter(s=>s.status==='pending');
  const pendNews = newsData.filter(n=>n.status==='pending');
@@ -2717,7 +2754,7 @@ function renderAdmin(){
   ['cricket','🏏 CRICKET'],
   ['property','🏠 PROPERTY'+(pendProp.length?' ('+pendProp.length+')':'')],
   ['blood','🩸 BLOOD'],
-  ['shaadi','💍 SHAADI'],
+  ['shaadi','💍 SHAADI'+(pendShaadi.length?' ('+pendShaadi.length+')':'')],
   ['rozgaar','💼 JOBS'+(pendJobs.length?' ('+pendJobs.length+')':'')],
   ['olditems','🛒 सामान'+(pendItems.length?' ('+pendItems.length+')':'')],
   ['events','📅 EVENTS'],
@@ -2834,7 +2871,10 @@ function renderAdmin(){
  }
 
  if(adminTab==='shaadi'){
-  h += '<div class="bg-pink-50 border-2 border-pink-400 rounded-lg p-6 mb-6"><h3 class="text-2xl font-bold mb-4">➕ ADD SHAADI PROFILE</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+  h += '<div class="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-6 mb-6"><h3 class="text-2xl font-bold mb-4">⏳ PENDING SELF-SUBMITTED PROFILES ('+pendShaadi.length+')</h3>';
+  h += pendShaadi.length ? '<div class="space-y-3">'+pendShaadi.map(s=>'<div class="bg-white border-2 border-yellow-400 rounded-lg p-4 flex flex-wrap justify-between items-center gap-3"><div class="flex gap-3 items-center">'+(s.pic?'<img src="'+s.pic+'" class="h-16 w-16 object-cover rounded">':'')+'<div><p class="font-bold">'+esc(s.name)+' | '+esc(s.gender||'-')+' | Age '+esc(s.age||'-')+' | '+esc(s.village||'-')+'</p><p class="text-sm text-gray-600">📞 '+esc(s.contact||'-')+(s.referredBy?' | 🎗️ '+esc(referrerNameOf(s.referredBy)):'')+'</p></div></div><div class="flex gap-2"><button onclick="updDoc(\'shaadi\',\''+s.id+'\',{status:\'approved\',approvedAt:today(),paid:true})" class="bg-green-600 text-white px-4 py-2 rounded font-bold">✅ Activate</button><button onclick="delDoc(\'shaadi\',\''+s.id+'\')" class="bg-red-600 text-white px-4 py-2 rounded font-bold">❌</button></div></div>').join('')+'</div>' : '<p class="text-gray-500">कोई pending नहीं</p>';
+  h += '</div>';
+  h += '<div class="bg-pink-50 border-2 border-pink-400 rounded-lg p-6 mb-6"><h3 class="text-2xl font-bold mb-4">➕ ADD SHAADI PROFILE (Admin — बिना payment link के)</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
   '<div><label class="text-xs font-bold">Name *</label><input id="sh_name" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">Gender</label><select id="sh_gender" class="w-full px-3 py-2 border-2 rounded"><option>Male / पुरुष</option><option>Female / महिला</option></select></div>'+
   '<div><label class="text-xs font-bold">Age</label><input id="sh_age" class="w-full px-3 py-2 border-2 rounded"></div>'+
@@ -2845,7 +2885,8 @@ function renderAdmin(){
   '<div><label class="text-xs font-bold">Photo 📷</label><input type="hidden" id="sh_pic"><button type="button" onclick="openCloudUpload(\'sh_pic\')" class="w-full bg-blue-600 text-white px-3 py-2 rounded font-bold text-sm">📷 Upload</button><img id="sh_pic_prev" class="hidden mt-2 h-24 object-cover rounded border-2"></div>'+
   '<div class="md:col-span-2"><label class="text-xs font-bold">Details</label><textarea id="sh_details" rows="2" class="w-full px-3 py-2 border-2 rounded"></textarea></div></div>'+
   '<button onclick="addShaadiAdmin()" class="mt-4 bg-pink-600 text-white px-8 py-3 rounded font-bold">✅ ADD PROFILE</button></div>';
-  h += '<div class="space-y-3">'+shaadiData.map(s=>{
+  h += '<h3 class="text-xl font-bold mb-3">Live Profiles ('+shaadiData.filter(s=>s.status==='approved').length+')</h3>';
+  h += '<div class="space-y-3">'+shaadiData.filter(s=>s.status==='approved').map(s=>{
    const isPaid = s.paid!==false;
    return '<div class="bg-white border-2 border-pink-300 rounded-lg p-4 flex flex-wrap justify-between items-center gap-3"><div class="flex gap-3 items-center">'+(s.pic?'<img src="'+s.pic+'" class="h-16 w-16 object-cover rounded">':'')+'<div><p class="font-bold">'+esc(s.name)+' | '+esc(s.gender||'-')+' | '+esc(s.age||'-')+' | '+esc(s.village||'-')+' '+(isPaid?'<span class="text-[10px] bg-yellow-300 text-yellow-900 px-2 py-0.5 rounded-full font-bold">⭐ PAID</span>':'<span class="text-[10px] bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-bold">UNPAID</span>')+'</p><p class="text-sm text-gray-600">📞 '+esc(s.contact||'-')+'</p></div></div><div class="flex gap-2"><button onclick="toggleShaadiPaid(\''+s.id+'\','+isPaid+')" class="'+(isPaid?'bg-gray-600':'bg-yellow-500')+' text-white px-4 py-2 rounded font-bold text-sm">'+(isPaid?'UNPAID करो':'⭐ PAID करो')+'</button><button onclick="delDoc(\'shaadi\',\''+s.id+'\')" class="bg-red-500 text-white px-4 py-2 rounded font-bold">🗑️</button></div></div>';
   }).join('')+'</div>';

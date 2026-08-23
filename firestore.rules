@@ -106,7 +106,15 @@ service cloud.firestore {
     }
     match /shaadi/{docId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin(); // profiles सिर्फ Admin add करता है
+      // Member khud apni/parivaar ki profile submit kar sakta hai (self-serve + payment),
+      // lekin सीधे approved/paid nahi ban sakta — Admin hi approve karta hai.
+      // Admin ka "बिना payment link के" direct-add wala flow bhi yahi create rule use karta hai, isliye isAdmin() bhi allowed.
+      allow create: if isAdmin()
+                    || (isOwnPhone(request.resource.data.contact)
+                        && request.resource.data.status == 'pending'
+                        && request.resource.data.paid == false);
+      allow update: if isAdmin();
+      allow delete: if isAdmin() || isOwnPhone(resource.data.contact);
     }
     match /blood/{docId} {
       allow read: if isSignedIn();
