@@ -43,7 +43,7 @@ let relSearchQ = '';
 let friendSearchQ = '';
 let whomQuery = '';
 
-let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], garbaCoords=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[], teamJoinData=[];
+let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], garbaCoords=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[], teamJoinData=[], labhData=[];
 let siteMeta = { ticker:'', aboutUs:'', fb:'', insta:'', youtube:'', committee:'', expiryDays:30, propertyValidityDays:365, propertyFeeRent:'500', propertyFeeWanted:'11', razorpayPropRent:'', razorpayPropWanted:'', shaadiFee:'500', shaadiValidityDays:180, razorpayShaadi:'', jobsFeeSeeker:'11', razorpayJobsSeeker:'', bizPromoFee:'100', bizPromoValidityDays:30, razorpayBizPromo:'', blocked:[], garbaFormOpen:true, ads:[{},{},{},{},{}], subAdmins:[], texts:{} };
 
 function isSuperAdmin(){ return currentUser === ADMIN_PHONE || localStorage.getItem('psim_admin_ok') === 'true'; }
@@ -90,6 +90,34 @@ function computeReferralLeaderboard(){
   byPhone[r.phone].count++; byPhone[r.phone].amount += r.amount;
  });
  return Object.values(byPhone).sort((a,b) => b.count-a.count || b.amount-a.amount);
+}
+
+// ================= लाभ (business trust-endorsement, ₹1 = 1 discount credit) =================
+const LABH_DAILY_LIMIT = 10;
+const LABH_INACTIVE_DAYS = 30;
+function isLabhActive(l){
+ const giver = membersData.find(m => m.phone===l.fromPhone);
+ if(!giver) return false; // giver ka account हटाया जा चुका — count नहीं होगा
+ const cutoff = new Date(Date.now() - LABH_INACTIVE_DAYS*86400000).toISOString().slice(0,10);
+ return (giver.lastActiveAt||giver.createdAt||'0000-00-00') >= cutoff; // 30 दिन inactive => expire
+}
+function labhReceivedBy(phone){ return labhData.filter(l => l.toPhone===phone); }
+function labhActiveReceivedBy(phone){ return labhReceivedBy(phone).filter(isLabhActive); }
+function labhGivenToday(phone){ return labhData.filter(l => l.fromPhone===phone && l.createdAt===today()).length; }
+function labhReceivedToday(phone){ return labhData.filter(l => l.toPhone===phone && l.createdAt===today()).length; }
+function hasGivenLabh(fromPhone, toPhone){ return labhData.some(l => l.fromPhone===fromPhone && l.toPhone===toPhone); }
+async function giveLabh(toId, toPhone, toName){
+ const me = myMember();
+ if(!me || me.status!=='approved'){ showRegisterPrompt('लाभ देने के लिए पहले Community member बनो।'); return; }
+ if(me.phone===toPhone){ alert('❌ खुद को लाभ नहीं दे सकते'); return; }
+ if(hasGivenLabh(me.phone, toPhone)){ alert('❌ आप पहले ही इस Business को लाभ दे चुके हो — एक बार ही दे सकते हो'); return; }
+ if(labhGivenToday(me.phone) >= LABH_DAILY_LIMIT){ alert('⏰ आज आपकी 10 लाभ देने की limit पूरी हो गई — कल फिर दे सकते हो'); return; }
+ if(labhReceivedToday(toPhone) >= LABH_DAILY_LIMIT){ alert('⏰ आज इस Business की 10 लाभ लेने की limit पूरी हो गई — कल कोशिश करो'); return; }
+ busy(true);
+ await db.collection('labh').add({fromPhone:me.phone, fromName:me.name+' '+me.surname, toPhone, toId, toName, createdAt:today()});
+ busy(false);
+ alert('✅ धन्यवाद! आपने '+toName+' को लाभ दिया।');
+ renderApp();
 }
 async function approveBizPromo(id){
  const until = new Date(Date.now() + (siteMeta.bizPromoValidityDays||30)*86400000).toISOString().slice(0,10);
@@ -224,6 +252,7 @@ function setupRealtimeListeners(){
  watch('cricket', d => cricketData = d);
  watch('property', d => propertyData = d);
  watch('blood', d => bloodData = d);
+ watch('labh', d => labhData = d);
  db.collection('meta').doc('site').onSnapshot(doc => {
   if(doc.exists) siteMeta = Object.assign(siteMeta, doc.data());
   if(!siteMeta.ads || siteMeta.ads.length<5) siteMeta.ads = [{},{},{},{},{}];
@@ -246,7 +275,16 @@ function goPage(p){
  }
  location.hash = p;
 }
+let _lastActiveStamped = false;
+function stampLastActiveIfNeeded(){
+ if(_lastActiveStamped || !currentUser) return;
+ const me = membersData.find(m => m.phone===currentUser);
+ if(!me) return; // members अभी load नहीं हुए — अगले route() पर फिर try होगा
+ _lastActiveStamped = true;
+ if(me.lastActiveAt !== today()) db.collection('members').doc(me.id).update({lastActiveAt: today()}).catch(()=>{});
+}
 function route(){
+ stampLastActiveIfNeeded();
  let h = (location.hash||'#home').replace('#','');
  if(h.startsWith('news/')){ selectedNewsId = h.split('/')[1]; h = 'news'; }
  if(h==='admin' && !isAdmin()){ h='home'; }
@@ -1393,6 +1431,22 @@ function allBusinesses(){
  return real.length > 0 ? real : SAMPLE_BUSINESSES;
 }
 // ===== BUSINESS DETAIL MODAL (कहीं से भी click => पूरी details) =====
+function labhBadgeHTML(b){
+ const count = labhActiveReceivedBy(b.ownerPhone).length;
+ let h = '<div class="mt-4 flex items-center gap-3 bg-yellow-50 border border-yellow-300 rounded-lg px-4 py-3">'+
+  '<div class="text-2xl">🏅</div>'+
+  '<p class="font-bold text-yellow-800">'+count+' लोगों को इनसे लाभ मिला</p>'+
+  '</div>';
+ if(currentUser && currentUser!==b.ownerPhone){
+  if(hasGivenLabh(currentUser, b.ownerPhone)){
+   h += '<button class="w-full mt-2 bg-green-100 text-green-700 px-4 py-3 rounded-lg font-bold" disabled>✔️ आपने लाभ दिया — धन्यवाद!</button>';
+  } else {
+   h += '<button onclick="giveLabh(\''+b.id+'\',\''+esc(b.ownerPhone)+'\',\''+esc(b.name)+'\')" class="w-full mt-2 bg-orange-500 hover:bg-orange-600 text-white px-4 py-3 rounded-lg font-bold">✅ मुझे लाभ मिला</button>'+
+    '<p class="text-[10px] text-gray-400 text-center mt-1">सिर्फ एक बार — deal के बाद ही दबाओ</p>';
+  }
+ }
+ return h;
+}
 function bizDetailHTML(b){
  return (b.pic?'<img src="'+b.pic+'" class="w-full h-56 object-cover rounded-t-2xl">':'<div class="w-full h-28 bg-yellow-100 flex items-center justify-center text-6xl rounded-t-2xl">🏪</div>')+
   '<div class="p-6">'+
@@ -1404,6 +1458,7 @@ function bizDetailHTML(b){
   (b.village?'<p>🏡 गाँव: '+esc(b.village)+'</p>':'')+
   '<p>📱 '+esc(b.phone)+'</p></div>'+
   (b.description?'<p class="text-sm text-gray-700 mt-3 bg-gray-50 rounded-lg p-3 whitespace-pre-line">'+esc(b.description)+'</p>':'')+
+  (b.ownerPhone ? labhBadgeHTML(b) : '')+
   (currentUser && currentUser!==b.ownerPhone && membersData.find(x=>x.id===b.id) ?
    '<div class="flex gap-2 flex-wrap mt-4"><button onclick="sendFriendRequest(\''+b.id+'\')" class="bg-purple-100 text-purple-700 border border-purple-300 px-3 py-1.5 rounded-lg text-xs font-bold">➕ मित्र</button><button onclick="openRelPicker(\''+b.id+'\')" class="bg-indigo-100 text-indigo-700 border border-indigo-300 px-3 py-1.5 rounded-lg text-xs font-bold">👨‍👩‍👧 रिश्तेदार</button></div>' : '')+
   '<div class="grid grid-cols-1 gap-2 mt-5">'+
@@ -1519,11 +1574,30 @@ function myAcc_business(){
   owner: me.name+' '+me.surname, phone: me.business_phone||me.phone, place: me.business_place||me.present_city||'',
   gmap: me.business_gmap||'', pic: me.business_pic1||'', description: me.business_details||'', ownerPhone: me.phone
  };
- box.innerHTML = bizDetailHTML(b) + bizPromoPanelHTML(me);
+ box.innerHTML = bizDetailHTML(b) + labhListPanelHTML(me) + bizPromoPanelHTML(me);
  document.getElementById('bizModal').classList.remove('hidden');
  if(me.biz_promo_status!=='active' && me.biz_promo_status!=='pending' && siteMeta.razorpayBizPromo){
   setTimeout(()=>mountRazorpayButton(siteMeta.razorpayBizPromo,'razorpayBizPromoBox'),30);
  }
+}
+function labhListPanelHTML(me){
+ const active = labhActiveReceivedBy(me.phone);
+ const list = active.slice().sort((a,b) => (b.createdAt||'').localeCompare(a.createdAt||''));
+ let h = '<div class="mx-6 mb-6 bg-yellow-50 border-2 border-yellow-300 rounded-lg p-4">'+
+  '<p class="font-bold text-yellow-800 mb-1">🏅 आपको मिले लाभ ('+active.length+')</p>';
+ if(active.length){
+  h += '<p class="text-sm text-green-700 font-bold mb-3">₹'+active.length+' discount अगली Business Promotion Renewal पर</p>'+
+   '<div class="space-y-1.5 max-h-40 overflow-y-auto">'+list.map(l =>
+    '<div class="flex justify-between items-center bg-white rounded px-3 py-1.5 text-sm"><span>'+esc(l.fromName)+'</span><span class="text-xs text-gray-400">'+esc(l.createdAt)+'</span></div>'
+   ).join('')+'</div>';
+ } else {
+  h += '<p class="text-xs text-gray-500">अभी किसी ने लाभ नहीं दिया — जब कोई deal के बाद "मुझे लाभ मिला" दबाएगा, यहाँ दिखेगा</p>';
+ }
+ h += '<div class="flex items-center gap-2 mt-3 pt-3 border-t border-yellow-200">'+
+  '<div class="flex-1 h-1.5 rounded-full bg-yellow-200 overflow-hidden"><div class="h-full bg-yellow-500" style="width:'+(labhReceivedToday(me.phone)*10)+'%"></div></div>'+
+  '<span class="text-[10px] font-bold text-yellow-700">आज मिले '+labhReceivedToday(me.phone)+'/'+LABH_DAILY_LIMIT+'</span></div>';
+ h += '</div>';
+ return h;
 }
 function bizPromoPanelHTML(me){
  const fee = siteMeta.bizPromoFee||'100', days = siteMeta.bizPromoValidityDays||30;
@@ -2640,6 +2714,14 @@ function renderAdmin(){
   h += '<div class="bg-white rounded-lg shadow p-6"><h3 class="text-2xl font-bold mb-1">🎗️ REFERRAL LEADERBOARD</h3><p class="text-xs text-gray-500 mb-4">Property/Jobs/Shaadi/Business-Promotion — approved paid items जिनमें referrer select हुआ था</p>';
   h += !board.length ? '<p class="text-gray-400 text-center py-8">अभी कोई referral नहीं</p>' :
    '<div class="space-y-2">'+board.map((r,i)=>'<div class="flex justify-between items-center bg-orange-50 border border-orange-200 rounded-lg px-4 py-3"><span class="font-bold">#'+(i+1)+' '+esc(referrerNameOf(r.phone))+' <span class="text-xs text-gray-500 font-normal">('+esc(r.phone)+')</span></span><span class="font-bold text-orange-700">'+r.count+' referrals · ₹'+r.amount+'</span></div>').join('')+'</div>';
+  h += '</div>';
+  const labhSorted = labhData.slice().sort((a,b) => (b.createdAt||'').localeCompare(a.createdAt||''));
+  h += '<div class="bg-white rounded-lg shadow p-6 mt-6"><h3 class="text-2xl font-bold mb-1">🏅 लाभ AUDIT TRAIL ('+labhData.length+')</h3><p class="text-xs text-gray-500 mb-4">किसने किसको कब लाभ दिया — verification calls के लिए। Active = 30 दिन के अंदर देने वाला active था</p>';
+  h += !labhSorted.length ? '<p class="text-gray-400 text-center py-8">अभी कोई लाभ नहीं दिया गया</p>' :
+   '<div class="space-y-2 max-h-96 overflow-y-auto">'+labhSorted.map(l => {
+    const active = isLabhActive(l);
+    return '<div class="flex justify-between items-center bg-gray-50 border rounded-lg px-4 py-2.5 flex-wrap gap-2"><span class="text-sm"><b>'+esc(l.fromName)+'</b> ('+esc(l.fromPhone)+') → <b>'+esc(l.toName)+'</b> ('+esc(l.toPhone)+') <span class="text-gray-400">— '+esc(l.createdAt)+'</span> '+(active?'<span class="text-[10px] bg-green-200 text-green-800 px-2 py-0.5 rounded-full font-bold ml-1">ACTIVE</span>':'<span class="text-[10px] bg-gray-300 text-gray-600 px-2 py-0.5 rounded-full font-bold ml-1">EXPIRED (30+ दिन inactive)</span>')+'</span><button onclick="delDoc(\'labh\',\''+l.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️ Revoke</button></div>';
+   }).join('')+'</div>';
   h += '</div>';
  }
 
