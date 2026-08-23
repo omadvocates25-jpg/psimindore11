@@ -2416,7 +2416,7 @@ function renderGalleryPage(){
 }
 
 // ================= ADMIN HELPERS =================
-function switchTab(t){ adminTab=t; editingId=null; renderApp(); }
+function switchTab(t){ adminTab=t; editingId=null; adminEditTarget=null; renderApp(); }
 function _localCol(col){
  if(col==='members') return membersData; if(col==='events') return eventsData;
  if(col==='news') return newsData; if(col==='photos') return photosData;
@@ -2588,6 +2588,113 @@ function editPhotoForm(){
   '<div class="md:col-span-2">'+_photoField('eg_url', p.url, '📷 Photo बदलो *')+'</div></div>'+
   '<div class="flex gap-3 mt-4"><button onclick="saveEditPhoto()" class="bg-blue-600 text-white px-8 py-3 rounded font-bold">✅ SAVE</button><button onclick="cancelEdit()" class="bg-gray-400 text-white px-8 py-3 rounded font-bold">CANCEL</button></div></div>';
 }
+
+// ===== EDIT (photo सहित नहीं / mostly text) : Garba Team/Coords, Cricket, Blood, Property, Shaadi, Jobs, OLX, Committee =====
+let adminEditTarget = null; // {type, id}
+function startAdminEdit(type, id){ adminEditTarget = {type, id}; renderApp(); window.scrollTo(0,0); }
+function cancelAdminEdit(){ adminEditTarget = null; renderApp(); }
+function isAdminEditing(type){ return adminEditTarget && adminEditTarget.type===type; }
+
+function editGarbaTeamForm(){
+ const t = garbaTeam.find(x=>x.id===adminEditTarget.id); if(!t) return '';
+ return '<div class="bg-blue-50 border-2 border-blue-500 rounded-lg p-6 mb-6"><h3 class="text-xl font-bold mb-4">✏️ EDIT TEAM MEMBER</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+  '<div><label class="text-xs font-bold">Name *</label><input id="gte_name" value="'+esc(t.name)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Phone</label><input id="gte_phone" value="'+esc(t.phone||'')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Role</label><input id="gte_role" value="'+esc(t.role||'')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  _photoField('gte_pic', t.pic, 'Photo 📷')+'</div>'+
+  '<div class="flex gap-3 mt-4"><button onclick="saveAdminEdit(\'garba_team\',{name:fmtName(_v(\'gte_name\')),phone:_v(\'gte_phone\'),role:_v(\'gte_role\'),pic:_v(\'gte_pic\')})" class="bg-blue-600 text-white px-8 py-3 rounded font-bold">✅ SAVE</button><button onclick="cancelAdminEdit()" class="bg-gray-400 text-white px-8 py-3 rounded font-bold">CANCEL</button></div></div>';
+}
+function editGarbaCoordForm(){
+ const c = garbaCoords.find(x=>x.id===adminEditTarget.id); if(!c) return '';
+ return '<div class="bg-blue-50 border-2 border-blue-500 rounded-lg p-6 mb-6"><h3 class="text-xl font-bold mb-4">✏️ EDIT COORDINATOR</h3><div class="grid grid-cols-1 md:grid-cols-3 gap-4">'+
+  '<div><label class="text-xs font-bold">Area *</label><input id="gce_area" value="'+esc(c.area)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Name *</label><input id="gce_name" value="'+esc(c.name)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Phone</label><input id="gce_phone" value="'+esc(c.phone||'')+'" class="w-full px-3 py-2 border-2 rounded"></div></div>'+
+  '<div class="flex gap-3 mt-4"><button onclick="saveAdminEdit(\'garba_coords\',{area:fmtName(_v(\'gce_area\')),name:fmtName(_v(\'gce_name\')),phone:_v(\'gce_phone\')})" class="bg-blue-600 text-white px-8 py-3 rounded font-bold">✅ SAVE</button><button onclick="cancelAdminEdit()" class="bg-gray-400 text-white px-8 py-3 rounded font-bold">CANCEL</button></div></div>';
+}
+function editCricketForm(){
+ const c = cricketData.find(x=>x.id===adminEditTarget.id); if(!c) return '';
+ return '<div class="bg-blue-50 border-2 border-blue-500 rounded-lg p-6 mb-6"><h3 class="text-xl font-bold mb-4">✏️ EDIT CRICKET REGISTRATION</h3><div class="grid grid-cols-1 md:grid-cols-3 gap-4">'+
+  '<div><label class="text-xs font-bold">Name *</label><input id="cke_name" value="'+esc(c.name)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Area</label><input id="cke_area" value="'+esc(c.area||'')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Phone</label><input id="cke_phone" value="'+esc(c.phone||'')+'" class="w-full px-3 py-2 border-2 rounded"></div></div>'+
+  '<div class="flex gap-3 mt-4"><button onclick="saveAdminEdit(\'cricket\',{name:fmtName(_v(\'cke_name\')),area:_v(\'cke_area\'),phone:_v(\'cke_phone\')})" class="bg-blue-600 text-white px-8 py-3 rounded font-bold">✅ SAVE</button><button onclick="cancelAdminEdit()" class="bg-gray-400 text-white px-8 py-3 rounded font-bold">CANCEL</button></div></div>';
+}
+function editBloodForm(){
+ const b = bloodData.find(x=>x.id===adminEditTarget.id); if(!b) return '';
+ return '<div class="bg-blue-50 border-2 border-blue-500 rounded-lg p-6 mb-6"><h3 class="text-xl font-bold mb-4">✏️ EDIT BLOOD DONOR</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+  '<div><label class="text-xs font-bold">Name *</label><input id="ble_name" value="'+esc(b.name)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Blood Group *</label><input id="ble_bg" value="'+esc(b.blood_group||'')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">District</label><input id="ble_district" value="'+esc(b.district||'')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Phone</label><input id="ble_phone" value="'+esc(b.phone||'')+'" class="w-full px-3 py-2 border-2 rounded"></div></div>'+
+  '<div class="flex gap-3 mt-4"><button onclick="saveAdminEdit(\'blood\',{name:fmtName(_v(\'ble_name\')),blood_group:_v(\'ble_bg\'),district:_v(\'ble_district\'),phone:_v(\'ble_phone\')})" class="bg-blue-600 text-white px-8 py-3 rounded font-bold">✅ SAVE</button><button onclick="cancelAdminEdit()" class="bg-gray-400 text-white px-8 py-3 rounded font-bold">CANCEL</button></div></div>';
+}
+function editPropertyForm(){
+ const p = propertyData.find(x=>x.id===adminEditTarget.id); if(!p) return '';
+ return '<div class="bg-blue-50 border-2 border-blue-500 rounded-lg p-6 mb-6"><h3 class="text-xl font-bold mb-4">✏️ EDIT PROPERTY LISTING</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+  '<div><label class="text-xs font-bold">क्या? *</label><select id="pre_kind" class="w-full px-3 py-2 border-2 rounded"><option value="makan" '+(p.kind==='makan'?'selected':'')+'>🏠 मकान</option><option value="dukan" '+(p.kind==='dukan'?'selected':'')+'>🏪 दुकान</option></select></div>'+
+  '<div><label class="text-xs font-bold">Type *</label><select id="pre_type" class="w-full px-3 py-2 border-2 rounded"><option value="rent" '+(p.type==='rent'?'selected':'')+'>किराए पर देना है</option><option value="wanted" '+(p.type==='wanted'?'selected':'')+'>मुझे किराए पर चाहिए</option></select></div>'+
+  '<div><label class="text-xs font-bold">Name *</label><input id="pre_name" value="'+esc(p.name)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Phone *</label><input id="pre_phone" value="'+esc(p.phone)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Area *</label><input id="pre_area" value="'+esc(p.area)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Rent</label><input id="pre_rent" value="'+esc(p.rent||'')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">BHK</label><input id="pre_bhk" value="'+esc(p.bhk||'')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div class="md:col-span-2"><label class="text-xs font-bold">Details</label><textarea id="pre_desc" rows="2" class="w-full px-3 py-2 border-2 rounded">'+String(p.description||'').replace(/</g,'&lt;')+'</textarea></div></div>'+
+  '<div class="flex gap-3 mt-4"><button onclick="saveAdminEdit(\'property\',{kind:_v(\'pre_kind\'),type:_v(\'pre_type\'),name:fmtName(_v(\'pre_name\')),phone:_v(\'pre_phone\'),area:_v(\'pre_area\'),rent:_v(\'pre_rent\'),bhk:_v(\'pre_bhk\'),description:_v(\'pre_desc\')})" class="bg-blue-600 text-white px-8 py-3 rounded font-bold">✅ SAVE</button><button onclick="cancelAdminEdit()" class="bg-gray-400 text-white px-8 py-3 rounded font-bold">CANCEL</button></div></div>';
+}
+function editShaadiForm(){
+ const s = shaadiData.find(x=>x.id===adminEditTarget.id); if(!s) return '';
+ return '<div class="bg-blue-50 border-2 border-blue-500 rounded-lg p-6 mb-6"><h3 class="text-xl font-bold mb-4">✏️ EDIT SHAADI PROFILE</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+  '<div><label class="text-xs font-bold">Name *</label><input id="she_name" value="'+esc(s.name)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Gender</label><select id="she_gender" class="w-full px-3 py-2 border-2 rounded"><option '+((s.gender||'').indexOf('Male')===0?'selected':'')+'>Male / पुरुष</option><option '+((s.gender||'').indexOf('Female')===0?'selected':'')+'>Female / महिला</option></select></div>'+
+  '<div><label class="text-xs font-bold">Age</label><input id="she_age" value="'+esc(s.age||'')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Education</label><input id="she_edu" value="'+esc(s.education||'')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Village</label><input id="she_village" value="'+esc(s.village||'')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">District</label><input id="she_district" value="'+esc(s.district||'')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Contact</label><input id="she_contact" value="'+esc(s.contact||'')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  _photoField('she_pic', s.pic, 'Photo 📷')+
+  '<div class="md:col-span-2"><label class="text-xs font-bold">Details</label><textarea id="she_details" rows="2" class="w-full px-3 py-2 border-2 rounded">'+String(s.details||'').replace(/</g,'&lt;')+'</textarea></div></div>'+
+  '<div class="flex gap-3 mt-4"><button onclick="saveAdminEdit(\'shaadi\',{name:fmtName(_v(\'she_name\')),gender:_v(\'she_gender\'),age:_v(\'she_age\'),education:_v(\'she_edu\'),village:fmtName(_v(\'she_village\')),district:_v(\'she_district\'),contact:_v(\'she_contact\'),pic:_v(\'she_pic\'),details:_v(\'she_details\')})" class="bg-blue-600 text-white px-8 py-3 rounded font-bold">✅ SAVE</button><button onclick="cancelAdminEdit()" class="bg-gray-400 text-white px-8 py-3 rounded font-bold">CANCEL</button></div></div>';
+}
+function editJobForm(){
+ const j = jobsData.find(x=>x.id===adminEditTarget.id); if(!j) return '';
+ return '<div class="bg-blue-50 border-2 border-blue-500 rounded-lg p-6 mb-6"><h3 class="text-xl font-bold mb-4">✏️ EDIT JOB POST</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+  '<div><label class="text-xs font-bold">Type</label><select id="jbe_kind" class="w-full px-3 py-2 border-2 rounded"><option value="dena" '+(j.kind==='dena'?'selected':'')+'>💼 रोज़गार देना है</option><option value="lena" '+(j.kind==='lena'?'selected':'')+'>🙋 रोज़गार चाहिए</option><option value="freelance_dena" '+(j.kind==='freelance_dena'?'selected':'')+'>💻 Freelancing देना है</option><option value="freelance_lena" '+(j.kind==='freelance_lena'?'selected':'')+'>🙋‍♂️ Freelancing चाहिए</option></select></div>'+
+  '<div><label class="text-xs font-bold">Job Title *</label><input id="jbe_title" value="'+esc(j.title)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Company</label><input id="jbe_company" value="'+esc(j.company||'')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Place</label><input id="jbe_place" value="'+esc(j.place||'')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Salary</label><input id="jbe_salary" value="'+esc(j.salary||'')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Contact *</label><input id="jbe_phone" value="'+esc(j.phone)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div class="md:col-span-2"><label class="text-xs font-bold">Details</label><textarea id="jbe_desc" rows="2" class="w-full px-3 py-2 border-2 rounded">'+String(j.details||'').replace(/</g,'&lt;')+'</textarea></div></div>'+
+  '<div class="flex gap-3 mt-4"><button onclick="saveAdminEdit(\'jobs\',{kind:_v(\'jbe_kind\'),title:_v(\'jbe_title\'),company:fmtName(_v(\'jbe_company\')),place:_v(\'jbe_place\'),salary:_v(\'jbe_salary\'),phone:_v(\'jbe_phone\'),details:_v(\'jbe_desc\')})" class="bg-blue-600 text-white px-8 py-3 rounded font-bold">✅ SAVE</button><button onclick="cancelAdminEdit()" class="bg-gray-400 text-white px-8 py-3 rounded font-bold">CANCEL</button></div></div>';
+}
+function editOldItemForm(){
+ const o = oldItems.find(x=>x.id===adminEditTarget.id); if(!o) return '';
+ return '<div class="bg-blue-50 border-2 border-blue-500 rounded-lg p-6 mb-6"><h3 class="text-xl font-bold mb-4">✏️ EDIT ITEM</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+  '<div><label class="text-xs font-bold">Item *</label><input id="ite_title" value="'+esc(o.title)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Price *</label><input id="ite_price" value="'+esc(o.price)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Contact *</label><input id="ite_phone" value="'+esc(o.phone)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">OLX Link</label><input id="ite_olx" value="'+esc(o.olx_link||'')+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  _photoField('ite_pic', o.pic, 'Photo 📷')+
+  '<div class="md:col-span-2"><label class="text-xs font-bold">Details</label><textarea id="ite_desc" rows="2" class="w-full px-3 py-2 border-2 rounded">'+String(o.description||'').replace(/</g,'&lt;')+'</textarea></div></div>'+
+  '<div class="flex gap-3 mt-4"><button onclick="saveAdminEdit(\'olditems\',{title:_v(\'ite_title\'),price:_v(\'ite_price\'),phone:_v(\'ite_phone\'),olx_link:_v(\'ite_olx\'),pic:_v(\'ite_pic\'),description:_v(\'ite_desc\')})" class="bg-blue-600 text-white px-8 py-3 rounded font-bold">✅ SAVE</button><button onclick="cancelAdminEdit()" class="bg-gray-400 text-white px-8 py-3 rounded font-bold">CANCEL</button></div></div>';
+}
+function editCommitteeForm(){
+ const c = committeeData.find(x=>x.id===adminEditTarget.id); if(!c) return '';
+ return '<div class="bg-blue-50 border-2 border-blue-500 rounded-lg p-6 mb-6"><h3 class="text-xl font-bold mb-4">✏️ EDIT समिति MEMBER</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+  '<div><label class="text-xs font-bold">Name *</label><input id="cme_name" value="'+esc(c.name)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Post *</label><input id="cme_post" value="'+esc(c.post)+'" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  _photoField('cme_pic', c.pic, 'Photo 📷')+
+  '<div class="md:col-span-2"><label class="text-xs font-bold">Details</label><textarea id="cme_details" rows="2" class="w-full px-3 py-2 border-2 rounded">'+String(c.details||'').replace(/</g,'&lt;')+'</textarea></div></div>'+
+  '<div class="flex gap-3 mt-4"><button onclick="saveAdminEdit(\'committee\',{name:fmtName(_v(\'cme_name\')),post:_v(\'cme_post\'),pic:_v(\'cme_pic\'),details:_v(\'cme_details\')})" class="bg-blue-600 text-white px-8 py-3 rounded font-bold">✅ SAVE</button><button onclick="cancelAdminEdit()" class="bg-gray-400 text-white px-8 py-3 rounded font-bold">CANCEL</button></div></div>';
+}
+async function saveAdminEdit(col, data){
+ const id = adminEditTarget && adminEditTarget.id; if(!id) return;
+ adminEditTarget = null;
+ await updDoc(col, id, data);
+ alert('✅ Update हो गया!');
+}
+const ADMIN_EDIT_FORMS = { garba_team:editGarbaTeamForm, garba_coords:editGarbaCoordForm, cricket:editCricketForm, blood:editBloodForm, property:editPropertyForm, shaadi:editShaadiForm, jobs:editJobForm, olditems:editOldItemForm, committee:editCommitteeForm };
 
 // News
 async function addNewsAdmin(){
@@ -2834,16 +2941,19 @@ function renderAdmin(){
   '<input id="gt_role" placeholder="Role (जैसे Coordinator)" class="px-3 py-2 border-2 rounded">'+
   '<div><input type="hidden" id="gt_pic"><button type="button" onclick="openCloudUpload(\'gt_pic\')" class="w-full bg-blue-600 text-white px-3 py-2 rounded font-bold text-sm">📷 Photo</button></div></div>'+
   '<button onclick="addGarbaTeam()" class="mt-3 bg-pink-600 text-white px-6 py-2 rounded font-bold">✅ ADD</button></div>';
-  h += '<div class="bg-white rounded-lg shadow p-6"><h3 class="text-xl font-bold mb-4">Team ('+garbaTeam.length+')</h3><div class="space-y-2">'+garbaTeam.map(t=>'<div class="flex justify-between items-center bg-pink-50 rounded-lg px-4 py-2"><span class="font-bold">'+esc(t.name)+' - '+esc(t.role||'')+' ('+esc(t.phone)+')</span><button onclick="delDoc(\'garba_team\',\''+t.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div>').join('')+'</div></div>';
+  if(isAdminEditing('garba_team')) h += editGarbaTeamForm();
+  h += '<div class="bg-white rounded-lg shadow p-6"><h3 class="text-xl font-bold mb-4">Team ('+garbaTeam.length+')</h3><div class="space-y-2">'+garbaTeam.map(t=>'<div class="flex justify-between items-center bg-pink-50 rounded-lg px-4 py-2"><span class="font-bold">'+esc(t.name)+' - '+esc(t.role||'')+' ('+esc(t.phone)+')</span><div class="flex gap-2"><button onclick="startAdminEdit(\'garba_team\',\''+t.id+'\')" class="bg-blue-500 text-white px-3 py-1 rounded font-bold text-sm">✏️</button><button onclick="delDoc(\'garba_team\',\''+t.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div></div>').join('')+'</div></div>';
   h += '<div class="bg-purple-50 border-2 border-purple-400 rounded-lg p-6 mt-6"><h3 class="text-xl font-bold mb-1">📍 AREA COORDINATORS ('+garbaCoords.length+'/10)</h3><p class="text-xs text-gray-500 mb-4">हर area के बच्चों को पता चले किससे बात करनी है — max 10</p><div class="grid grid-cols-1 md:grid-cols-3 gap-3">'+
   '<input id="gc_name" placeholder="Name" class="px-3 py-2 border-2 rounded"><input id="gc_phone" placeholder="Phone" maxlength="10" class="px-3 py-2 border-2 rounded"><input id="gc_area" placeholder="Area (जैसे Vishal Nagar)" class="px-3 py-2 border-2 rounded"></div>'+
   '<button onclick="addGarbaCoord()" class="mt-3 bg-purple-600 text-white px-6 py-2 rounded font-bold">✅ ADD</button>'+
-  '<div class="mt-4 space-y-2">'+garbaCoords.map(c=>'<div class="flex justify-between items-center bg-white rounded-lg px-4 py-2 border"><span class="font-bold text-sm">📍 '+esc(c.area)+' — '+esc(c.name)+' ('+esc(c.phone)+')</span><button onclick="delDoc(\'garba_coords\',\''+c.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div>').join('')+'</div></div>';
+  (isAdminEditing('garba_coords') ? editGarbaCoordForm() : '')+
+  '<div class="mt-4 space-y-2">'+garbaCoords.map(c=>'<div class="flex justify-between items-center bg-white rounded-lg px-4 py-2 border"><span class="font-bold text-sm">📍 '+esc(c.area)+' — '+esc(c.name)+' ('+esc(c.phone)+')</span><div class="flex gap-2"><button onclick="startAdminEdit(\'garba_coords\',\''+c.id+'\')" class="bg-blue-500 text-white px-3 py-1 rounded font-bold text-sm">✏️</button><button onclick="delDoc(\'garba_coords\',\''+c.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div></div>').join('')+'</div></div>';
  }
 
  if(adminTab==='cricket'){
+  if(isAdminEditing('cricket')) h += editCricketForm();
   h += '<div class="bg-white rounded-lg shadow p-6"><h3 class="text-xl font-bold mb-4">🏏 Interested Players ('+cricketData.length+')</h3><div class="space-y-2">'+
-  cricketData.map(c=>'<div class="flex justify-between items-center bg-green-50 rounded-lg px-4 py-2"><span class="font-bold">'+esc(c.name)+' - '+esc(c.area)+' ('+esc(c.phone)+')</span><button onclick="delDoc(\'cricket\',\''+c.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div>').join('')+'</div></div>';
+  cricketData.map(c=>'<div class="flex justify-between items-center bg-green-50 rounded-lg px-4 py-2"><span class="font-bold">'+esc(c.name)+' - '+esc(c.area)+' ('+esc(c.phone)+')</span><div class="flex gap-2"><button onclick="startAdminEdit(\'cricket\',\''+c.id+'\')" class="bg-blue-500 text-white px-3 py-1 rounded font-bold text-sm">✏️</button><button onclick="delDoc(\'cricket\',\''+c.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div></div>').join('')+'</div></div>';
  }
 
  if(adminTab==='property'){
@@ -2853,8 +2963,9 @@ function renderAdmin(){
    '<span><b>'+esc(p.name)+'</b> - '+(p.type==='rent'?'🏠 मकान':'🔍 चाहिए')+' | '+esc(p.area)+' | 📱'+esc(p.phone)+'</span></div><div class="flex gap-2"><button onclick="updDoc(\'property\',\''+p.id+'\',{status:\'approved\',approvedAt:today()})" class="bg-green-600 text-white px-4 py-2 rounded font-bold">✅</button><button onclick="delDoc(\'property\',\''+p.id+'\')" class="bg-red-600 text-white px-4 py-2 rounded font-bold">❌</button></div></div>').join('')+'</div>' : '<p class="text-gray-500">कोई pending नहीं</p>';
   h += '</div>';
   const appProp = propertyData.filter(p=>p.status==='approved');
+  if(isAdminEditing('property')) h += editPropertyForm();
   h += '<div class="bg-white rounded-lg shadow p-6"><h3 class="text-xl font-bold mb-4">✅ LIVE LISTINGS ('+appProp.length+')</h3><div class="space-y-2">'+
-  appProp.map(p=>'<div class="flex justify-between items-center bg-purple-50 rounded-lg px-4 py-2 flex-wrap gap-2"><span class="font-bold">'+esc(p.name)+' - '+esc(p.area)+' <span class="text-xs '+(p.active!==false?'text-green-600':'text-red-600')+'">('+(p.active!==false?'ACTIVE':'INACTIVE')+')</span></span><div class="flex gap-2"><button onclick="updDoc(\'property\',\''+p.id+'\',{active:'+(p.active!==false?'false':'true')+'})" class="bg-gray-600 text-white px-3 py-1 rounded font-bold text-sm">🔄</button><button onclick="delDoc(\'property\',\''+p.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div></div>').join('')+'</div></div>';
+  appProp.map(p=>'<div class="flex justify-between items-center bg-purple-50 rounded-lg px-4 py-2 flex-wrap gap-2"><span class="font-bold">'+esc(p.name)+' - '+esc(p.area)+' <span class="text-xs '+(p.active!==false?'text-green-600':'text-red-600')+'">('+(p.active!==false?'ACTIVE':'INACTIVE')+')</span></span><div class="flex gap-2"><button onclick="updDoc(\'property\',\''+p.id+'\',{active:'+(p.active!==false?'false':'true')+'})" class="bg-gray-600 text-white px-3 py-1 rounded font-bold text-sm">🔄</button><button onclick="startAdminEdit(\'property\',\''+p.id+'\')" class="bg-blue-500 text-white px-3 py-1 rounded font-bold text-sm">✏️</button><button onclick="delDoc(\'property\',\''+p.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div></div>').join('')+'</div></div>';
  }
 
  if(adminTab==='blood'){
@@ -2866,8 +2977,9 @@ function renderAdmin(){
   '<input id="bl_village" placeholder="Village/City" class="px-3 py-2 border-2 rounded"></div>'+
   '<button onclick="addBloodAdmin()" class="mt-4 bg-red-600 text-white px-8 py-3 rounded font-bold">✅ ADD DONOR</button>'+
   '<p class="text-xs text-gray-500 mt-2">💡 TIP: Members tab में जिनका blood_group भरा है, उनकी details यहाँ copy कर सकते हो</p></div>';
+  if(isAdminEditing('blood')) h += editBloodForm();
   h += '<div class="bg-white rounded-lg shadow p-6"><h3 class="text-xl font-bold mb-4">🩸 ALL DONORS ('+bloodData.length+')</h3><div class="space-y-2">'+
-  bloodData.map(b=>'<div class="flex justify-between items-center bg-red-50 rounded-lg px-4 py-2 flex-wrap gap-2"><span class="font-bold text-sm">'+esc(b.name)+' | <span class="text-red-600">'+esc(b.blood_group)+'</span> | '+esc(b.district||'-')+' | 📱'+esc(b.phone)+'</span><button onclick="delDoc(\'blood\',\''+b.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div>').join('')+'</div></div>';
+  bloodData.map(b=>'<div class="flex justify-between items-center bg-red-50 rounded-lg px-4 py-2 flex-wrap gap-2"><span class="font-bold text-sm">'+esc(b.name)+' | <span class="text-red-600">'+esc(b.blood_group)+'</span> | '+esc(b.district||'-')+' | 📱'+esc(b.phone)+'</span><div class="flex gap-2"><button onclick="startAdminEdit(\'blood\',\''+b.id+'\')" class="bg-blue-500 text-white px-3 py-1 rounded font-bold text-sm">✏️</button><button onclick="delDoc(\'blood\',\''+b.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div></div>').join('')+'</div></div>';
  }
 
  if(adminTab==='shaadi'){
@@ -2886,22 +2998,27 @@ function renderAdmin(){
   '<div class="md:col-span-2"><label class="text-xs font-bold">Details</label><textarea id="sh_details" rows="2" class="w-full px-3 py-2 border-2 rounded"></textarea></div></div>'+
   '<button onclick="addShaadiAdmin()" class="mt-4 bg-pink-600 text-white px-8 py-3 rounded font-bold">✅ ADD PROFILE</button></div>';
   h += '<h3 class="text-xl font-bold mb-3">Live Profiles ('+shaadiData.filter(s=>s.status==='approved').length+')</h3>';
+  if(isAdminEditing('shaadi')) h += editShaadiForm();
   h += '<div class="space-y-3">'+shaadiData.filter(s=>s.status==='approved').map(s=>{
    const isPaid = s.paid!==false;
-   return '<div class="bg-white border-2 border-pink-300 rounded-lg p-4 flex flex-wrap justify-between items-center gap-3"><div class="flex gap-3 items-center">'+(s.pic?'<img src="'+s.pic+'" class="h-16 w-16 object-cover rounded">':'')+'<div><p class="font-bold">'+esc(s.name)+' | '+esc(s.gender||'-')+' | '+esc(s.age||'-')+' | '+esc(s.village||'-')+' '+(isPaid?'<span class="text-[10px] bg-yellow-300 text-yellow-900 px-2 py-0.5 rounded-full font-bold">⭐ PAID</span>':'<span class="text-[10px] bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-bold">UNPAID</span>')+'</p><p class="text-sm text-gray-600">📞 '+esc(s.contact||'-')+'</p></div></div><div class="flex gap-2"><button onclick="toggleShaadiPaid(\''+s.id+'\','+isPaid+')" class="'+(isPaid?'bg-gray-600':'bg-yellow-500')+' text-white px-4 py-2 rounded font-bold text-sm">'+(isPaid?'UNPAID करो':'⭐ PAID करो')+'</button><button onclick="delDoc(\'shaadi\',\''+s.id+'\')" class="bg-red-500 text-white px-4 py-2 rounded font-bold">🗑️</button></div></div>';
+   return '<div class="bg-white border-2 border-pink-300 rounded-lg p-4 flex flex-wrap justify-between items-center gap-3"><div class="flex gap-3 items-center">'+(s.pic?'<img src="'+s.pic+'" class="h-16 w-16 object-cover rounded">':'')+'<div><p class="font-bold">'+esc(s.name)+' | '+esc(s.gender||'-')+' | '+esc(s.age||'-')+' | '+esc(s.village||'-')+' '+(isPaid?'<span class="text-[10px] bg-yellow-300 text-yellow-900 px-2 py-0.5 rounded-full font-bold">⭐ PAID</span>':'<span class="text-[10px] bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-bold">UNPAID</span>')+'</p><p class="text-sm text-gray-600">📞 '+esc(s.contact||'-')+'</p></div></div><div class="flex gap-2"><button onclick="toggleShaadiPaid(\''+s.id+'\','+isPaid+')" class="'+(isPaid?'bg-gray-600':'bg-yellow-500')+' text-white px-4 py-2 rounded font-bold text-sm">'+(isPaid?'UNPAID करो':'⭐ PAID करो')+'</button><button onclick="startAdminEdit(\'shaadi\',\''+s.id+'\')" class="bg-blue-500 text-white px-4 py-2 rounded font-bold">✏️</button><button onclick="delDoc(\'shaadi\',\''+s.id+'\')" class="bg-red-500 text-white px-4 py-2 rounded font-bold">🗑️</button></div></div>';
   }).join('')+'</div>';
  }
 
  if(adminTab==='rozgaar'){
   h += '<div class="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-6 mb-6"><h3 class="text-2xl font-bold mb-4">⏳ PENDING JOBS ('+pendJobs.length+')</h3>';
   h += pendJobs.length ? '<div class="space-y-3">'+pendJobs.map(j=>'<div class="bg-white border-2 border-yellow-400 rounded-lg p-4 flex flex-wrap justify-between items-center gap-3"><div><p class="font-bold">'+esc(j.title)+' - '+esc(j.company||'')+'</p><p class="text-sm text-gray-600">📍 '+esc(j.place||'')+' | 📱 '+esc(j.phone)+'</p></div><div class="flex gap-2"><button onclick="updDoc(\'jobs\',\''+j.id+'\',{status:\'approved\'})" class="bg-green-600 text-white px-4 py-2 rounded font-bold">✅</button><button onclick="delDoc(\'jobs\',\''+j.id+'\')" class="bg-red-600 text-white px-4 py-2 rounded font-bold">❌</button></div></div>').join('')+'</div>' : '<p class="text-gray-500">कोई pending नहीं</p>';
-  h += '</div><div class="space-y-3">'+jobsData.filter(j=>j.status==='approved').map(j=>'<div class="bg-white border-2 border-green-300 rounded-lg p-4 flex flex-wrap justify-between items-center gap-3"><p class="font-bold">'+esc(j.title)+' ('+esc(j.place||'')+')</p><button onclick="delDoc(\'jobs\',\''+j.id+'\')" class="bg-red-500 text-white px-4 py-2 rounded font-bold">🗑️</button></div>').join('')+'</div>';
+  h += '</div>';
+  if(isAdminEditing('jobs')) h += editJobForm();
+  h += '<div class="space-y-3">'+jobsData.filter(j=>j.status==='approved').map(j=>'<div class="bg-white border-2 border-green-300 rounded-lg p-4 flex flex-wrap justify-between items-center gap-3"><p class="font-bold">'+esc(j.title)+' ('+esc(j.place||'')+')</p><div class="flex gap-2"><button onclick="startAdminEdit(\'jobs\',\''+j.id+'\')" class="bg-blue-500 text-white px-4 py-2 rounded font-bold">✏️</button><button onclick="delDoc(\'jobs\',\''+j.id+'\')" class="bg-red-500 text-white px-4 py-2 rounded font-bold">🗑️</button></div></div>').join('')+'</div>';
  }
 
  if(adminTab==='olditems'){
   h += '<div class="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-6 mb-6"><h3 class="text-2xl font-bold mb-4">⏳ PENDING ITEMS ('+pendItems.length+')</h3>';
   h += pendItems.length ? '<div class="space-y-3">'+pendItems.map(o=>'<div class="bg-white border-2 border-yellow-400 rounded-lg p-4 flex flex-wrap justify-between items-center gap-3"><div class="flex gap-3 items-center">'+(o.pic?'<img src="'+o.pic+'" class="h-16 w-16 object-cover rounded">':'')+'<div><p class="font-bold">'+esc(o.title)+' - ₹'+esc(o.price)+'</p><p class="text-sm text-gray-600">📱 '+esc(o.phone)+'</p></div></div><div class="flex gap-2"><button onclick="updDoc(\'olditems\',\''+o.id+'\',{status:\'approved\'})" class="bg-green-600 text-white px-4 py-2 rounded font-bold">✅</button><button onclick="delDoc(\'olditems\',\''+o.id+'\')" class="bg-red-600 text-white px-4 py-2 rounded font-bold">❌</button></div></div>').join('')+'</div>' : '<p class="text-gray-500">कोई pending नहीं</p>';
-  h += '</div><div class="space-y-3">'+oldItems.filter(o=>o.status==='approved').map(o=>'<div class="bg-white border-2 border-purple-300 rounded-lg p-4 flex flex-wrap justify-between items-center gap-3"><p class="font-bold">'+esc(o.title)+' - ₹'+esc(o.price)+'</p><button onclick="delDoc(\'olditems\',\''+o.id+'\')" class="bg-red-500 text-white px-4 py-2 rounded font-bold">🗑️</button></div>').join('')+'</div>';
+  h += '</div>';
+  if(isAdminEditing('olditems')) h += editOldItemForm();
+  h += '<div class="space-y-3">'+oldItems.filter(o=>o.status==='approved').map(o=>'<div class="bg-white border-2 border-purple-300 rounded-lg p-4 flex flex-wrap justify-between items-center gap-3"><p class="font-bold">'+esc(o.title)+' - ₹'+esc(o.price)+'</p><div class="flex gap-2"><button onclick="startAdminEdit(\'olditems\',\''+o.id+'\')" class="bg-blue-500 text-white px-4 py-2 rounded font-bold">✏️</button><button onclick="delDoc(\'olditems\',\''+o.id+'\')" class="bg-red-500 text-white px-4 py-2 rounded font-bold">🗑️</button></div></div>').join('')+'</div>';
  }
 
  if(adminTab==='events'){
@@ -3030,7 +3147,8 @@ function renderAdmin(){
   '<div><input type="hidden" id="cm_pic"><button type="button" onclick="openCloudUpload(\'cm_pic\')" class="w-full bg-blue-600 text-white px-3 py-2 rounded font-bold text-sm">📷 Photo</button></div>'+
   '<input id="cm_details" placeholder="Details" class="px-3 py-2 border-2 rounded"></div>'+
   '<button onclick="addCommittee()" class="mt-3 bg-blue-600 text-white px-6 py-2 rounded font-bold">➕ ADD</button>'+
-  '<div class="mt-3 space-y-2">'+committeeData.map(c=>'<div class="flex justify-between items-center bg-blue-50 rounded-lg px-3 py-2"><span class="font-bold text-sm">'+esc(c.name)+' ('+esc(c.post)+')</span><button onclick="delDoc(\'committee\',\''+c.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div>').join('')+'</div></div>';
+  (isAdminEditing('committee') ? editCommitteeForm() : '')+
+  '<div class="mt-3 space-y-2">'+committeeData.map(c=>'<div class="flex justify-between items-center bg-blue-50 rounded-lg px-3 py-2"><span class="font-bold text-sm">'+esc(c.name)+' ('+esc(c.post)+')</span><div class="flex gap-2"><button onclick="startAdminEdit(\'committee\',\''+c.id+'\')" class="bg-blue-500 text-white px-3 py-1 rounded font-bold text-sm">✏️</button><button onclick="delDoc(\'committee\',\''+c.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div></div>').join('')+'</div></div>';
 
   h += '</div><button onclick="saveSiteMeta()" class="mt-5 bg-blue-600 text-white px-8 py-3 rounded font-bold">✅ SAVE SETTINGS</button></div>';
  }
