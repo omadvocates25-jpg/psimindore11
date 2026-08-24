@@ -2136,7 +2136,7 @@ function dharamshalaCard(d){
  (d.village||d.tehsil?'<p class="text-sm text-gray-600 mt-1">📍 '+esc(d.village||'-')+(d.tehsil?' / '+esc(d.tehsil):'')+'</p>':'')+
  (d.details?'<p class="text-sm text-gray-600 mt-2">'+esc(d.details)+'</p>':'')+
  (d.gmap?'<a href="'+esc(d.gmap)+'" target="_blank" rel="noopener" class="block text-center mt-2 bg-blue-50 text-blue-700 border-2 border-blue-300 px-4 py-2 rounded-lg font-bold text-sm">📍 Google Maps पर देखें</a>':'')+
- '<a href="tel:'+d.phone+'" class="block text-center mt-2 bg-green-600 text-white px-4 py-2 rounded-lg font-bold">📞 '+esc(d.phone)+'</a></div>';
+ '<a href="tel:'+esc(d.phone)+'" class="block text-center mt-2 bg-green-600 text-white px-4 py-2 rounded-lg font-bold">📞 '+esc(d.phone)+'</a></div>';
 }
 function renderDharamshalaPage(){
  const all = approvedDharamshala();
@@ -2192,7 +2192,7 @@ function hospitalCard(h){
  (h.runBy?'<p class="text-sm text-gray-600 mt-1">👤 '+esc(h.runBy)+'</p>':'')+
  (h.details?'<p class="text-sm text-gray-600 mt-2">'+esc(h.details)+'</p>':'')+
  (h.gmap?'<a href="'+esc(h.gmap)+'" target="_blank" rel="noopener" class="block text-center mt-2 bg-blue-50 text-blue-700 border-2 border-blue-300 px-4 py-2 rounded-lg font-bold text-sm">📍 Google Maps पर देखें</a>':'')+
- '<a href="tel:'+h.phone+'" class="block text-center mt-2 bg-green-600 text-white px-4 py-2 rounded-lg font-bold">📞 '+esc(h.phone)+'</a></div>';
+ '<a href="tel:'+esc(h.phone)+'" class="block text-center mt-2 bg-green-600 text-white px-4 py-2 rounded-lg font-bold">📞 '+esc(h.phone)+'</a></div>';
 }
 function renderHospitalsPage(){
  const all = approvedHospitals();
@@ -2258,7 +2258,7 @@ function studentNeedCard(s){
  (s.area?'<p class="text-sm text-gray-600 mt-1">📍 '+esc(s.area)+'</p>':'')+
  (s.details?'<p class="text-sm text-gray-600 mt-2">'+esc(s.details)+'</p>':'')+
  (s.gmap?'<a href="'+esc(s.gmap)+'" target="_blank" rel="noopener" class="block text-center mt-2 bg-blue-50 text-blue-700 border-2 border-blue-300 px-4 py-2 rounded-lg font-bold text-sm">📍 Google Maps पर देखें</a>':'')+
- '<a href="tel:'+s.phone+'" class="block text-center mt-2 bg-green-600 text-white px-4 py-2 rounded-lg font-bold">📞 '+esc(s.phone)+'</a></div>';
+ '<a href="tel:'+esc(s.phone)+'" class="block text-center mt-2 bg-green-600 text-white px-4 py-2 rounded-lg font-bold">📞 '+esc(s.phone)+'</a></div>';
 }
 function renderStudentsPage(){
  const all = approvedStudentNeeds();

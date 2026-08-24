@@ -151,19 +151,25 @@ service cloud.firestore {
     }
 
     // ---- मेरी धर्मशाला / पाटीदार अस्पताल / Student इंदौर (members-only directories — self-serve create, admin approves) ----
+    // ध्यान दें: "phone" यहाँ contact number है (submitter का अपना number ज़रूरी नहीं — जैसे धर्मशाला के caretaker का
+    // number) — इसलिए isOwnPhone(phone) से बांध नहीं सकते, digits-only रखकर ही free-text/HTML injection रोका है
+    function isPlainPhone(p){ return p is string && p.matches('^[0-9]{7,15}$'); }
     match /dharamshala/{docId} {
       allow read: if isSignedIn();
-      allow create: if isOwnPhone(request.resource.data.addedBy) && request.resource.data.status == 'pending';
+      allow create: if isOwnPhone(request.resource.data.addedBy) && request.resource.data.status == 'pending'
+                    && isPlainPhone(request.resource.data.phone);
       allow update, delete: if isAdmin();
     }
     match /hospitals/{docId} {
       allow read: if isSignedIn();
-      allow create: if isOwnPhone(request.resource.data.addedBy) && request.resource.data.status == 'pending';
+      allow create: if isOwnPhone(request.resource.data.addedBy) && request.resource.data.status == 'pending'
+                    && isPlainPhone(request.resource.data.phone);
       allow update, delete: if isAdmin();
     }
     match /student_needs/{docId} {
       allow read: if isSignedIn();
-      allow create: if isOwnPhone(request.resource.data.addedBy) && request.resource.data.status == 'pending';
+      allow create: if isOwnPhone(request.resource.data.addedBy) && request.resource.data.status == 'pending'
+                    && isPlainPhone(request.resource.data.phone);
       allow update, delete: if isAdmin();
     }
     match /students/{docId} {
