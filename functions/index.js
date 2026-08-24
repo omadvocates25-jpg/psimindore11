@@ -48,7 +48,19 @@ const SEARCH_SYNONYMS = {
   'factory':'manufacturing factory', 'manufacturing':'manufacturing factory',
   'auto':'automobile garage', 'garage':'automobile garage', 'mechanic':'automobile garage',
   'tractor':'tractor machinery', 'machine':'tractor machinery',
-  'paint':'painter', 'farm':'farmer agriculture किसान'
+  'paint':'painter', 'farm':'farmer agriculture किसान',
+  // ---- रोज़मर्रा की ज़रूरत/तकलीफ़ बोलने पर सही business मिले (जैसे "bhukh lagi" → खाना/restaurant) ----
+  'bhukh':'food restaurant hotel caterer khana', 'bhookh':'food restaurant hotel caterer khana',
+  'khana':'food restaurant hotel caterer', 'nashta':'restaurant hotel food', 'bhoj':'caterer food restaurant',
+  'pyaas':'water cold drink', 'pani':'water',
+  'bimar':'doctor medical hospital clinic', 'ilaj':'doctor medical hospital clinic', 'dawai':'medical pharmacy doctor',
+  'ghar banwana':'construction builder', 'makan banwana':'construction builder',
+  'naukri':'job government employment', 'kaam chahiye':'job employment',
+  'paisa chahiye':'loan finance banking', 'loan':'loan finance banking', 'udhar':'loan finance banking',
+  'padhna':'teacher coaching education tuition', 'padhai':'teacher coaching education tuition',
+  'safai':'cleaning housekeeping', 'rishta':'shaadi marriage matrimony vivah', 'shaadi karni':'shaadi marriage matrimony',
+  'ghumna':'travel tour transport', 'yatra':'travel tour transport',
+  'xerox':'printing xerox stationery', 'print':'printing xerox stationery'
 };
 
 function today(){ return new Date().toISOString().slice(0,10); }

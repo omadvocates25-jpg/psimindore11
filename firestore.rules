@@ -142,6 +142,14 @@ service cloud.firestore {
       allow delete: if isAdmin(); // suspicious entry सिर्फ Admin हटा सकता है (audit trail बचा रहे)
     }
 
+    // ---- गाँव/तहसील (guest भी बिना OTP भर सके — सिर्फ Admin को दिखे, community का फैलाव जानने के लिए) ----
+    match /village_leads/{docId} {
+      allow read: if isAdmin();
+      allow create: if true; // login/OTP zaroori nahi
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
     // ---- Admin-only visibility ----
     match /suggestions/{docId} {
       allow read: if isAdmin();
