@@ -26,8 +26,14 @@
   [headers.values]
     Vary = "Accept-Encoding"
 
+# ========== FUNCTIONS ==========
+# Note: repo root भी "functions/" folder है (Firebase Cloud Functions ke liye, deploy nahi hota abhi) —
+# isliye yahan explicitly "netlify/functions" bataya taaki Netlify usse confuse na kare।
+[functions]
+  directory = "netlify/functions"
+
 # ========== REDIRECTS ==========
-# Ensure SPA routing works
+# Ensure SPA routing works ("/.netlify/functions/*" hamesha functions ko hi jaata hai, is redirect se pehle)
 [[redirects]]
   from = "/*"
   to = "/index.html"
