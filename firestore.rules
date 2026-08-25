@@ -246,5 +246,12 @@ service cloud.firestore {
       allow read: if true; // site render karne ke liye guests ko bhi chahiye
       allow write: if isAdmin();
     }
+
+    // Admin ke voice/text se diye gaye extra instructions jo Patidar AI ke system prompt mein jud jaate hain —
+    // padhna sabko chahiye (client hi AI ko call karta hai), likhna sirf admin kar sakta hai
+    match /ai_instructions/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
   }
 }
