@@ -2416,33 +2416,22 @@ async function geocodeAndAttach(col, docId, place, district){
  } catch(e){ /* silent — geocoding optional hai */ }
 }
 
-// ================= 👨‍🌾 PATIDAR AI (मौजूदा search को conversational बनाना — कोई paid LLM नहीं, 100% free) =================
-// Design: कोई बाहरी AI API नहीं बुलाई जाती — Community का data (business/blood/news/events/villages)
-// पहले से browser में realtime listeners से load है, बस उसी पर keyword-matching + clarifying-question
-// wala chhota conversation engine chalta hai. Isliye cost = ₹0 (Cloud Function bhi nahi lagti).
-let aiPending = null; // {originalQuery} — jab AI ne clarifying sawaal poocha ho, agla message uska jawab माना jaata hai
+// ================= 👨‍🌾 PATIDAR AI (asli AI samajh + tool-calling — Groq free tier) =================
+// Design: Groq (free tier LLM) ko conversation history ke saath bulaya jaata hai, aur usse kuch "tools"
+// diye jaate hain (business/hospital/dharamshala/blood/village/count/distance/nearest/news/events search) —
+// woh khud decide karta hai kaunsa tool chahiye, hum wo tool chalate hain (yahin browser mein, jahan asli
+// realtime data hai), aur uska REAL result Groq ko wapas dete hain jisse woh apna natural jawab banata hai.
+// Isse phrasing/context sikhana nahi padta — LLM khud samajhta hai, jaisa asli conversational AI karta hai।
+// Data hamesha in dedicated tool-functions se hi aata hai, LLM khud koi fact/naam/number nahi banata (system
+// prompt mein saaf mana hai) — isliye "full AI brain" hone ke baavjood galat/fake data dene ka risk nahi hai।
+// Sirf safety-critical cheezein (self-harm, obscene/illegal) local/turant/bina-network check hoti hain, taaki
+// yeh kabhi bhi Groq ki availability par depend na karein।
 
 const AI_GREETINGS = ['hi','hello','hey','namaste','namaskar','नमस्ते','नमस्कार','हैलो','हाय'];
-const AI_DISTANCE_WORDS = ['distance','doori','दूरी','kitni door','kitna dur','kitni dur'];
-const AI_BLOOD_WORDS = ['blood','khoon','रक्त','donor','donate'];
-const AI_NEWS_WORDS = ['news','samachar','samachaar','खबर','समाचार'];
-const AI_EVENT_WORDS = ['event','karyakram','कार्यक्रम'];
-const AI_FOOD_WORDS = ['khana','khane','food','nashta','restaurant','भोजन','खाना','नाश्ता'];
-const AI_NEAR_WORDS = ['nearest','sabse paas','sabse pass','paas','pass','nazdeek','najdeek','निकट','पास','नज़दीक'];
 const AI_HOSPITAL_WORDS = ['hospital','aspatal','अस्पताल'];
 const AI_DHARAMSHALA_WORDS = ['dharamshala','धर्मशाला'];
-// गाँव किस तहसील/जिले में है, या किसी तहसील/जिले में कौन से गाँव आते हैं — यह general, non-personal
-// geography जानकारी है (registered members ने khud bhari hai), isliye Patidar AI freely deta hai।
-const AI_VILLAGE_INFO_WORDS = ['जिला','जिले','जिलें','district','तहसील','tehsil','मंदिर','temple','के बारे में','की जानकारी','गाँव में क्या','गांव में क्या'];
-// Shaadi/Property jaanbhoojkar Patidar AI ke scope se bahar hain — sirf apne dedicated page par milte hain
-// (Shaadi zyada sensitive/personal hai, Property allotment/ownership wali cheez hai) — AI se seedha nahi
-const AI_SHAADI_WORDS = ['shaadi','shादी','विवाह','vivah','matrimony','rishta','रिश्ता'];
-const AI_PROPERTY_WORDS = ['property','मकान','makan','किराए','kiraye','kirae','rent chahiye','flat chahiye'];
-const AI_COUNT_TRIGGER = ['kitne','कितने','total','कुल'];
-const AI_COUNT_SUBJECT = ['log','लोग','member','sadasya','सदस्य','admi','आदमी'];
-// यह generative AI नहीं है (कोई bhi text खुद नहीं बनाता, सिर्फ हमारे अपने data से जवाब देता है) —
-// isliye galat/obscene content "generate" karna structurally possible hi nahi hai। फिर भी, अगर कोई
-// aisa sawaal type kare, respectfully mना कर देना chahiye — search logic tak jaane hi na de।
+// LLM ko system prompt mein bhi obscene/illegal se mana kiya gaya hai, par yeh local check network se pehle
+// hi rok deta hai — Groq ki availability/mood par depend nahi karta, hamesha kaam karta hai।
 const AI_BLOCKED_WORDS = ['sex','porn','xxx','nude','nangi','chudai','रंडी','वेश्या','रेप','rape','drugs','ganja','charas','नशा','हथियार','weapon','gun','बम','bomb','kill','murder','हत्या'];
 const AI_SELFHARM_WORDS = ['suicide','सुसाइड','आत्महत्या','khudkushi','खुदकुशी','जान दे'];
 const AI_SYNONYMS = {
@@ -2532,42 +2521,23 @@ function askPatidarAI(){
  renderApp(); scrollAiChatToBottom();
  // असली network call नहीं है — chhota सा artificial pause taaki reply "socha hua" lage, ek robot jaisa turant-jawab na lage
  setTimeout(async () => {
-  let answer;
-  if(aiPending){
-   const combined = aiPending.originalQuery + ' ' + q;
-   aiPending = null;
-   answer = await patidarAIReply(combined, 1);
-  } else {
-   answer = await patidarAIReply(q, 0);
-  }
+  const answer = await patidarAIReply(q);
   aiThinking = false;
   aiChatHistory.push({role:'ai', text:answer});
   renderApp(); scrollAiChatToBottom();
  }, 500);
 }
 
-// ---- Core conversation router — sab kuch sirf app ke apne data (members/business/blood/news/events/villages) se, bahar se kuch nahi ----
-// Pehle apna fixed keyword-chain try karta hai (0 cost, turant) — kuch na mile tabhi AI (Groq, samajhne ke
-// liye best-effort) se madad leta hai। AI fail/timeout ho ya samaj na aaye to bilkul purana rule-based
-// fallback hi chalega — kabhi kuch tootega nahi, aur reply hamesha inhi rule-based handlers se banta hai।
-async function patidarAIReply(qRaw, rounds){
+// ---- Core conversation entry point ----
+// Sirf safety-critical cheezein (self-harm, obscene/illegal, greeting) local turant check hoti hain — baaki
+// SAB kuch (business/hospital/dharamshala/blood/village/counts/distance/nearest/news/events/shaadi/property/
+// normal chit-chat) asli AI (Groq, tool-calling ke saath) samajhta hai aur handle karta hai। Agent kabhi
+// unavailable ho (koi key nahi, network down, Groq down) to bilkul basic rule-based fallback chalta hai —
+// kabhi kuch tootega nahi।
+async function patidarAIReply(qRaw){
  const q = qRaw.trim();
  const ql = q.toLowerCase();
  if(!q) return 'कुछ तो पूछो 🙂';
- const deterministic = patidarAIRouteDeterministic(q, ql, rounds);
- if(deterministic!==null) return deterministic;
- const hint = await aiUnderstandQuestion(q);
- if(hint){
-  const routed = patidarAIRouteFromHint(q, hint);
-  if(routed!==null) return routed;
- }
- const results = aiSearchBusinesses(q);
- if(results.length) return aiFormatBusinessResults(results, q);
- return 'माफ़ कीजिए, समझ नहीं आया 🙏 मैं पाटीदार समाज का AI हूँ — सिर्फ पाटीदार समाज की समझ रखता हूँ, बाकी की नहीं। बाकी के लिए AI मुबारक 😄 आप मुझसे पूछ सकते हो: किसी काम/business वाले के बारे में (जैसे "इलेक्ट्रीशियन Vijay Nagar"), सबसे पास का Hospital/धर्मशाला/Business, 🩸 Blood donor, 📰 News, 📅 Events, गाँव के सदस्यों की गिनती, या दो गाँव के बीच Distance।';
-}
-// Fixed keyword-chain — hamesha wahi jawab jo pehle deta tha, koi AI/network shamil nahi। Match na mile to
-// null (business-search/sorry fallback caller khud sambhalta hai, taaki AI hint bhi usi jagah try ho sake)।
-function patidarAIRouteDeterministic(q, ql, rounds){
  if(AI_SELFHARM_WORDS.some(w => ql.includes(w))){
   return '🙏 अगर आप या आपका कोई अपना मुश्किल दौर से गुज़र रहा है, तो कृपया अभी बात करो — KIRAN Helpline: 1800-599-0019 (24x7, फ्री) या Vandrevala Foundation: 1860-2662-345। आप अकेले नहीं हो, मदद मौजूद है।';
  }
@@ -2575,82 +2545,85 @@ function patidarAIRouteDeterministic(q, ql, rounds){
   return '🙏 माफ़ कीजिए, इस तरह के सवाल का जवाब मैं नहीं दे सकता। मैं सिर्फ समाज से जुड़ी जानकारी में मदद करता हूँ — Business, Hospital, Blood donor, News, Events वगैरह बेझिझक पूछो।';
  }
  if(AI_GREETINGS.some(g => ql===g || ql.startsWith(g+' '))) return aiGreetingReply();
- if(AI_DISTANCE_WORDS.some(w => ql.includes(w))) return handleAiDistance(q, ql);
- if(AI_NEAR_WORDS.some(w => ql.includes(w))) return handleAiNearest(q, ql);
- // "nearest/paas" na bola ho, sirf "hospital/dharamshala hai kya" jaisa general sawaal poocha ho — तब भी
- // seedha uska data dikhana chahiye, generic business search में गुम नहीं होना चाहिए
- if(AI_HOSPITAL_WORDS.some(w => ql.includes(w))) return handleAiHospitalList(q);
- if(AI_DHARAMSHALA_WORDS.some(w => ql.includes(w))) return handleAiDharamshalaList(q);
- if(AI_BLOOD_WORDS.some(w => ql.includes(w))) return handleAiBlood(q);
- if(AI_NEWS_WORDS.some(w => ql.includes(w))) return handleAiNews();
- if(AI_EVENT_WORDS.some(w => ql.includes(w))) return handleAiEvents();
- if(AI_SHAADI_WORDS.some(w => ql.includes(w))){
-  return '💍 Shaadi/विवाह से जुड़ी जानकारी privacy की वजह से सिर्फ SHAADI page पर ही दिखती है, Patidar AI से नहीं — कृपया SHAADI page पर जाकर देखो।';
- }
- if(AI_PROPERTY_WORDS.some(w => ql.includes(w))){
-  return '🏠 मकान-किरायेदार/Property की जानकारी सिर्फ Property page पर मिलती है — कृपया वहाँ जाकर देखो।';
- }
- if(AI_COUNT_TRIGGER.some(t => ql.includes(t)) && AI_COUNT_SUBJECT.some(s => ql.includes(s))) return handleAiCount(ql);
- if(AI_VILLAGE_INFO_WORDS.some(w => ql.includes(w))) return handleAiVillageInfo(q, ql);
- if(rounds===0 && AI_FOOD_WORDS.some(w => ql.includes(w)) && !aiHasAreaHint(ql)){
-  aiPending = { originalQuery: q };
-  return '📍 कौनसा area चाहिए? और 🍽️ नाश्ता चाहिए या पूरा खाना?';
- }
- return null;
+ const agentAnswer = await aiAgentAsk(q);
+ if(agentAnswer) return agentAnswer;
+ // Agent bilkul available na ho (koi key nahi, network down, Groq down) — bina AI ke bhi kaam chalta rahe
+ const results = aiSearchBusinesses(q);
+ if(results.length) return aiFormatBusinessResults(results, q);
+ return 'माफ़ कीजिए, अभी मैं ठीक से जवाब नहीं दे पा रहा 🙏 थोड़ी देर में फिर कोशिश करो, या सीधे Business/Hospital/Blood/News/Events जैसे pages पर जाकर देख लो।';
 }
-// Groq (free tier) ko sirf sawaal SAMAJHNE ke liye bhejta hai — chhota, best-effort call, kabhi bhi q ka
-// jawab khud generate nahi karta, sirf category+keywords+place bata deta hai। Fail/timeout/rate-limit par
-// chup-chaap null — caller purane rule-based fallback par chala jaata hai, user ko kabhi pata nahi chalta।
-const AI_UNDERSTAND_URL = '/.netlify/functions/ai-understand';
-// Pichli 3 baat-cheet (6 messages) bhi bhejta hai — sirf current message akela string-jodkar samajhne ke bajaye,
-// Groq ko असली conversation dikhti hai। Isse jab AI ne khud koi clarifying sawaal poocha ho (jaise "kis cheez
-// mein madad chahiye"), agla message uska "jawab" samajh kar poora context ke saath judge karta hai, generic
-// keyword-substring wale galat matches (jaise "Mandav is a place" business search maan lena) nahi hote।
-function aiRecentHistory(){
- return aiChatHistory.slice(-7, -1).map(m => ({ role: m.role==='user'?'user':'assistant', text: (m.text||'').slice(0,300) }));
-}
-async function aiUnderstandQuestion(q){
- try{
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 4000);
-  const resp = await fetch(AI_UNDERSTAND_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({question:q, history:aiRecentHistory()}), signal: ctrl.signal });
-  clearTimeout(timer);
-  if(!resp.ok) return null;
-  const data = await resp.json();
-  return (data && typeof data.category==='string') ? data : null;
- } catch(e){ return null; }
-}
-// AI ne jo category pehchani usi ke apne dedicated (rule-based, hamesha se maujood) handler ko bhejta hai —
-// AI khud kabhi seedha text reply nahi banata। hint.keywords/hint.place sirf query ko थोड़ा enrich karte hain
-// taaki handler ki apni matching behtar chale (jaisi ab tak follow-up narrowing ke liye pehle se hoti hai)।
-function patidarAIRouteFromHint(q, hint){
- const extra = [hint.keywords, hint.place].filter(Boolean).join(' ');
- const combined = extra ? (q+' '+extra) : q;
- const cl = combined.toLowerCase();
- switch(hint.category){
-  case 'hospital': return handleAiHospitalList(combined);
-  case 'dharamshala': return handleAiDharamshalaList(combined);
-  case 'blood': return handleAiBlood(combined);
-  case 'village_info': return handleAiVillageInfo(combined, cl);
-  case 'count': return handleAiCount(cl);
-  case 'distance': return handleAiDistance(combined, cl);
-  case 'nearest': return handleAiNearest(combined, cl);
-  case 'news': return handleAiNews();
-  case 'events': return handleAiEvents();
-  case 'greeting': return aiGreetingReply();
-  case 'shaadi': return '💍 Shaadi/विवाह से जुड़ी जानकारी privacy की वजह से सिर्फ SHAADI page पर ही दिखती है, Patidar AI से नहीं — कृपया SHAADI page पर जाकर देखो।';
-  case 'property': return '🏠 मकान-किरायेदार/Property की जानकारी सिर्फ Property page पर मिलती है — कृपया वहाँ जाकर देखो।';
-  case 'business': {
-   const results = aiSearchBusinesses(combined);
-   return results.length ? aiFormatBusinessResults(results, combined) : null;
+
+// ================= AI Agent (tool-calling) =================
+// Har chat session ke liye poori conversation yahan store hoti hai (Groq API ke role/content format mein) —
+// isi se AI real multi-turn context samajhta hai (jaise agar usne khud koi clarifying sawaal poocha tha,
+// agla message uska jawab samajh kar sahi tool dobara call karta hai)। Bahut lambi na ho jaaye, isliye
+// server-side bhi aur yahan bhi capped rakha hai.
+let aiAgentMessages = [];
+const AI_AGENT_URL = '/.netlify/functions/ai-agent';
+const AI_AGENT_MAX_ROUNDS = 4;
+
+// Groq jo tool maange, wahi yahan asli (browser mein maujood, realtime) data se chalta hai — LLM khud kabhi
+// koi fact/naam/number nahi banata, sirf yeh decide karta hai ki kaunsa tool chahiye aur kya poochna hai।
+function aiExecuteTool(name, argsRaw){
+ let args = {};
+ try{ args = argsRaw ? JSON.parse(argsRaw) : {}; } catch(e){}
+ switch(name){
+  case 'search_business': {
+   const q = (args.query||'').trim();
+   if(!q) return 'Kis tarah ka business/service chahiye, thoda specific batao।';
+   const results = aiSearchBusinesses(q);
+   return results.length ? aiFormatBusinessResults(results, q) : 'माफ़ कीजिए, इससे मिलता-जुलता कोई business नहीं मिला — पूरी list के लिए BUSINESS page पर जाओ।';
   }
-  // "chat" — koi bhi normal baat-cheet, follow-up, ya app ke baare mein general sawaal, jisme koi asli
-  // data (business/hospital/counts/list) nahi chahiye। Yahan Groq ka apna generate kiya reply seedha dikhaya
-  // jaata hai (system prompt mein hi mana kiya gaya hai ki woh koi specific data/personal info kabhi na de) —
-  // baaki har category (upar) hamesha hamare apne rule-based, real-data handlers se hi jawab deti hai।
-  case 'chat': return (typeof hint.reply==='string' && hint.reply.trim()) ? hint.reply.trim() : null;
-  default: return null;
+  case 'search_hospital': return handleAiHospitalList(args.area||'');
+  case 'search_dharamshala': return handleAiDharamshalaList(args.place||'');
+  case 'search_blood_donor': return handleAiBlood(args.query||'');
+  case 'village_geo_info': { const q=(args.query||'').trim(); return handleAiVillageInfo(q, q.toLowerCase()); }
+  case 'member_count': { const v=(args.village||'').trim(); return handleAiCount(v.toLowerCase()); }
+  case 'village_distance': { const q=(args.query||'').trim(); return handleAiDistance(q, q.toLowerCase()); }
+  case 'nearest_search': { const q=(args.query||'').trim(); return handleAiNearest(q, q.toLowerCase()); }
+  case 'samaj_news': return handleAiNews();
+  case 'samaj_events': return handleAiEvents();
+  case 'shaadi_or_property_redirect':
+   return args.kind==='property' ?
+    '🏠 मकान-किरायेदार/Property की जानकारी सिर्फ Property page पर मिलती है — कृपया वहाँ जाकर देखो।' :
+    '💍 Shaadi/विवाह से जुड़ी जानकारी privacy की वजह से सिर्फ SHAADI page पर ही दिखती है, Patidar AI से नहीं — कृपया SHAADI page पर जाकर देखो।';
+  default: return 'यह tool उपलब्ध नहीं है।';
  }
+}
+
+// Groq se baat karta hai, jab bhi woh tool maange usse turant chala kar result wापस bhejta hai, jab tak
+// woh ek final natural jawab na de de (ya rounds khatam na ho jaayein)। Poori tarah best-effort hai — koi
+// bhi network/parse error ho to chup-chaap null deta hai, caller apne aap purane fallback par chala jaata hai।
+async function aiAgentAsk(q){
+ aiAgentMessages.push({ role:'user', content:q });
+ try{
+  for(let round=0; round<AI_AGENT_MAX_ROUNDS; round++){
+   const ctrl = new AbortController();
+   const timer = setTimeout(() => ctrl.abort(), 8000);
+   const resp = await fetch(AI_AGENT_URL, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ messages: aiAgentMessages.slice(-20) }),
+    signal: ctrl.signal
+   });
+   clearTimeout(timer);
+   if(!resp.ok){ aiAgentMessages.pop(); return null; }
+   const data = await resp.json();
+   const msg = data && data.message;
+   if(!msg){ aiAgentMessages.pop(); return null; }
+   aiAgentMessages.push(msg);
+   if(msg.tool_calls && msg.tool_calls.length){
+    for(const tc of msg.tool_calls){
+     const result = aiExecuteTool(tc.function && tc.function.name, tc.function && tc.function.arguments);
+     aiAgentMessages.push({ role:'tool', tool_call_id: tc.id, content: result });
+    }
+    continue;
+   }
+   if(typeof msg.content==='string' && msg.content.trim()) return msg.content.trim();
+   aiAgentMessages.pop();
+   return null;
+  }
+  return null; // bahut zyada rounds ho gaye (rare) — fallback par chala jaayega
+ } catch(e){ return null; }
 }
 // सिर्फ ginती — kisi bhi member ki personal detail (naam/phone/address) yahan kabhi nahi dikhti
 function handleAiCount(ql){
@@ -2691,7 +2664,6 @@ function handleAiVillageInfo(q, ql){
   if(!villages.length) return '👨‍🌾 '+key+(field==='tehsil'?' तहसील':' जिले')+' का अभी कोई गाँव registered नहीं है।';
   return '👨‍🌾 '+key+(field==='tehsil'?' तहसील':' जिले')+' में ये गाँव registered हैं:\n\n'+villages.map((v,i) => (i+1)+'. '+v).join('\n');
  }
- aiPending = { originalQuery: q };
  return '🏡 किस गाँव के बारे में पूछ रहे हो? नाम बताओ।';
 }
 // query mein koi jaana-pehchana place (business ka area ya koi gaanv) mila to uska naam wapas karta hai — isse jawab
@@ -2707,7 +2679,6 @@ function aiFindPlaceInQuery(qlText){
  if(!found) villageList().forEach(v => { if(!found && v.name.length>2 && qlText.includes(v.name.toLowerCase())) found = v.name; });
  return found;
 }
-function aiHasAreaHint(qlText){ return !!aiFindPlaceInQuery(qlText); }
 function aiExpandSynonyms(q){
  let extra = '';
  Object.keys(AI_SYNONYMS).forEach(k => { if(q.includes(k)) extra += ' '+AI_SYNONYMS[k]; });
@@ -2753,15 +2724,14 @@ function aiFormatBusinessResults(results, query){
  const remainingFree = freeList.length - Math.min(freeSlots, freeList.length);
  const lines = shown.map((b,i) => (i+1)+'. '+b.name+(b.promoted?' ⭐':'')+' — '+b.type+(b.place?' | '+b.place:'')+'\n   📞 '+b.phone);
  const tail = remainingFree>0 ?
-  aiNarrowTail(remainingFree, 'किस area का चाहिए, या पूरा नाम/काम बता दो', 'BUSINESS', query) :
+  aiNarrowTail(remainingFree, 'किस area का चाहिए, या पूरा नाम/काम बता दो', 'BUSINESS') :
   '';
  return intro+'\n\n'+lines.join('\n\n')+'\n\nसभी अपने ही समाज के भरोसेमंद लोग हैं — बेझिझक call/WhatsApp करो।'+tail;
 }
 // List AI_LIST_CAP se zyada ho to poori list seedha na de do — top match dikhाकर ek specific narrowing
-// sawaal poochta hai (area/type/naam), aiPending set karke, taaki agla message उसी context ke saath combine
-// ho jaaye (jaise "nearest"/"distance" flow me pehle se hai) — ek hi sawaal me sara data na nikal jaaye.
-function aiNarrowTail(remaining, askText, pageLabel, originalQuery){
- aiPending = { originalQuery: originalQuery };
+// sawaal poochta hai (area/type/naam) — agent apni conversation history se agla message isी context ke
+// saath samajh kar dobara sahi tool call karega, ek hi sawaal me sara data nahi nikalta.
+function aiNarrowTail(remaining, askText, pageLabel){
  return '\n\n(+'+remaining+' और भी हैं — '+askText+'? या पूरी list के लिए '+pageLabel+' page पर जाओ)';
 }
 function aiGreetingReply(){
@@ -2784,7 +2754,7 @@ function handleAiBlood(q){
  const shown = donors.slice(0, AI_LIST_CAP);
  const list = shown.map(d => '🩸 '+d.name+' '+d.surname+' — '+d.blood_group+(d.home_village?(' | '+d.home_village):'')+'\n   📞 '+d.phone);
  const tail = donors.length > AI_LIST_CAP ?
-  aiNarrowTail(donors.length-AI_LIST_CAP, 'कौनसे village/इलाके का donor चाहिए', 'BLOOD', q) :
+  aiNarrowTail(donors.length-AI_LIST_CAP, 'कौनसे village/इलाके का donor चाहिए', 'BLOOD') :
   '';
  return 'ये blood donors मिले:\n\n'+list.join('\n\n')+'\n\nसीधे call/WhatsApp करो, या emergency में BLOOD page पर SOS डालो।'+tail;
 }
@@ -2821,7 +2791,7 @@ function handleAiHospitalList(q){
  const shown = list.slice(0, AI_LIST_CAP);
  const lines = shown.map((h,i) => (i+1)+'. '+(h.name_en||h.name_hi)+(h.area?' | '+h.area:'')+'\n   📞 '+h.phone);
  const tail = list.length > AI_LIST_CAP ?
-  aiNarrowTail(list.length-AI_LIST_CAP, 'किस area/इलाके का चाहिए बताओ', 'Hospital', q) :
+  aiNarrowTail(list.length-AI_LIST_CAP, 'किस area/इलाके का चाहिए बताओ', 'Hospital') :
   '';
  return '🏥 ये Hospitals मिले:\n\n'+lines.join('\n\n')+tail;
 }
@@ -2832,7 +2802,7 @@ function handleAiDharamshalaList(q){
  const shown = list.slice(0, AI_LIST_CAP);
  const lines = shown.map((d,i) => (i+1)+'. '+(d.name_en||d.name_hi)+(d.village?' | '+d.village+(d.tehsil?', '+d.tehsil:''):'')+'\n   📞 '+d.phone);
  const tail = list.length > AI_LIST_CAP ?
-  aiNarrowTail(list.length-AI_LIST_CAP, 'किस गाँव/शहर की चाहिए बताओ', 'धर्मशाला', q) :
+  aiNarrowTail(list.length-AI_LIST_CAP, 'किस गाँव/शहर की चाहिए बताओ', 'धर्मशाला') :
   '';
  return '🛕 ये धर्मशाला मिलीं:\n\n'+lines.join('\n\n')+tail;
 }
@@ -2840,7 +2810,6 @@ function handleAiDistance(q, ql){
  const names = villageList().map(v => v.name);
  const found = names.filter(n => ql.includes(n.toLowerCase()));
  if(found.length<2){
-  aiPending = { originalQuery: q };
   return '📍 कौन से दो गाँव के बीच? दोनों नाम एक साथ लिखो, जैसे "Karwad aur Sanwer"';
  }
  const a = villageInfoFor(found[0]), b = villageInfoFor(found[1]);
@@ -2869,8 +2838,7 @@ function handleAiNearest(q, ql){
  }
  if(!refInfo || !refInfo.lat){
   if(refName) return '❌ '+refName+' का location अभी set नहीं है। "मेरे गाँव ले चलो" पेज पर जाकर 📍 Location सेट करो, फिर पूछो।';
-  aiPending = { originalQuery: q };
-  // "mai bimar hu" jaise symptom/personal-need wale sawaal bhi yahan aa sakte hain (Groq keyword se) —
+  // "mai bimar hu" jaise symptom/personal-need wale sawaal bhi yahan (nearest_search tool se) aa sakte hain —
   // pehle empathetic ek line, फिर seedha area poochkar apne hi samaj ki relevant list dega
   const prefix = category==='hospital' ? '🏥 ऐसे में नज़दीकी hospital जाना ठीक रहेगा — ' : (category==='dharamshala' ? '🛕 ' : '📍 ');
   return prefix+'आप किस गाँव/इलाके के पास ढूंढ रहे हो? नाम बताओ, फिर अपने ही समाज की relevant list दे दूंगा (जैसे "Karwad ke paas hospital")';
