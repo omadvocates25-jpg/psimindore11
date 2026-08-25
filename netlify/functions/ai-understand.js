@@ -18,7 +18,7 @@ Categories:
 - village_info: koi gaanv kis tehsil/jile mein hai, ya kisi tehsil/jile mein kaunse gaanv aate hain, ya gaanv ke mandir/dharamshala/local jaankari ke baare mein
 - count: kitne members/log registered hain (total ya kisi gaanv ke) — sirf ginti, personal detail nahi
 - distance: do gaanv ke beech doori
-- nearest: sabse paas/nearest hospital/dharamshala/business kisi jagah ke paas
+- nearest: sabse paas/nearest hospital/dharamshala/business kisi jagah ke paas — YEH category tab bhi use karo jab koi apni takleef/zaroorat bataye bina seedha "hospital" bole (jaise "mujhe bahut takleef ho rahi hai", "mai bimar hu", "chot lag gayi", "sar dard ho raha hai") — aisi state mein woh असल mein sabse paas ka hospital dhoondh raha hai, isliye category "nearest" do aur keywords mein "hospital" likho
 - news: samaj ki news
 - events: samaj ke events/karyakram
 - greeting: sirf hi/hello/namaste jaisa
@@ -35,6 +35,7 @@ exports.handler = async (event) => {
 
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
+    console.error('ai-understand: GROQ_API_KEY not set');
     return { statusCode: 200, body: JSON.stringify({ category: null }) };
   }
 
@@ -73,14 +74,22 @@ exports.handler = async (event) => {
     clearTimeout(timer);
 
     if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      console.error('ai-understand: Groq responded', resp.status, errText.slice(0, 300));
       return { statusCode: 200, body: JSON.stringify({ category: null }) };
     }
     const data = await resp.json();
     const raw = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-    if (!raw) return { statusCode: 200, body: JSON.stringify({ category: null }) };
+    if (!raw) {
+      console.error('ai-understand: no content in Groq response', JSON.stringify(data).slice(0, 300));
+      return { statusCode: 200, body: JSON.stringify({ category: null }) };
+    }
 
     let parsed;
-    try { parsed = JSON.parse(raw); } catch (e) { return { statusCode: 200, body: JSON.stringify({ category: null }) }; }
+    try { parsed = JSON.parse(raw); } catch (e) {
+      console.error('ai-understand: could not parse Groq JSON output:', raw.slice(0, 200));
+      return { statusCode: 200, body: JSON.stringify({ category: null }) };
+    }
 
     const category = CATEGORIES.includes(parsed.category) ? parsed.category : null;
     const out = {
@@ -89,8 +98,10 @@ exports.handler = async (event) => {
       place: typeof parsed.place === 'string' ? parsed.place.slice(0, 100) : null,
       blood_group: typeof parsed.blood_group === 'string' ? parsed.blood_group.slice(0, 5) : null
     };
+    console.log('ai-understand: classified as', category);
     return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(out) };
   } catch (e) {
+    console.error('ai-understand: exception', e && e.message);
     return { statusCode: 200, body: JSON.stringify({ category: null }) };
   }
 };
