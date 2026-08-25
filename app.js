@@ -2531,14 +2531,14 @@ function askPatidarAI(){
  aiThinking = true;
  renderApp(); scrollAiChatToBottom();
  // असली network call नहीं है — chhota सा artificial pause taaki reply "socha hua" lage, ek robot jaisa turant-jawab na lage
- setTimeout(() => {
+ setTimeout(async () => {
   let answer;
   if(aiPending){
    const combined = aiPending.originalQuery + ' ' + q;
    aiPending = null;
-   answer = patidarAIReply(combined, 1);
+   answer = await patidarAIReply(combined, 1);
   } else {
-   answer = patidarAIReply(q, 0);
+   answer = await patidarAIReply(q, 0);
   }
   aiThinking = false;
   aiChatHistory.push({role:'ai', text:answer});
@@ -2547,11 +2547,27 @@ function askPatidarAI(){
 }
 
 // ---- Core conversation router — sab kuch sirf app ke apne data (members/business/blood/news/events/villages) se, bahar se kuch nahi ----
-function patidarAIReply(qRaw, rounds){
+// Pehle apna fixed keyword-chain try karta hai (0 cost, turant) — kuch na mile tabhi AI (Groq, samajhne ke
+// liye best-effort) se madad leta hai। AI fail/timeout ho ya samaj na aaye to bilkul purana rule-based
+// fallback hi chalega — kabhi kuch tootega nahi, aur reply hamesha inhi rule-based handlers se banta hai।
+async function patidarAIReply(qRaw, rounds){
  const q = qRaw.trim();
  const ql = q.toLowerCase();
  if(!q) return 'कुछ तो पूछो 🙂';
-
+ const deterministic = patidarAIRouteDeterministic(q, ql, rounds);
+ if(deterministic!==null) return deterministic;
+ const hint = await aiUnderstandQuestion(q);
+ if(hint){
+  const routed = patidarAIRouteFromHint(q, hint);
+  if(routed!==null) return routed;
+ }
+ const results = aiSearchBusinesses(q);
+ if(results.length) return aiFormatBusinessResults(results, q);
+ return 'माफ़ कीजिए, समझ नहीं आया 🙏 मैं पाटीदार समाज का AI हूँ — सिर्फ पाटीदार समाज की समझ रखता हूँ, बाकी की नहीं। बाकी के लिए AI मुबारक 😄 आप मुझसे पूछ सकते हो: किसी काम/business वाले के बारे में (जैसे "इलेक्ट्रीशियन Vijay Nagar"), सबसे पास का Hospital/धर्मशाला/Business, 🩸 Blood donor, 📰 News, 📅 Events, गाँव के सदस्यों की गिनती, या दो गाँव के बीच Distance।';
+}
+// Fixed keyword-chain — hamesha wahi jawab jo pehle deta tha, koi AI/network shamil nahi। Match na mile to
+// null (business-search/sorry fallback caller khud sambhalta hai, taaki AI hint bhi usi jagah try ho sake)।
+function patidarAIRouteDeterministic(q, ql, rounds){
  if(AI_SELFHARM_WORDS.some(w => ql.includes(w))){
   return '🙏 अगर आप या आपका कोई अपना मुश्किल दौर से गुज़र रहा है, तो कृपया अभी बात करो — KIRAN Helpline: 1800-599-0019 (24x7, फ्री) या Vandrevala Foundation: 1860-2662-345। आप अकेले नहीं हो, मदद मौजूद है।';
  }
@@ -2580,9 +2596,49 @@ function patidarAIReply(qRaw, rounds){
   aiPending = { originalQuery: q };
   return '📍 कौनसा area चाहिए? और 🍽️ नाश्ता चाहिए या पूरा खाना?';
  }
- const results = aiSearchBusinesses(q);
- if(results.length) return aiFormatBusinessResults(results, q);
- return 'माफ़ कीजिए, समझ नहीं आया 🙏 मैं पाटीदार समाज का AI हूँ — सिर्फ पाटीदार समाज की समझ रखता हूँ, बाकी की नहीं। बाकी के लिए AI मुबारक 😄 आप मुझसे पूछ सकते हो: किसी काम/business वाले के बारे में (जैसे "इलेक्ट्रीशियन Vijay Nagar"), सबसे पास का Hospital/धर्मशाला/Business, 🩸 Blood donor, 📰 News, 📅 Events, गाँव के सदस्यों की गिनती, या दो गाँव के बीच Distance।';
+ return null;
+}
+// Groq (free tier) ko sirf sawaal SAMAJHNE ke liye bhejta hai — chhota, best-effort call, kabhi bhi q ka
+// jawab khud generate nahi karta, sirf category+keywords+place bata deta hai। Fail/timeout/rate-limit par
+// chup-chaap null — caller purane rule-based fallback par chala jaata hai, user ko kabhi pata nahi chalta।
+const AI_UNDERSTAND_URL = '/.netlify/functions/ai-understand';
+async function aiUnderstandQuestion(q){
+ try{
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 4000);
+  const resp = await fetch(AI_UNDERSTAND_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({question:q}), signal: ctrl.signal });
+  clearTimeout(timer);
+  if(!resp.ok) return null;
+  const data = await resp.json();
+  return (data && typeof data.category==='string') ? data : null;
+ } catch(e){ return null; }
+}
+// AI ne jo category pehchani usi ke apne dedicated (rule-based, hamesha se maujood) handler ko bhejta hai —
+// AI khud kabhi seedha text reply nahi banata। hint.keywords/hint.place sirf query ko थोड़ा enrich karte hain
+// taaki handler ki apni matching behtar chale (jaisi ab tak follow-up narrowing ke liye pehle se hoti hai)।
+function patidarAIRouteFromHint(q, hint){
+ const extra = [hint.keywords, hint.place].filter(Boolean).join(' ');
+ const combined = extra ? (q+' '+extra) : q;
+ const cl = combined.toLowerCase();
+ switch(hint.category){
+  case 'hospital': return handleAiHospitalList(combined);
+  case 'dharamshala': return handleAiDharamshalaList(combined);
+  case 'blood': return handleAiBlood(combined);
+  case 'village_info': return handleAiVillageInfo(combined, cl);
+  case 'count': return handleAiCount(cl);
+  case 'distance': return handleAiDistance(combined, cl);
+  case 'nearest': return handleAiNearest(combined, cl);
+  case 'news': return handleAiNews();
+  case 'events': return handleAiEvents();
+  case 'greeting': return aiGreetingReply();
+  case 'shaadi': return '💍 Shaadi/विवाह से जुड़ी जानकारी privacy की वजह से सिर्फ SHAADI page पर ही दिखती है, Patidar AI से नहीं — कृपया SHAADI page पर जाकर देखो।';
+  case 'property': return '🏠 मकान-किरायेदार/Property की जानकारी सिर्फ Property page पर मिलती है — कृपया वहाँ जाकर देखो।';
+  case 'business': {
+   const results = aiSearchBusinesses(combined);
+   return results.length ? aiFormatBusinessResults(results, combined) : null;
+  }
+  default: return null;
+ }
 }
 // सिर्फ ginती — kisi bhi member ki personal detail (naam/phone/address) yahan kabhi nahi dikhti
 function handleAiCount(ql){
