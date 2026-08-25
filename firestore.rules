@@ -150,6 +150,14 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ---- EN↔HI शब्दकोश (गाँव/जगह के नाम — community धीरे-धीरे भरती है, सबके लिए फ्री read/contribute) ----
+    match /translit_pairs/{docId} {
+      allow read: if true;
+      allow create: if true; // guest widget भी बिना OTP contribute कर सके
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
     // ---- मेरी धर्मशाला / पाटीदार अस्पताल / Student इंदौर (members-only directories — self-serve create, admin approves) ----
     // ध्यान दें: "phone" यहाँ contact number है (submitter का अपना number ज़रूरी नहीं — जैसे धर्मशाला के caretaker का
     // number) — इसलिए isOwnPhone(phone) से बांध नहीं सकते, digits-only रखकर ही free-text/HTML injection रोका है

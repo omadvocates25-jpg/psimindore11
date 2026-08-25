@@ -154,11 +154,34 @@ function bilingualHTML(en, hi){
  if(en && hi) return esc(en)+' <span class="text-gray-500 font-normal">('+esc(hi)+')</span>';
  return esc(en || hi || '-');
 }
+// ================= EN↔HI शब्दकोश (community dictionary) — पहले किसी ने जो नाम दोनों भाषा में भरा हो, वो अगली बार अपने आप आ जाए =================
+let translitData = [];
+function translitLookup(text, dir){
+ // dir: 'en2hi' या 'hi2en'
+ const key = (text||'').trim().toLowerCase();
+ if(!key) return '';
+ const hit = dir==='en2hi' ? translitData.find(t=>(t.en||'').toLowerCase()===key) : translitData.find(t=>(t.hi||'')===text.trim());
+ return hit ? (dir==='en2hi' ? hit.hi : hit.en) : '';
+}
+async function saveTranslitPair(en, hi){
+ en=(en||'').trim(); hi=(hi||'').trim();
+ if(!en || !hi) return; // दोनों भरे हों तभी worth-saving pair है
+ const key = en.toLowerCase();
+ const existing = translitData.find(t=>(t.en||'').toLowerCase()===key);
+ if(existing && existing.hi===hi) return; // पहले से यही pair मौजूद है
+ try{ await db.collection('translit_pairs').add({en:key, hi, createdAt:today()}); }catch(e){}
+}
+function autofillBilingual(prefix){
+ const enEl = document.getElementById(prefix+'_en'), hiEl = document.getElementById(prefix+'_hi');
+ if(!enEl || !hiEl) return;
+ if(enEl.value.trim() && !hiEl.value.trim()){ const hi = translitLookup(enEl.value, 'en2hi'); if(hi) hiEl.value = hi; }
+ else if(hiEl.value.trim() && !enEl.value.trim()){ const en = translitLookup(hiEl.value, 'hi2en'); if(en) enEl.value = fmtName(en); }
+}
 function bilingualInputsHTML(prefix, label){
  return '<div><label class="text-xs font-bold">'+(label||'Name')+' *</label><div class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1">'+
-  '<input id="'+prefix+'_en" placeholder="Name (English)" class="px-3 py-2 border-2 rounded">'+
-  '<input id="'+prefix+'_hi" placeholder="नाम (हिंदी)" class="px-3 py-2 border-2 rounded">'+
-  '</div></div>';
+  '<input id="'+prefix+'_en" placeholder="Name (English)" onblur="autofillBilingual(\''+prefix+'\')" class="px-3 py-2 border-2 rounded">'+
+  '<input id="'+prefix+'_hi" placeholder="नाम (हिंदी)" onblur="autofillBilingual(\''+prefix+'\')" class="px-3 py-2 border-2 rounded">'+
+  '</div><p class="text-[10px] text-gray-400 mt-1">💡 दोनों भाषा में भरो — अगर कोई पहले भर चुका है तो अपने आप आ जाएगा</p></div>';
 }
 function readBilingual(prefix){
  return { name_en: fmtName(document.getElementById(prefix+'_en').value), name_hi: document.getElementById(prefix+'_hi').value.trim() };
@@ -284,6 +307,7 @@ function setupRealtimeListeners(){
  watch('students', d => studentsData = d);
  watch('blood_sos', d => bloodSosData = d);
  watch('obituaries', d => obituariesData = d.sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')));
+ watch('translit_pairs', d => translitData = d);
  db.collection('meta').doc('site').onSnapshot(doc => {
   if(doc.exists) siteMeta = Object.assign(siteMeta, doc.data());
   if(!siteMeta.ads || siteMeta.ads.length<5) siteMeta.ads = [{},{},{},{},{}];
@@ -1053,13 +1077,24 @@ function villageLeadBoxHTML(){
   '<button onclick="submitVillageLead()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded font-bold">✅ बताओ</button>'+
   '<textarea id="vl_notes" rows="2" placeholder="और details बताओ (शहर, इलाका, कुछ भी...)" class="px-3 py-2 border-2 rounded md:col-span-4"></textarea>';
  } else {
-  h += '<input id="vl_village" list="dl_villages" placeholder="गाँव / Village" class="px-3 py-2 border-2 rounded">'+
-  '<input id="vl_tehsil" list="dl_tehsils" placeholder="तहसील / Tehsil" class="px-3 py-2 border-2 rounded">'+
+  h += '<div><input id="vl_village" list="dl_villages" oninput="vlAutofillHi(\'village\')" placeholder="गाँव / Village" class="px-3 py-2 border-2 rounded w-full">'+
+  '<input type="hidden" id="vl_village_hi"><p id="vl_village_hi_hint" class="text-[10px] text-teal-600 mt-0.5 hidden"></p></div>'+
+  '<div><input id="vl_tehsil" list="dl_tehsils" oninput="vlAutofillHi(\'tehsil\')" placeholder="तहसील / Tehsil" class="px-3 py-2 border-2 rounded w-full">'+
+  '<input type="hidden" id="vl_tehsil_hi"><p id="vl_tehsil_hi_hint" class="text-[10px] text-teal-600 mt-0.5 hidden"></p></div>'+
   '<select id="vl_district" onchange="setVLOutsideMP(this.value)" class="px-3 py-2 border-2 rounded"><option value="">जिला / District</option><option value="OUTSIDE_MP">🌍 MP से बाहर / Outside MP</option>'+MP_DISTRICTS.map(d=>'<option>'+d+'</option>').join('')+'</select>'+
   '<button onclick="submitVillageLead()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded font-bold">✅ बताओ</button>';
  }
  h += '</div></div>';
  return h;
+}
+function vlAutofillHi(field){
+ const inp = document.getElementById('vl_'+field);
+ const hiddenHi = document.getElementById('vl_'+field+'_hi');
+ const hint = document.getElementById('vl_'+field+'_hi_hint');
+ if(!inp || !hiddenHi || !hint) return;
+ const hi = translitLookup(inp.value, 'en2hi');
+ if(hi){ hiddenHi.value = hi; hint.textContent = '✓ '+hi; hint.classList.remove('hidden'); }
+ else { hiddenHi.value = ''; hint.classList.add('hidden'); }
 }
 async function submitVillageLead(){
  if(vlOutsideMP){
@@ -1076,11 +1111,13 @@ async function submitVillageLead(){
   return;
  }
  const village = fmtName(document.getElementById('vl_village').value);
+ const village_hi = document.getElementById('vl_village_hi').value;
  const tehsil = fmtName(document.getElementById('vl_tehsil').value);
+ const tehsil_hi = document.getElementById('vl_tehsil_hi').value;
  const district = document.getElementById('vl_district').value;
  if(!village && !tehsil && !district){ alert('❌ गाँव, तहसील या जिला में से कम से कम एक भरो'); return; }
  busy(true);
- await db.collection('village_leads').add({ village, tehsil, district, createdAt: today() });
+ await db.collection('village_leads').add({ village, village_hi, tehsil, tehsil_hi, district, createdAt: today() });
  busy(false);
  localStorage.setItem('psim_village_lead_done', 'true');
  alert('✅ धन्यवाद! जानकारी मिल गई।');
@@ -2250,6 +2287,7 @@ async function submitDharamshala(){
  const gmap = document.getElementById('dh_gmap').value.trim();
  const details = document.getElementById('dh_details').value.trim();
  if((!name_en && !name_hi) || !phone){ alert('❌ Name और Phone जरूरी!'); return; }
+ saveTranslitPair(name_en, name_hi);
  busy(true);
  await db.collection('dharamshala').add({kind:dharamshalaKind, name_en, name_hi, village, tehsil, ownerType, ownerName, phone, gmap, details, status:'pending', createdAt:today(), addedBy:me.phone});
  busy(false); showDharamshalaForm=false;
@@ -2306,6 +2344,7 @@ async function submitHospital(){
  const gmap = document.getElementById('hp_gmap').value.trim();
  const details = document.getElementById('hp_details').value.trim();
  if((!name_en && !name_hi) || !phone){ alert('❌ Name और Phone जरूरी!'); return; }
+ saveTranslitPair(name_en, name_hi);
  busy(true);
  await db.collection('hospitals').add({kind:hospitalKind, name_en, name_hi, runBy, phone, gmap, details, status:'pending', createdAt:today(), addedBy:me.phone});
  busy(false); showHospitalForm=false;
@@ -2373,6 +2412,7 @@ async function submitStudentNeed(){
  const gmap = document.getElementById('sn_gmap').value.trim();
  const details = document.getElementById('sn_details').value.trim();
  if((!name_en && !name_hi) || !phone){ alert('❌ Name और Phone जरूरी!'); return; }
+ saveTranslitPair(name_en, name_hi);
  busy(true);
  await db.collection('student_needs').add({kind:studentNeedKind, name_en, name_hi, phone, area, gmap, details, status:'pending', createdAt:today(), addedBy:me.phone});
  busy(false); showStudentNeedForm=false;
@@ -3314,7 +3354,7 @@ function renderAdmin(){
   '</div>';
   h += '<div class="bg-white rounded-lg shadow p-6"><h3 class="text-xl font-bold mb-4">📋 सभी Entries</h3>'+
   (villageLeadsData.length ? '<div class="space-y-2">'+villageLeadsData.slice().sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).map(v=>
-   '<div class="flex justify-between items-start bg-gray-50 rounded-lg px-4 py-2 gap-2"><span class="text-sm">🏡 '+esc(v.village||'-')+(v.tehsil?' | '+esc(v.tehsil):'')+(v.district?' | '+esc(v.district):'')+(v.state?' | '+esc(v.state):'')+' <span class="text-gray-400">('+esc(v.createdAt||'')+')</span>'+(v.notes?'<br><span class="text-xs text-gray-500">📝 '+esc(v.notes)+'</span>':'')+'</span>'+
+   '<div class="flex justify-between items-start bg-gray-50 rounded-lg px-4 py-2 gap-2"><span class="text-sm">🏡 '+(v.village?bilingualHTML(v.village,v.village_hi):'-')+(v.tehsil?' | '+bilingualHTML(v.tehsil,v.tehsil_hi):'')+(v.district?' | '+esc(v.district):'')+(v.state?' | '+esc(v.state):'')+' <span class="text-gray-400">('+esc(v.createdAt||'')+')</span>'+(v.notes?'<br><span class="text-xs text-gray-500">📝 '+esc(v.notes)+'</span>':'')+'</span>'+
    '<button onclick="delDoc(\'village_leads\',\''+v.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm shrink-0">🗑️</button></div>'
   ).join('')+'</div>' : '<p class="text-gray-400 text-center py-8">कोई entry नहीं</p>')+
   '</div>';
