@@ -2637,6 +2637,11 @@ function patidarAIRouteFromHint(q, hint){
    const results = aiSearchBusinesses(combined);
    return results.length ? aiFormatBusinessResults(results, combined) : null;
   }
+  // "chat" — koi bhi normal baat-cheet, follow-up, ya app ke baare mein general sawaal, jisme koi asli
+  // data (business/hospital/counts/list) nahi chahiye। Yahan Groq ka apna generate kiya reply seedha dikhaya
+  // jaata hai (system prompt mein hi mana kiya gaya hai ki woh koi specific data/personal info kabhi na de) —
+  // baaki har category (upar) hamesha hamare apne rule-based, real-data handlers se hi jawab deti hai।
+  case 'chat': return (typeof hint.reply==='string' && hint.reply.trim()) ? hint.reply.trim() : null;
   default: return null;
  }
 }
