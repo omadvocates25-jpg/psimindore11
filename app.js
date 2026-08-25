@@ -44,7 +44,7 @@ let relSearchQ = '';
 let friendSearchQ = '';
 let whomQuery = '';
 
-let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], garbaCoords=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[], teamJoinData=[], labhData=[], villageLeadsData=[], dharamshalaData=[], hospitalsData=[], studentNeedsData=[], studentsData=[], bloodSosData=[], obituariesData=[];
+let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], garbaCoords=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[], teamJoinData=[], labhData=[], villageLeadsData=[], dharamshalaData=[], hospitalsData=[], studentNeedsData=[], studentsData=[], bloodSosData=[], obituariesData=[], villageInfoData=[];
 let siteMeta = { ticker:'', aboutUs:'', fb:'', insta:'', youtube:'', committee:'', expiryDays:30, propertyValidityDays:365, propertyFeeRent:'500', propertyFeeWanted:'11', razorpayPropRent:'', razorpayPropWanted:'', shaadiFee:'500', shaadiValidityDays:180, razorpayShaadi:'', jobsFeeSeeker:'11', razorpayJobsSeeker:'', bizPromoFee:'300', bizPromoValidityDays:365, razorpayBizPromo:'', olxExtraItemFee:'100', razorpayOlxExtra:'', olxPromoFee:'100', razorpayOlxPromo:'', blocked:[], garbaFormOpen:true, ads:[{},{},{},{},{}], subAdmins:[], texts:{} };
 
 function isSuperAdmin(){ return currentUser === ADMIN_PHONE || localStorage.getItem('psim_admin_ok') === 'true'; }
@@ -308,6 +308,7 @@ function setupRealtimeListeners(){
  watch('blood_sos', d => bloodSosData = d);
  watch('obituaries', d => obituariesData = d.sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')));
  watch('translit_pairs', d => translitData = d);
+ watch('village_info', d => villageInfoData = d);
  db.collection('meta').doc('site').onSnapshot(doc => {
   if(doc.exists) siteMeta = Object.assign(siteMeta, doc.data());
   if(!siteMeta.ads || siteMeta.ads.length<5) siteMeta.ads = [{},{},{},{},{}];
@@ -322,7 +323,7 @@ async function saveMeta(){ await db.collection('meta').doc('site').set(siteMeta)
 // बिना login दिखने वाले pages — Home/News/Pratibha/Events/Gallery + Rozgaar व OLX (सिर्फ browsing) खुले हैं
 // बाकी सब (Community, Business, Garba, Cricket, Blood, Property, Shaadi) के लिए पहले Community member बनना जरूरी है
 const OPEN_PAGES = ['home','news','register','events','gallery','pratibha','rozgaar','olditems','suggestions','obituaries'];
-const LOCKED_PAGES = ['community','business','garba','cricket','blood','property','shaadi','dharamshala','hospitals','students'];
+const LOCKED_PAGES = ['community','business','garba','cricket','blood','property','shaadi','dharamshala','hospitals','students','meregaanv'];
 function goPage(p){
  if(!currentUser && LOCKED_PAGES.includes(p)){
   showRegisterPrompt('यह सुविधा सिर्फ रजिस्टर्ड सदस्यों के लिए है — Community से जुड़ने के लिए Register करो।');
@@ -1210,7 +1211,8 @@ function renderHome(){
   ['dharamshala','orange','🛕','मेरी धर्मशाला<br>Dharamshala', dharamshalaData.filter(d=>d.status==='approved').length+' Listed'],
   ['hospitals','sky','🏥','पाटीदार अस्पताल<br>Hospitals', hospitalsData.filter(h=>h.status==='approved').length+' Listed'],
   ['students','fuchsia','🎓','STUDENT<br>इंदौर', studentNeedsData.filter(s=>s.status==='approved').length+' Listings'],
-  ['obituaries','gray','🕯️','शोक समाचार<br>Obituaries', obituariesData.length+' Notices']
+  ['obituaries','gray','🕯️','शोक समाचार<br>Obituaries', obituariesData.length+' Notices'],
+  ['meregaanv','emerald','🏡','मेरे गाँव<br>ले चलो', uniqueVillageCount()+' Villages']
  ];
  h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">'+portals.slice(0,4).map(portalTile).join('')+'</div>';
 
@@ -1220,7 +1222,7 @@ function renderHome(){
 
  h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">'+portals.slice(8,12).map(portalTile).join('')+'</div>';
 
- h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">'+portals.slice(12,16).map(portalTile).join('')+'</div>';
+ h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">'+portals.slice(12,17).map(portalTile).join('')+'</div>';
 
  h += '<div class="bg-white rounded-xl shadow-lg p-6 mb-8"><h3 class="text-2xl font-bold mb-1 text-center">🎲 जानो अपने साथियों को / Know Your Community</h3><p class="text-center text-gray-500 text-sm mb-4">Random member profiles देखो</p><div id="randProfileBox"></div></div>';
 
@@ -2145,6 +2147,82 @@ function renderObituariesPage(){
  return h;
 }
 
+// ================= 🏡 मेरे गाँव ले चलो =================
+let selectedGaanv = '';
+let showVillageDescForm = false;
+function uniqueVillageCount(){
+ return new Set(publicMembers().map(m=>fmtName(m.home_village)).filter(Boolean)).size;
+}
+function villageList(){
+ const counts = {};
+ publicMembers().forEach(m=>{ const v=fmtName(m.home_village); if(v) counts[v]=(counts[v]||0)+1; });
+ return Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([name,count])=>({name,count}));
+}
+function setGaanv(v){ selectedGaanv = fmtName(v); showVillageDescForm=false; renderApp(); window.scrollTo(0,0); }
+function villageInfoFor(v){ return villageInfoData.find(x=>fmtName(x.village)===fmtName(v)); }
+async function saveVillageDescription(){
+ const me = myMember();
+ if(!me || me.status!=='approved'){ showRegisterPrompt('Description जोड़ने के लिए पहले Community member बनो।'); return; }
+ const desc = document.getElementById('vg_desc').value.trim();
+ if(!desc){ alert('❌ कुछ तो लिखो!'); return; }
+ const existing = villageInfoFor(selectedGaanv);
+ busy(true);
+ if(existing) await db.collection('village_info').doc(existing.id).update({description:desc, updatedAt:today(), updatedBy:me.phone});
+ else await db.collection('village_info').add({village:selectedGaanv, description:desc, addedBy:me.phone, createdAt:today()});
+ busy(false); showVillageDescForm=false;
+ alert('✅ Description save हो गई!');
+ renderApp();
+}
+function renderMereGaanvPage(){
+ let h = '<h2 class="text-3xl font-bold mb-2">🏡 मेरे गाँव ले चलो</h2>';
+ h += '<p class="text-gray-500 mb-6">अपने गाँव की पूरी जानकारी — कौन-कौन है, क्या-क्या व्यापार है, सब एक जगह</p>';
+
+ if(!selectedGaanv){
+  h += '<div class="bg-white rounded-lg shadow p-5 mb-6"><div class="flex gap-2">'+
+   '<input id="vg_search" list="dl_villages" placeholder="गाँव का नाम खोजो..." class="flex-1 px-3 py-2 border-2 rounded">'+
+   '<button onclick="setGaanv(document.getElementById(\'vg_search\').value)" class="bg-emerald-600 text-white px-6 py-2 rounded-lg font-bold">ले चलो →</button>'+
+   '</div></div>';
+  const list = villageList();
+  if(!list.length) h += '<p class="text-gray-500 text-center py-8">अभी कोई गाँव data में नहीं है</p>';
+  else {
+   h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3">'+list.map(v=>
+    '<div onclick="setGaanv(\''+esc(v.name).replace(/'/g,"\\'")+'\')" class="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white rounded-xl p-4 text-center cursor-pointer shadow hover:shadow-xl transform hover:scale-105 transition-all"><p class="font-bold truncate">'+bilingualHTML(v.name, translitLookup(v.name,'en2hi'))+'</p><p class="text-xs text-emerald-100 mt-1">'+v.count+' सदस्य</p></div>'
+   ).join('')+'</div>';
+  }
+  return h;
+ }
+
+ const members = publicMembers().filter(m=>fmtName(m.home_village)===selectedGaanv);
+ const businesses = shufflePromotedFirst(allBusinesses().filter(b=>fmtName(b.village)===selectedGaanv));
+ const info = villageInfoFor(selectedGaanv);
+ const hi = translitLookup(selectedGaanv, 'en2hi');
+
+ h += '<button onclick="selectedGaanv=\'\';renderApp()" class="mb-4 bg-gray-200 px-4 py-2 rounded-lg font-bold text-sm">← दूसरा गाँव चुनो</button>';
+ h += '<div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6 mb-6">';
+ h += '<h3 class="text-3xl font-bold mb-2">🏡 '+bilingualHTML(selectedGaanv, hi)+'</h3>';
+ h += '<p class="text-emerald-100">👥 '+members.length+' सदस्य | 🏪 '+businesses.length+' व्यापार</p>';
+ h += '</div>';
+
+ h += '<div class="bg-white rounded-lg shadow p-6 mb-6"><div class="flex justify-between items-center mb-2"><h3 class="text-lg font-bold">📝 गाँव के बारे में</h3><button onclick="showVillageDescForm=!showVillageDescForm;renderApp()" class="text-xs bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full font-bold">✏️ '+(info?'Edit करो':'Add करो')+'</button></div>';
+ if(showVillageDescForm){
+  h += '<textarea id="vg_desc" rows="3" placeholder="गाँव के बारे में लिखो..." class="w-full px-3 py-2 border-2 rounded mb-2">'+esc(info?info.description:'')+'</textarea>'+
+  '<button onclick="saveVillageDescription()" class="bg-emerald-600 text-white px-6 py-2 rounded-lg font-bold text-sm">✅ Save</button>';
+ } else {
+  h += info ? '<p class="text-gray-700 whitespace-pre-line">'+esc(info.description)+'</p>' : '<p class="text-gray-400 text-sm">अभी कोई description नहीं है — पहला बनने वाले बनो!</p>';
+ }
+ h += '</div>';
+
+ h += '<h3 class="text-2xl font-bold mb-3">🏪 यहाँ के व्यापार</h3>';
+ if(!businesses.length) h += '<p class="text-gray-400 text-sm mb-6">अभी कोई business list नहीं है</p>';
+ else h += '<div class="flex gap-3 overflow-x-auto pb-2 noscroll mb-6">'+businesses.map(b=>b.promoted?promoBizCardHTML(b):bizMiniCard(b)).join('')+'</div>';
+
+ h += '<h3 class="text-2xl font-bold mb-3">👥 यहाँ के सदस्य ('+members.length+')</h3>';
+ if(!members.length) h += '<p class="text-gray-400 text-sm">अभी कोई member नहीं है इस गाँव से</p>';
+ else h += '<div class="flex gap-4 overflow-x-auto pb-2 noscroll">'+members.map(memberCard).join('')+'</div>';
+
+ return h;
+}
+
 // ================= PROPERTY (मकान-किरायेदार) =================
 function activeProperties(){
  const days = siteMeta.propertyValidityDays || 365;
@@ -2848,6 +2926,7 @@ function _localCol(col){
  if(col==='dharamshala') return dharamshalaData; if(col==='hospitals') return hospitalsData;
  if(col==='student_needs') return studentNeedsData; if(col==='students') return studentsData;
  if(col==='blood_sos') return bloodSosData; if(col==='obituaries') return obituariesData;
+ if(col==='village_info') return villageInfoData;
  return null;
 }
 async function updDoc(col,id,data){
@@ -3300,6 +3379,7 @@ function renderAdmin(){
   ['hospitals','🏥 अस्पताल'+(pendHospitals.length?' ('+pendHospitals.length+')':'')],
   ['students','🎓 STUDENT'+(pendStudentNeeds.length?' ('+pendStudentNeeds.length+')':'')],
   ['obituaries','🕯️ शोक समाचार'],
+  ['meregaanv','🏡 मेरे गाँव'],
   ['site','🌐 SITE']
  ];
  const allowed = allowedTabs();
@@ -3404,6 +3484,12 @@ function renderAdmin(){
   '<button onclick="submitObituaryAdmin()" class="mt-4 bg-gray-700 text-white px-8 py-3 rounded font-bold">✅ POST करो</button></div>';
   h += '<div class="bg-white rounded-lg shadow p-6"><h3 class="text-xl font-bold mb-4">🕯️ ALL NOTICES ('+obituariesData.length+')</h3><div class="space-y-2">'+
   obituariesData.map(o=>'<div class="flex justify-between items-center bg-gray-50 rounded-lg px-4 py-2 flex-wrap gap-2"><span class="text-sm font-bold">'+esc(o.name)+(o.place?' | '+esc(o.place):'')+(o.deathDate?' | '+esc(o.deathDate):'')+'</span><button onclick="delDoc(\'obituaries\',\''+o.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div>').join('')+
+  '</div></div>';
+ }
+
+ if(adminTab==='meregaanv'){
+  h += '<div class="bg-white rounded-lg shadow p-6"><h3 class="text-xl font-bold mb-4">🏡 गाँव Descriptions ('+villageInfoData.length+')</h3><p class="text-xs text-gray-500 mb-4">कोई भी member ये लिख/सुधार सकता है — गलत/spam content यहाँ से हटाओ</p><div class="space-y-2">'+
+  (villageInfoData.length ? villageInfoData.map(v=>'<div class="flex justify-between items-start bg-gray-50 rounded-lg px-4 py-2 gap-2"><span class="text-sm"><b>'+esc(v.village)+'</b><br><span class="text-gray-600">'+esc(v.description)+'</span></span><button onclick="delDoc(\'village_info\',\''+v.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm shrink-0">🗑️</button></div>').join('') : '<p class="text-gray-400 text-center py-8">कोई description नहीं है</p>')+
   '</div></div>';
  }
 
@@ -3673,6 +3759,7 @@ function renderApp(){
  else if(currentPage==='hospitals') html = renderHospitalsPage();
  else if(currentPage==='students') html = renderStudentsPage();
  else if(currentPage==='obituaries') html = renderObituariesPage();
+ else if(currentPage==='meregaanv') html = renderMereGaanvPage();
  else if(currentPage==='news') html = renderNewsPage();
  else if(currentPage==='pratibha') html = renderPratibhaPage();
  else if(currentPage==='events') html = renderEventsPage();
