@@ -2431,6 +2431,12 @@ const AI_FOOD_WORDS = ['khana','khane','food','nashta','restaurant','भोज�
 const AI_NEAR_WORDS = ['nearest','sabse paas','sabse pass','paas','pass','nazdeek','najdeek','निकट','पास','नज़दीक'];
 const AI_HOSPITAL_WORDS = ['hospital','aspatal','अस्पताल'];
 const AI_DHARAMSHALA_WORDS = ['dharamshala','धर्मशाला'];
+// Shaadi/Property jaanbhoojkar Patidar AI ke scope se bahar hain — sirf apne dedicated page par milte hain
+// (Shaadi zyada sensitive/personal hai, Property allotment/ownership wali cheez hai) — AI se seedha nahi
+const AI_SHAADI_WORDS = ['shaadi','shादी','विवाह','vivah','matrimony','rishta','रिश्ता'];
+const AI_PROPERTY_WORDS = ['property','मकान','makan','किराए','kiraye','kirae','rent chahiye','flat chahiye'];
+const AI_COUNT_TRIGGER = ['kitne','कितने','total','कुल'];
+const AI_COUNT_SUBJECT = ['log','लोग','member','sadasya','सदस्य','admi','आदमी'];
 // यह generative AI नहीं है (कोई bhi text खुद नहीं बनाता, सिर्फ हमारे अपने data से जवाब देता है) —
 // isliye galat/obscene content "generate" karna structurally possible hi nahi hai। फिर भी, अगर कोई
 // aisa sawaal type kare, respectfully mना कर देना chahiye — search logic tak jaane hi na de।
@@ -2488,7 +2494,7 @@ function renderPatidarAI(){
   h += '<div class="flex flex-wrap gap-2 mb-3">'+samples.map(s=>'<button onclick="askPatidarAISample(\''+esc(s).replace(/'/g,"\\'")+'\')" class="text-xs bg-violet-50 text-violet-700 border border-violet-300 rounded-full px-3 py-1.5 hover:bg-violet-100">'+esc(s)+'</button>').join('')+'</div>';
  }
  h += '<div class="flex gap-2">'+
-  '<input id="ai_question" onkeydown="if(event.key===\'Enter\'){event.preventDefault();askPatidarAI();}" placeholder="अपना सवाल लिखो..." class="flex-1 px-4 py-3 border-2 border-violet-300 rounded-lg"'+(aiThinking?' disabled':'')+'>'+
+  '<input id="ai_question" maxlength="300" onkeydown="if(event.key===\'Enter\'){event.preventDefault();askPatidarAI();}" placeholder="अपना सवाल लिखो..." class="flex-1 px-4 py-3 border-2 border-violet-300 rounded-lg"'+(aiThinking?' disabled':'')+'>'+
   '<button onclick="askPatidarAI()"'+(aiThinking?' disabled':'')+' class="bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white px-5 py-3 rounded-lg font-bold">'+(aiThinking?'⏳':'भेजो →')+'</button>'+
   '</div>';
  h += '</div>';
@@ -2546,13 +2552,27 @@ function patidarAIReply(qRaw, rounds){
  if(AI_BLOOD_WORDS.some(w => ql.includes(w))) return handleAiBlood(q);
  if(AI_NEWS_WORDS.some(w => ql.includes(w))) return handleAiNews();
  if(AI_EVENT_WORDS.some(w => ql.includes(w))) return handleAiEvents();
+ if(AI_SHAADI_WORDS.some(w => ql.includes(w))){
+  return '💍 Shaadi/विवाह से जुड़ी जानकारी privacy की वजह से सिर्फ SHAADI page पर ही दिखती है, Patidar AI से नहीं — कृपया SHAADI page पर जाकर देखो।';
+ }
+ if(AI_PROPERTY_WORDS.some(w => ql.includes(w))){
+  return '🏠 मकान-किरायेदार/Property की जानकारी सिर्फ Property page पर मिलती है — कृपया वहाँ जाकर देखो।';
+ }
+ if(AI_COUNT_TRIGGER.some(t => ql.includes(t)) && AI_COUNT_SUBJECT.some(s => ql.includes(s))) return handleAiCount(ql);
  if(rounds===0 && AI_FOOD_WORDS.some(w => ql.includes(w)) && !aiHasAreaHint(ql)){
   aiPending = { originalQuery: q };
   return '📍 कौनसा area चाहिए? और 🍽️ नाश्ता चाहिए या पूरा खाना?';
  }
  const results = aiSearchBusinesses(q);
  if(results.length) return aiFormatBusinessResults(results, q);
- return 'माफ़ कीजिए, समझ नहीं आया 🙏 आप पूछ सकते हो: किसी काम/business वाले के बारे में (जैसे "इलेक्ट्रीशियन Vijay Nagar"), सबसे पास का Hospital/धर्मशाला/Business, 🩸 Blood donor, 📰 News, 📅 Events, या दो गाँव के बीच Distance।';
+ return 'माफ़ कीजिए, समझ नहीं आया 🙏 आप पूछ सकते हो: किसी काम/business वाले के बारे में (जैसे "इलेक्ट्रीशियन Vijay Nagar"), सबसे पास का Hospital/धर्मशाला/Business, 🩸 Blood donor, 📰 News, 📅 Events, गाँव के सदस्यों की गिनती, या दो गाँव के बीच Distance। आम/general जानकारी वाले सवाल के लिए Google या किसी normal AI assistant में पूछो — मैं सिर्फ समाज के अपने data के लिए हूँ।';
+}
+// सिर्फ ginती — kisi bhi member ki personal detail (naam/phone/address) yahan kabhi nahi dikhti
+function handleAiCount(ql){
+ const list = villageList();
+ const found = list.find(v => ql.includes(v.name.toLowerCase()));
+ if(found) return '👨‍🌾 '+found.name+' गाँव के '+found.count+' सदस्य अभी हमारी app पर registered हैं — यह पूरे गाँव की जनसंख्या नहीं, सिर्फ registered members की गिनती है।';
+ return '👨‍🌾 अभी हमारी community में कुल '+publicMembers().length+' registered सदस्य हैं। किसी खास गाँव के लिए पूछो, जैसे "Karwad में कितने सदस्य हैं?"';
 }
 // query mein koi jaana-pehchana place (business ka area ya koi gaanv) mila to uska naam wapas karta hai — isse jawab
 // "generic list" na lagkar us jagah ke liye personalized lage (jaise koi insaan seedha jawab de raha ho)
