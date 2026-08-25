@@ -1677,7 +1677,8 @@ function allBusinesses(){
   name:m.business_name, type:(m.business_type==='Other'&&m.business_type_other)?m.business_type_other:(m.business_type||'Business'),
   owner:m.name+' '+m.surname, phone:m.business_phone||m.phone, place:m.business_place||m.present_city||'',
   gmap:m.business_gmap||'', pic:m.business_pic1||'', description:m.business_details||'',
-  village:m.home_village||'', city:m.present_city||'', ownerPhone:m.phone||'', promoted:isBizPromoActive(m)
+  village:m.home_village||'', city:m.present_city||'', ownerPhone:m.phone||'', promoted:isBizPromoActive(m),
+  lat:m.business_lat||null, lng:m.business_lng||null
  }));
  real.sort((a,b) => (b.promoted?1:0)-(a.promoted?1:0));
  return real.length > 0 ? real : SAMPLE_BUSINESSES;
@@ -1827,11 +1828,32 @@ function myAcc_business(){
   owner: me.name+' '+me.surname, phone: me.business_phone||me.phone, place: me.business_place||me.present_city||'',
   gmap: me.business_gmap||'', pic: me.business_pic1||'', description: me.business_details||'', ownerPhone: me.phone
  };
- box.innerHTML = bizDetailHTML(b) + labhListPanelHTML(me) + bizPromoPanelHTML(me);
+ box.innerHTML = bizDetailHTML(b) + bizLocationPanelHTML(me) + labhListPanelHTML(me) + bizPromoPanelHTML(me);
  document.getElementById('bizModal').classList.remove('hidden');
  if(me.biz_promo_status!=='active' && me.biz_promo_status!=='pending' && siteMeta.razorpayBizPromo){
   setTimeout(()=>mountRazorpayButton(siteMeta.razorpayBizPromo,'razorpayBizPromoBox'),30);
  }
+}
+// business ka lat/lng set karna — "मेरे पास सबसे नज़दीक कौन सा business है" jaise Patidar AI सवाल ke liye
+function bizLocationPanelHTML(me){
+ return '<div class="mx-6 mb-6 bg-emerald-50 border-2 border-emerald-300 rounded-lg p-4">'+
+  (me.business_lat ?
+   '<p class="text-sm font-bold text-emerald-800">📍 Location set है — Patidar AI "पास में कौन सा business" जैसे सवाल में आपको दिखा सकता है</p>' :
+   '<p class="text-sm text-gray-600 mb-2">आपके business की location set नहीं है — set करने पर Patidar AI "मेरे पास कौन सा business है" जैसे सवालों में आपको दिखा पाएगा</p>'+
+   '<button onclick="geocodeMyBusiness()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-bold text-sm">📍 Location सेट करो</button>')+
+  '</div>';
+}
+async function geocodeMyBusiness(){
+ const me = myMember(); if(!me) return;
+ const place = me.business_place || me.present_city || '';
+ if(!place){ alert('❌ पहले Business Address भरो (Edit Profile से)।'); return; }
+ busy(true);
+ const out = await fetch(GEOCODE_VILLAGE_URL+'?village='+encodeURIComponent(place)+'&district='+encodeURIComponent(me.present_district||'')).then(r=>r.json()).catch(()=>({}));
+ busy(false);
+ if(!out.lat){ alert('❌ Location नहीं मिली — कुछ देर बाद फिर try करो।'); return; }
+ await updDoc('members', me.id, {business_lat: out.lat, business_lng: out.lng});
+ alert('✅ Location set हो गई!');
+ myAcc_business();
 }
 function labhListPanelHTML(me){
  const active = labhActiveReceivedBy(me.phone);
@@ -2037,6 +2059,7 @@ function renderBusinessPage(){
  const list = allBusinesses();
  return '<h2 class="text-3xl font-bold mb-2">🏪 BUSINESS / व्यापार ('+list.length+')</h2>'+
  '<p class="text-gray-500 mb-4">Members की business details automatic दिखती हैं</p>'+
+ patidarAIQuickLinkHTML()+
  '<button onclick="openSwipeView(\'business\')" class="w-full mb-6 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl">🔀 Businesses Explore करें</button>'+
  '<div class="flex gap-5 overflow-x-auto pb-3 noscroll">'+
  list.map(b => '<div class="w-72 shrink-0 border-2 '+(b.promoted?'border-amber-500':'bg-white border-yellow-300')+' rounded-lg overflow-hidden shadow-md hover:shadow-xl relative" '+(b.promoted?'style="background:linear-gradient(160deg,#FFF9E6,#FDE68A);"':'')+'>'+
@@ -2188,7 +2211,8 @@ function renderBloodPage(){
  const villQ = bloodFilterVillage.trim().toLowerCase();
  const filtered = allDonors().filter(m => (!bloodFilterGroup || m.blood_group===bloodFilterGroup) && (!bloodFilterDist || m.district===bloodFilterDist) && (!villQ || (m.village||'').toLowerCase().includes(villQ)));
  let h = '<h2 class="text-3xl font-bold mb-2">🩸 BLOOD DONORS / रक्तदाता ('+filtered.length+')</h2>';
- h += '<p class="text-gray-500 mb-6">गाँव/तहसील, District और Group से खोजो — सीधे Call या WhatsApp पर अनुरोध करो | Donors समाज द्वारा verified ✅</p>';
+ h += '<p class="text-gray-500 mb-4">गाँव/तहसील, District और Group से खोजो — सीधे Call या WhatsApp पर अनुरोध करो | Donors समाज द्वारा verified ✅</p>';
+ h += patidarAIQuickLinkHTML();
 
  const activeSOS = activeBloodSOS();
  h += '<div class="bg-red-50 border-2 border-red-600 rounded-xl p-5 mb-6">';
@@ -2380,6 +2404,17 @@ async function geocodeThisVillage(){
   alert('❌ Network error: '+e.message);
  }
 }
+// किसी bhi listing (hospital/dharamshala/business) ka lat/lng background me set karna — best-effort,
+// fail ho to chup-chaap skip (submission ruknी nahi chahiye geocoding ki wajah se). Isi se "nearest X"
+// jaise Patidar AI सवाल jawaab de paate hain.
+async function geocodeAndAttach(col, docId, place, district){
+ if(!place) return;
+ try{
+  const resp = await fetch(GEOCODE_VILLAGE_URL+'?village='+encodeURIComponent(place)+'&district='+encodeURIComponent(district||''));
+  const out = await resp.json().catch(()=>({}));
+  if(out.lat) await db.collection(col).doc(docId).update({lat:out.lat, lng:out.lng});
+ } catch(e){ /* silent — geocoding optional hai */ }
+}
 
 // ================= 👨‍🌾 PATIDAR AI (मौजूदा search को conversational बनाना — कोई paid LLM नहीं, 100% free) =================
 // Design: कोई बाहरी AI API नहीं बुलाई जाती — Community का data (business/blood/news/events/villages)
@@ -2393,6 +2428,9 @@ const AI_BLOOD_WORDS = ['blood','khoon','रक्त','donor','donate'];
 const AI_NEWS_WORDS = ['news','samachar','samachaar','खबर','समाचार'];
 const AI_EVENT_WORDS = ['event','karyakram','कार्यक्रम'];
 const AI_FOOD_WORDS = ['khana','khane','food','nashta','restaurant','भोजन','खाना','नाश्ता'];
+const AI_NEAR_WORDS = ['nearest','sabse paas','sabse pass','paas','pass','nazdeek','najdeek','निकट','पास','नज़दीक'];
+const AI_HOSPITAL_WORDS = ['hospital','aspatal','अस्पताल'];
+const AI_DHARAMSHALA_WORDS = ['dharamshala','धर्मशाला'];
 const AI_SYNONYMS = {
  'dr':'doctor','doc':'doctor','adv':'advocate lawyer','lawyer':'advocate legal',
  'ca':'accountant','cs':'accountant','eng':'engineer','engg':'engineer',
@@ -2441,7 +2479,7 @@ function renderPatidarAI(){
  }
  h += '</div>';
  if(!aiChatHistory.length){
-  const samples = ['इंदौर में खाने के option चाहिए','O+ blood donor चाहिए','आने वाले events कौन से हैं?'];
+  const samples = ['इंदौर में खाने के option चाहिए','मेरे पास सबसे नज़दीक hospital कौन सा है?','O+ blood donor चाहिए'];
   h += '<div class="flex flex-wrap gap-2 mb-3">'+samples.map(s=>'<button onclick="askPatidarAISample(\''+esc(s).replace(/'/g,"\\'")+'\')" class="text-xs bg-violet-50 text-violet-700 border border-violet-300 rounded-full px-3 py-1.5 hover:bg-violet-100">'+esc(s)+'</button>').join('')+'</div>';
  }
  h += '<div class="flex gap-2">'+
@@ -2492,9 +2530,10 @@ function patidarAIReply(qRaw, rounds){
  if(!q) return 'कुछ तो पूछो 🙂';
 
  if(AI_GREETINGS.some(g => ql===g || ql.startsWith(g+' '))){
-  return 'नमस्ते 🙏 मैं Patidar AI हूँ। मुझसे पूछो: कोई भी Business/Profession (डॉक्टर, वकील, इलेक्ट्रीशियन...), 🩸 Blood donor, 📰 समाज की News, 📅 Events, या दो गाँव के बीच 📍 Distance।';
+  return 'नमस्ते 🙏 मैं Patidar AI हूँ। मुझसे पूछो: कोई भी Business/Profession (डॉक्टर, वकील, इलेक्ट्रीशियन...), 🏥 सबसे पास का Hospital/धर्मशाला/Business, 🩸 Blood donor, 📰 समाज की News, 📅 Events, या दो गाँव के बीच 📍 Distance।';
  }
  if(AI_DISTANCE_WORDS.some(w => ql.includes(w))) return handleAiDistance(q, ql);
+ if(AI_NEAR_WORDS.some(w => ql.includes(w))) return handleAiNearest(q, ql);
  if(AI_BLOOD_WORDS.some(w => ql.includes(w))) return handleAiBlood(q);
  if(AI_NEWS_WORDS.some(w => ql.includes(w))) return handleAiNews();
  if(AI_EVENT_WORDS.some(w => ql.includes(w))) return handleAiEvents();
@@ -2504,7 +2543,7 @@ function patidarAIReply(qRaw, rounds){
  }
  const results = aiSearchBusinesses(q);
  if(results.length) return aiFormatBusinessResults(results);
- return 'माफ़ कीजिए, समझ नहीं आया 🙏 आप पूछ सकते हो: किसी काम/business वाले के बारे में (जैसे "इलेक्ट्रीशियन Vijay Nagar"), 🩸 Blood donor, 📰 News, 📅 Events, या दो गाँव के बीच Distance।';
+ return 'माफ़ कीजिए, समझ नहीं आया 🙏 आप पूछ सकते हो: किसी काम/business वाले के बारे में (जैसे "इलेक्ट्रीशियन Vijay Nagar"), सबसे पास का Hospital/धर्मशाला/Business, 🩸 Blood donor, 📰 News, 📅 Events, या दो गाँव के बीच Distance।';
 }
 function aiHasAreaHint(qlText){
  let hit = false;
@@ -2568,6 +2607,59 @@ function handleAiDistance(q, ql){
  }
  const km = Math.round(haversineKmClient(a.lat, a.lng, b.lat, b.lng)*10)/10;
  return '📍 '+found[0]+' और '+found[1]+' के बीच सीधी (हवाई) दूरी लगभग '+km+' km है — सड़क की असल दूरी इससे ज़्यादा हो सकती है।';
+}
+// "सबसे पास कौन सा hospital/dharamshala/business है" — kisi bhi gaanv/इलाके ka naam pucho, ya khud ka
+// registered gaanv default reference बनता है। Sirf unhi listings ko count karta hai jinka location set hai।
+function handleAiNearest(q, ql){
+ let category = 'business';
+ if(AI_HOSPITAL_WORDS.some(w => ql.includes(w))) category = 'hospital';
+ else if(AI_DHARAMSHALA_WORDS.some(w => ql.includes(w))) category = 'dharamshala';
+
+ const radiusMatch = q.match(/(\d+)\s*(km|kilometer|kilometre|किमी|किलोमीटर)/i);
+ const radiusKm = radiusMatch ? parseInt(radiusMatch[1], 10) : null;
+
+ const names = villageList().map(v => v.name);
+ let refName = names.find(n => ql.includes(n.toLowerCase()));
+ let refInfo = refName ? villageInfoFor(refName) : null;
+ if(!refInfo){
+  const me = myMember();
+  if(me && me.home_village){ refName = me.home_village; refInfo = villageInfoFor(me.home_village); }
+ }
+ if(!refInfo || !refInfo.lat){
+  if(refName) return '❌ '+refName+' का location अभी set नहीं है। "मेरे गाँव ले चलो" पेज पर जाकर 📍 Location सेट करो, फिर पूछो।';
+  aiPending = { originalQuery: q };
+  return '📍 आप किस गाँव/इलाके के पास ढूंढ रहे हो? नाम बताओ (जैसे "Karwad ke paas hospital")';
+ }
+
+ let candidates;
+ let label;
+ if(category==='hospital'){
+  label = 'hospital';
+  candidates = approvedHospitals().filter(h => h.lat).map(h => ({ name: h.name_en||h.name_hi, phone: h.phone, lat: h.lat, lng: h.lng }));
+ } else if(category==='dharamshala'){
+  label = 'धर्मशाला';
+  candidates = approvedDharamshala().filter(d => d.lat).map(d => ({ name: d.name_en||d.name_hi, phone: d.phone, lat: d.lat, lng: d.lng }));
+ } else {
+  label = 'business';
+  candidates = allBusinesses().filter(b => b.lat).map(b => ({ name: b.name, phone: b.phone, lat: b.lat, lng: b.lng }));
+ }
+ if(!candidates.length) return 'माफ़ कीजिए, अभी किसी भी '+label+' का location set नहीं है — location set होते ही यहाँ दिखने लगेगा।';
+
+ let withDist = candidates.map(c => Object.assign({}, c, { km: haversineKmClient(refInfo.lat, refInfo.lng, c.lat, c.lng) }));
+ if(radiusKm) withDist = withDist.filter(c => c.km <= radiusKm);
+ withDist.sort((a,b) => a.km - b.km);
+ withDist = withDist.slice(0, 5);
+ if(!withDist.length) return '❌ '+radiusKm+' km के अंदर कोई '+label+' नहीं मिला (या location set नहीं है)।';
+
+ const lines = withDist.map((c,i) => (i+1)+'. '+c.name+' — '+(Math.round(c.km*10)/10)+' km'+(c.phone?'\n   📞 '+c.phone:''));
+ return '📍 '+refName+' के पास मिले:\n\n'+lines.join('\n\n');
+}
+// हर searchable portal पर छोटा सा quick-link — "सबसे पास कौन सा..." जैसे सवाल सीधे Patidar AI से पूछ सको
+function patidarAIQuickLinkHTML(){
+ return '<div onclick="goPage(\'patidarai\')" class="cursor-pointer bg-gradient-to-r from-amber-50 to-emerald-50 border-2 border-emerald-300 rounded-lg px-4 py-2.5 mb-4 flex items-center justify-between hover:shadow-md transition-all">'+
+  '<span class="text-sm font-bold text-emerald-800">👨‍🌾 सीधे पूछो — "सबसे पास कौन सा..." जैसे सवाल</span>'+
+  '<span class="text-xs font-bold text-emerald-700 whitespace-nowrap ml-2">Patidar AI →</span>'+
+  '</div>';
 }
 function haversineKmClient(lat1, lon1, lat2, lon2){
  const R = 6371;
@@ -2720,7 +2812,8 @@ async function submitDharamshala(){
  if((!name_en && !name_hi) || !phone){ alert('❌ Name और Phone जरूरी!'); return; }
  saveTranslitPair(name_en, name_hi);
  busy(true);
- await db.collection('dharamshala').add({kind:dharamshalaKind, name_en, name_hi, village, tehsil, ownerType, ownerName, phone, gmap, details, status:'pending', createdAt:today(), addedBy:me.phone});
+ const ref = await db.collection('dharamshala').add({kind:dharamshalaKind, name_en, name_hi, village, tehsil, ownerType, ownerName, phone, gmap, details, status:'pending', createdAt:today(), addedBy:me.phone});
+ geocodeAndAttach('dharamshala', ref.id, village, tehsil); // background mein — "nearest dharamshala" jaise Patidar AI सवाल के लिए
  busy(false); showDharamshalaForm=false;
  alert('✅ जानकारी submit हो गई! Admin approval के बाद list में दिखेगी।');
  renderApp();
@@ -2742,6 +2835,7 @@ function renderDharamshalaPage(){
  const isVillage = dharamshalaKind==='village';
  let h = '<h2 class="text-3xl font-bold mb-2">🛕 मेरी धर्मशाला</h2>';
  h += '<p class="text-gray-500 mb-4">यात्रा/कार्यक्रम के लिए ठहरने की जगह ढूंढो या अपनी धर्मशाला/होटल यहाँ जोड़ो</p>';
+ h += patidarAIQuickLinkHTML();
  h += '<div class="grid grid-cols-2 gap-3 mb-5">'+
  '<button onclick="setDharamshalaKind(\'village\')" class="px-4 py-5 rounded-xl font-bold text-center '+(isVillage?'bg-orange-600 text-white shadow-lg':'bg-white border-2 border-orange-300 text-orange-700')+'"><p class="text-3xl mb-1">🛕</p><p>गाँव की धर्मशाला</p><p class="text-xs font-normal">('+nVillage+')</p></button>'+
  '<button onclick="setDharamshalaKind(\'hotel\')" class="px-4 py-5 rounded-xl font-bold text-center '+(!isVillage?'bg-orange-600 text-white shadow-lg':'bg-white border-2 border-orange-300 text-orange-700')+'"><p class="text-3xl mb-1">🏨</p><p>Hotels — शहर/Town</p><p class="text-xs font-normal">('+nHotel+')</p></button></div>';
@@ -2771,13 +2865,15 @@ async function submitHospital(){
  if(!me || me.status!=='approved'){ showRegisterPrompt('Hospital जोड़ने के लिए पहले Community member बनो।'); return; }
  const {name_en, name_hi} = readBilingual('hp');
  const runBy = document.getElementById('hp_run_by').value.trim();
+ const area = document.getElementById('hp_area').value.trim();
  const phone = fmtPhone(document.getElementById('hp_phone').value);
  const gmap = document.getElementById('hp_gmap').value.trim();
  const details = document.getElementById('hp_details').value.trim();
  if((!name_en && !name_hi) || !phone){ alert('❌ Name और Phone जरूरी!'); return; }
  saveTranslitPair(name_en, name_hi);
  busy(true);
- await db.collection('hospitals').add({kind:hospitalKind, name_en, name_hi, runBy, phone, gmap, details, status:'pending', createdAt:today(), addedBy:me.phone});
+ const ref = await db.collection('hospitals').add({kind:hospitalKind, name_en, name_hi, runBy, area, phone, gmap, details, status:'pending', createdAt:today(), addedBy:me.phone});
+ geocodeAndAttach('hospitals', ref.id, area, 'Indore'); // background mein — "nearest hospital" jaise Patidar AI सवाल के लिए
  busy(false); showHospitalForm=false;
  alert('✅ जानकारी submit हो गई! Admin approval के बाद list में दिखेगी।');
  renderApp();
@@ -2786,6 +2882,7 @@ function hospitalCard(h){
  return '<div class="bg-white border-2 border-sky-300 rounded-lg overflow-hidden shadow-md p-4">'+
  '<p class="font-bold text-lg">'+bilingualHTML(h.name_en,h.name_hi)+'</p>'+
  '<p class="inline-block bg-sky-100 text-sky-800 px-2 py-0.5 rounded text-xs font-bold mt-1">'+(h.kind==='samaj'?'🛕 समाज का अस्पताल (Trust)':'🏥 निजी अस्पताल (Private)')+'</p>'+
+ (h.area?'<p class="text-sm text-gray-600 mt-1">📍 '+esc(h.area)+'</p>':'')+
  (h.runBy?'<p class="text-sm text-gray-600 mt-1">👤 '+esc(h.runBy)+'</p>':'')+
  (h.details?'<p class="text-sm text-gray-600 mt-2">'+esc(h.details)+'</p>':'')+
  (h.gmap?'<a href="'+esc(h.gmap)+'" target="_blank" rel="noopener" class="block text-center mt-2 bg-blue-50 text-blue-700 border-2 border-blue-300 px-4 py-2 rounded-lg font-bold text-sm">📍 Google Maps पर देखें</a>':'')+
@@ -2799,6 +2896,7 @@ function renderHospitalsPage(){
  const isNiji = hospitalKind==='niji';
  let h = '<h2 class="text-3xl font-bold mb-2">🏥 पाटीदार अस्पताल</h2>';
  h += '<p class="text-gray-500 mb-4">जरूरत के वक्त भरोसेमंद अस्पताल की जानकारी</p>';
+ h += patidarAIQuickLinkHTML();
  h += '<div class="grid grid-cols-2 gap-3 mb-5">'+
  '<button onclick="setHospitalKind(\'niji\')" class="px-4 py-5 rounded-xl font-bold text-center '+(isNiji?'bg-sky-600 text-white shadow-lg':'bg-white border-2 border-sky-300 text-sky-700')+'"><p class="text-3xl mb-1">🏥</p><p>निजी अस्पताल</p><p class="text-xs font-normal">Private ('+nNiji+')</p></button>'+
  '<button onclick="setHospitalKind(\'samaj\')" class="px-4 py-5 rounded-xl font-bold text-center '+(!isNiji?'bg-sky-600 text-white shadow-lg':'bg-white border-2 border-sky-300 text-sky-700')+'"><p class="text-3xl mb-1">🛕</p><p>समाज के अस्पताल</p><p class="text-xs font-normal">Trust ('+nSamaj+')</p></button></div>';
@@ -2807,6 +2905,7 @@ function renderHospitalsPage(){
   h += '<div class="bg-sky-50 border-2 border-sky-400 rounded-lg p-6 mb-8"><h3 class="text-xl font-bold mb-4">➕ ADD HOSPITAL</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
   bilingualInputsHTML('hp', 'Hospital Name')+
   '<div><label class="text-xs font-bold">'+(isNiji?'चलाने वाला / Owner':'Trust का नाम')+'</label><input id="hp_run_by" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">इलाका / Area (Indore)</label><input id="hp_area" list="dl_villages" placeholder="जैसे: Vijay Nagar" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div><label class="text-xs font-bold">Phone *</label><input id="hp_phone" maxlength="10" class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div class="md:col-span-2"><label class="text-xs font-bold">Google Maps Link</label><input id="hp_gmap" placeholder="https://maps.google.com/..." class="w-full px-3 py-2 border-2 rounded"></div>'+
   '<div class="md:col-span-2"><label class="text-xs font-bold">Details (specialities, etc.)</label><textarea id="hp_details" rows="2" class="w-full px-3 py-2 border-2 rounded"></textarea></div></div>'+
