@@ -213,6 +213,19 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ---- Reference से Register (non-OTP) — koi bhi approved member kisi ka phone number
+    // pehle se pre-approve kar sakta hai. Matching aur auto-approve/login server-side
+    // (Cloud Function, Admin SDK) hota hai isliye yahan sirf ownership control hai —
+    // client se kabhi seedha padhi nahi jaati (sirf apni list dikhane ke liye, isliye
+    // public read nahi rakha, sirf signed-in).
+    match /referral_preapprovals/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isOwnPhone(request.resource.data.referrerPhone)
+                    && request.resource.data.phone is string && request.resource.data.phone.matches('^[0-9]{10}$');
+      allow update: if false; // sirf server (Admin SDK, jo rules bypass karta hai) usedAt likhta hai
+      allow delete: if isAdmin() || isOwnPhone(resource.data.referrerPhone);
+    }
+
     // ---- Admin-only visibility ----
     match /suggestions/{docId} {
       allow read: if isAdmin();

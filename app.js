@@ -16,6 +16,7 @@ const auth = firebase.auth();
 const ADMIN_PHONE = "8103179376"; // Super Admin ka number - OTP login se auto-admin
 const CONTACT_PHONE = "81031-79376";
 const ADMIN_CONTACTS = ["8103179376"];
+const REFERENCE_REGISTER_URL = "https://asia-south1-psim-2b211.cloudfunctions.net/referenceRegister";
 const DEFAULT_OBJECTIVE_TEXT = "क्या आपको पता है, पाटीदार समाज की अपनी एक App है — जिसमें हम सब आपस में जुड़ सकते हैं, अपने व्यापार को आगे बढ़ा सकते हैं और समाज के अलग-अलग लोगों को जान सकते हैं। सबसे बड़ी बात — हर पाटीदार को अपने ही पाटीदार भाई से व्यापार मिले, यही हमारा सबसे बड़ा उद्देश्य है।\n\nआपको कोई भी काम हो, छोटा हो या बड़ा — फ्रिज-कूलर ठीक करवाना हो या किसी डॉक्टर की जरूरत हो — आप सीधे इस App में search करके सीधे call कर सकते हैं। आखिर, अपने पाटीदार भाई पर भरोसा तो है ही! 🙏";
 const DEFAULT_INVITE_MSG = "🙏 क्या आपको पता है? पाटीदार समाज की अपनी App है जिसमें हम सब आपस में जुड़ सकते हैं और अपने व्यापार को बढ़ा सकते हैं। कोई भी काम हो — छोटा या बड़ा, फ्रिज-कूलर ठीक करवाना हो या डॉक्टर चाहिए — अपने पाटीदार भाई से सीधे जुड़ो। अभी Register करो 👇";
 function T(key, fallback){ return (siteMeta.texts && siteMeta.texts[key]) || fallback; }
@@ -40,11 +41,13 @@ let adminTab = 'members';
 let showAddForm=false, showItemForm=false, showPratForm=false, showJobForm=false, showRelForm=false, showFriendForm=false, showGarbaForm=false, showPropForm=false, showManageProp=false;
 let showDharamshalaForm=false, dharamshalaKind='village', showHospitalForm=false, hospitalKind='niji', showStudentNeedForm=false, studentNeedKind='tiffin', showStudentRegForm=false;
 let regStep = 0;
+let regMode = 'otp'; // 'otp' | 'reference' — Register page pe chuna gaya tareeka
+let showRegModeChooser = true;
 let relSearchQ = '';
 let friendSearchQ = '';
 let whomQuery = '';
 
-let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], garbaCoords=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[], teamJoinData=[], labhData=[], villageLeadsData=[], dharamshalaData=[], hospitalsData=[], studentNeedsData=[], studentsData=[], bloodSosData=[], obituariesData=[], villageInfoData=[];
+let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], garbaCoords=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[], teamJoinData=[], labhData=[], villageLeadsData=[], dharamshalaData=[], hospitalsData=[], studentNeedsData=[], studentsData=[], bloodSosData=[], obituariesData=[], villageInfoData=[], referralPreapprovalsData=[];
 let siteMeta = { ticker:'', aboutUs:'', fb:'', insta:'', youtube:'', committee:'', expiryDays:30, propertyValidityDays:365, propertyFeeRent:'500', propertyFeeWanted:'11', razorpayPropRent:'', razorpayPropWanted:'', shaadiFee:'500', shaadiValidityDays:180, razorpayShaadi:'', jobsFeeSeeker:'11', razorpayJobsSeeker:'', bizPromoFee:'300', bizPromoValidityDays:365, razorpayBizPromo:'', olxExtraItemFee:'100', razorpayOlxExtra:'', olxPromoFee:'100', razorpayOlxPromo:'', blocked:[], garbaFormOpen:true, ads:[{},{},{},{},{}], subAdmins:[], texts:{} };
 
 function isSuperAdmin(){ return currentUser === ADMIN_PHONE || localStorage.getItem('psim_admin_ok') === 'true'; }
@@ -309,6 +312,7 @@ function setupRealtimeListeners(){
  watch('obituaries', d => obituariesData = d.sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')));
  watch('translit_pairs', d => translitData = d);
  watch('village_info', d => villageInfoData = d);
+ watch('referral_preapprovals', d => referralPreapprovalsData = d);
  db.collection('meta').doc('site').onSnapshot(doc => {
   if(doc.exists) siteMeta = Object.assign(siteMeta, doc.data());
   if(!siteMeta.ads || siteMeta.ads.length<5) siteMeta.ads = [{},{},{},{},{}];
@@ -411,6 +415,7 @@ function saveOptionalFieldsAndClose(){
 function startRegister(){
  if(currentUser && myMember()){ alert('✅ आप पहले से registered हैं! आपकी profile Community page पर है।'); goPage('community'); return; }
  regStep = 0;
+ regMode = 'otp'; showRegModeChooser = true;
  if(!draftGet('phone')){
   const saved = localStorage.getItem('psLastPhone');
   if(saved) draftSet('phone', saved);
@@ -564,7 +569,9 @@ function memberFormHTML(prefix, m){
 function stepFormHTML(m){
  m = m || {};
  const g = STEP_GROUPS[regStep];
- let h = '<div class="flex justify-center gap-2 mb-4">';
+ let h = '';
+ if(!currentUser) h += '<button type="button" onclick="showRegModeChooser=true; renderApp();" class="text-xs text-gray-400 hover:text-gray-600 mb-2">← register का तरीका बदलो</button>';
+ h += '<div class="flex justify-center gap-2 mb-4">';
  STEP_GROUPS.forEach((s,i) => { h += '<div class="h-2 w-10 rounded '+(i<=regStep?'bg-blue-600':'bg-gray-300')+'"></div>'; });
  h += '</div>';
  h += '<p class="text-center text-sm text-gray-500 mb-3">Step '+(regStep+1)+' / 3</p>';
@@ -582,6 +589,9 @@ function stepFormHTML(m){
   if(currentUser){
    h += '<p class="text-center mb-4">आपकी सभी जानकारी दर्ज हो गई है। आप पहले से 📱 '+esc(currentUser)+' से login हो (verified) — सीधे submit करो।</p>';
    h += '<button onclick="submitSelfRegistration()" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold text-lg">✅ पूरा हुआ / Submit</button>';
+  } else if(regMode==='reference'){
+   h += '<p class="text-center mb-4">आपकी सभी जानकारी दर्ज हो गई है। अगर किसी member ने आपको पहले से approve कर रखा है तो आप तुरंत बिना OTP के जुड़ जाओगे — वरना आपका request Admin approval के लिए waiting में चला जाएगा।</p>';
+   h += '<button onclick="submitReferenceRegister()" id="refRegSubmitBtn" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold text-lg">✅ Submit करो (बिना OTP)</button>';
   } else {
    h += '<p class="text-center mb-4">आपकी सभी जानकारी दर्ज हो गई है।</p>';
    h += '<button onclick="sendRegOtp()" id="regOtpSendBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold">📲 OTP भेजो</button>';
@@ -962,6 +972,49 @@ async function submitSelfRegistration(){
  draftClear(); regStep=0; _regConfirmation=null;
  alert('✅ स्वागत है, '+fmtName(d.name)+'!\\n\\nआप समुदाय में जुड़ गए हैं। admin approval के बाद आपका profile live हो जाएगा।');
  goPage('community');
+}
+// ---- Reference से Register (बिना OTP) — server-side Cloud Function check karta hai ki koi member
+// pehle se yeh phone pre-approve kar chuka hai; agar haan to seedha login (custom token), warna pending ----
+async function submitReferenceRegister(){
+ stepSaveCurrent();
+ const d = {};
+ MEMBER_FIELDS.forEach(f => { d[f[0]] = draftGet(f[0]) || ''; });
+ d.name=fmtName(d.name); d.surname=fmtName(d.surname);
+ d.home_village=fmtName(d.home_village); d.present_city=fmtName(d.present_city);
+ d.phone = fmtPhone(d.phone);
+ if(!d.name || !d.surname){ alert('❌ Name और Surname दोनों भरो'); return; }
+ if(d.phone.length!==10){ alert('❌ सही 10 अंकों का Mobile Number भरो'); return; }
+ if(membersData.find(m => m.phone === d.phone)){ alert('❌ यह number पहले से registered है!'); return; }
+ const btn = document.getElementById('refRegSubmitBtn');
+ if(btn){ btn.disabled = true; btn.textContent = '⏳ भेज रहे हैं...'; }
+ busy(true);
+ try{
+  const resp = await fetch(REFERENCE_REGISTER_URL, {
+   method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(d)
+  });
+  const out = await resp.json().catch(()=>({}));
+  busy(false);
+  if(!resp.ok){
+   alert('❌ '+(out.error==='already_registered' ? 'यह number पहले से registered है!' : 'कुछ गड़बड़ हुई, दोबारा try करो।'));
+   if(btn){ btn.disabled=false; btn.textContent='✅ Submit करो (बिना OTP)'; }
+   return;
+  }
+  draftClear(); regStep=0; showRegModeChooser=true; _regConfirmation=null;
+  localStorage.setItem('psLastPhone', d.phone);
+  if(out.approved && out.token){
+   await auth.signInWithCustomToken(out.token);
+   currentUser = d.phone; // Firebase का onAuthStateChanged थोड़ी देर से फायर होता है — यहीं तुरंत set कर दो ताकि आगे का redirect सही चले
+   alert('✅ स्वागत है, '+fmtName(d.name)+'! आपको approve कर दिया गया है — आप तुरंत जुड़ गए हो।');
+   goPage('community');
+  } else {
+   alert('✅ स्वागत है, '+fmtName(d.name)+'!\\n\\nआपका request अभी Admin approval के waiting में है।');
+   goPage('home');
+  }
+ } catch(e){
+  busy(false);
+  if(btn){ btn.disabled=false; btn.textContent='✅ Submit करो (बिना OTP)'; }
+  alert('❌ Network error, दोबारा try करो: '+e.message);
+ }
 }
 function buildDatalists(){
  const uniq = a => [...new Set(a.filter(v=>v&&v.trim()))].sort();
@@ -1529,10 +1582,27 @@ function renderRegisterPage(){
  let h = '<div class="bg-white rounded-lg shadow-lg p-6 max-w-2xl mx-auto">';
  h += '<h2 class="text-2xl md:text-3xl font-bold mb-2 text-center">📝 पाटीदार परिवार से जुड़ो</h2>';
  h += '<p class="text-sm text-red-600 font-bold mb-4 text-center">⚠️ Subject to Admin Approval | सिर्फ जरूरी चीज़ें भरो - बाकी optional</p>';
- h += stepFormHTML({});
+ if(!currentUser && showRegModeChooser){
+  h += regModeChooserHTML();
+ } else {
+  h += stepFormHTML({});
+ }
  h += '</div>';
  return h;
 }
+function regModeChooserHTML(){
+ let h = '<p class="text-center font-bold text-gray-700 mb-3">Register कैसे करना चाहते हो?</p>';
+ h += '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
+ h += '<button type="button" onclick="chooseRegMode(\'otp\')" class="bg-blue-50 hover:bg-blue-100 border-2 border-blue-400 rounded-xl p-6 text-center">'+
+  '<span class="text-4xl block mb-2">📲</span><p class="font-bold text-blue-800 text-lg">OTP से Register</p>'+
+  '<p class="text-xs text-gray-500 mt-1">अपना mobile number OTP से verify करो</p></button>';
+ h += '<button type="button" onclick="chooseRegMode(\'reference\')" class="bg-green-50 hover:bg-green-100 border-2 border-green-400 rounded-xl p-6 text-center">'+
+  '<span class="text-4xl block mb-2">🤝</span><p class="font-bold text-green-800 text-lg">Reference से Register</p>'+
+  '<p class="text-xs text-gray-500 mt-1">किसी member ने पहले से approve कर रखा है? OTP की जरूरत नहीं</p></button>';
+ h += '</div>';
+ return h;
+}
+function chooseRegMode(mode){ regMode = mode; showRegModeChooser = false; renderApp(); }
 function renderCommunity(){
  let top = '<h2 class="text-3xl font-bold mb-6">👥 COMMUNITY / समुदाय</h2>';
  top += '<button onclick="openSwipeView(\'community\')" class="w-full mb-6 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl">🔀 Profiles Explore करें</button>';
@@ -1719,6 +1789,7 @@ function openMyAccountMenu(){
   '<button onclick="myAcc_jobs()" class="bg-green-50 hover:bg-green-100 border-2 border-green-300 rounded-lg p-4 text-center font-bold text-green-800"><span class="text-2xl block mb-1">💼</span>मेरे Jobs</button>'+
   '<button onclick="myAcc_rishtedaar()" class="bg-indigo-50 hover:bg-indigo-100 border-2 border-indigo-300 rounded-lg p-4 text-center font-bold text-indigo-800"><span class="text-2xl block mb-1">👨‍👩‍👧</span>मेरे रिश्तेदार</button>'+
   '<button onclick="myAcc_mitra()" class="bg-pink-50 hover:bg-pink-100 border-2 border-pink-300 rounded-lg p-4 text-center font-bold text-pink-800"><span class="text-2xl block mb-1">🙋</span>मेरे मित्र</button>'+
+  '<button onclick="myAcc_referrals()" class="bg-teal-50 hover:bg-teal-100 border-2 border-teal-300 rounded-lg p-4 text-center font-bold text-teal-800"><span class="text-2xl block mb-1">🤝</span>Reference से जोड़ो</button>'+
   '</div>'+
   '<div class="border-t-2 mt-4 pt-4 grid grid-cols-1 gap-2">'+
   '<button onclick="closeBizForce();openEditProfile()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg font-bold text-sm">✏️ Edit My Profile</button>'+
@@ -1888,6 +1959,63 @@ function myAcc_mitra(){
   '<button onclick="closeBizForce()" class="w-full mt-4 bg-gray-200 text-gray-700 px-4 py-3 rounded-lg font-bold">बंद करो / Close</button></div>';
  document.getElementById('bizModal').classList.remove('hidden');
 }
+// ================= REFERENCE से जोड़ो (pre-approve — non-OTP आसान login) =================
+function myAcc_referrals(){
+ const me = myMember();
+ if(!me){ closeBizForce(); showRegisterPrompt('पहले Register करो।'); return; }
+ const box = document.getElementById('bizModalBox');
+ const mine = referralPreapprovalsData.filter(r => r.referrerPhone===currentUser).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+ let h = '<div class="p-6">';
+ h += '<div class="flex justify-between items-center mb-2"><h3 class="text-xl font-bold text-teal-800">🤝 Reference से जोड़ो</h3><button onclick="closeBizForce()" class="text-gray-500 hover:text-gray-700 text-2xl font-bold">✕</button></div>';
+ h += '<p class="text-xs text-gray-500 mb-4">जिसे यहाँ pre-approve कर दोगे, वो Register page पर "Reference से Register" चुनकर बिना OTP के सीधे समाज से जुड़ सकता है।</p>';
+ h += '<div class="bg-teal-50 border-2 border-teal-300 rounded-lg p-4 mb-4">';
+ h += '<p class="font-bold text-teal-800 mb-2 text-sm">➕ नया व्यक्ति Pre-approve करो</p>';
+ h += '<div class="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">'+
+  '<input id="rp_name" placeholder="नाम" class="px-3 py-2 border-2 rounded">'+
+  '<input id="rp_phone" placeholder="Mobile Number" maxlength="10" inputmode="numeric" class="px-3 py-2 border-2 rounded">'+
+  '</div>';
+ h += '<button onclick="submitPreapproval()" class="w-full bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded font-bold text-sm">✅ Pre-approve करो</button>';
+ h += '</div>';
+ if(!mine.length){
+  h += '<p class="text-center text-gray-400 py-6">अभी तक किसी को pre-approve नहीं किया</p>';
+ } else {
+  h += '<p class="font-bold text-gray-700 text-sm mb-2">List ('+mine.length+')</p>';
+  h += '<div class="space-y-2">'+mine.map(r => {
+   const used = !!r.usedAt;
+   return '<div class="flex items-center justify-between gap-2 bg-gray-50 border rounded-lg p-3">'+
+    '<div><p class="font-bold text-sm">'+esc(r.name)+'</p><p class="text-xs text-gray-500">📱 '+esc(r.phone)+'</p>'+
+    '<p class="text-xs font-bold '+(used?'text-green-600':'text-yellow-600')+'">'+(used?'✅ जुड़ गए':'⏳ Waiting')+'</p></div>'+
+    '<div class="flex gap-2 shrink-0">'+
+    (!used?'<a href="'+waPreapproveLink(r.name,r.phone)+'" target="_blank" class="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded font-bold text-xs">💬 बताओ</a>':'')+
+    '<button onclick="deletePreapproval(\''+r.id+'\')" class="bg-red-100 text-red-600 px-2 py-2 rounded font-bold text-xs">🗑️</button>'+
+    '</div></div>';
+  }).join('')+'</div>';
+ }
+ h += '</div>';
+ box.innerHTML = h;
+ document.getElementById('bizModal').classList.remove('hidden');
+}
+async function submitPreapproval(){
+ const me = myMember(); if(!me) return;
+ const name = fmtName(document.getElementById('rp_name').value);
+ const phone = fmtPhone(document.getElementById('rp_phone').value);
+ if(!name){ alert('❌ नाम भरो'); return; }
+ if(phone.length!==10){ alert('❌ सही 10 अंकों का Mobile Number भरो'); return; }
+ if(phone===currentUser){ alert('❌ खुद को pre-approve नहीं कर सकते'); return; }
+ if(membersData.find(m => m.phone===phone)){ alert('❌ यह number तो पहले से registered member है!'); return; }
+ if(referralPreapprovalsData.find(r => r.referrerPhone===currentUser && r.phone===phone)){ alert('❌ इस number को आप पहले से pre-approve कर चुके हो!'); return; }
+ busy(true);
+ await db.collection('referral_preapprovals').add({
+  referrerPhone: currentUser, referrerName: me.name+' '+me.surname, name, phone, createdAt: today(), usedAt: null
+ });
+ busy(false);
+ myAcc_referrals();
+}
+function waPreapproveLink(name, phone){
+ const msg = 'नमस्ते '+name+' 🙏 मैंने आपको पाटीदार समाज (PSIM) की app में approve कर दिया है — अब आप बिना OTP के सीधे समाज से जुड़ सकते हो, "Reference से Register" चुनकर:\n'+location.origin+'/#register';
+ return 'https://wa.me/91'+phone+'?text='+encodeURIComponent(msg);
+}
+function deletePreapproval(id){ delDoc('referral_preapprovals', id, 'यह pre-approval delete करें?'); }
 // हर page के नीचे चलती-फिरती business पट्टी (बिना search किए भी दिखे)
 function businessStrip(){
  const biz = allBusinesses();
@@ -2927,6 +3055,7 @@ function _localCol(col){
  if(col==='student_needs') return studentNeedsData; if(col==='students') return studentsData;
  if(col==='blood_sos') return bloodSosData; if(col==='obituaries') return obituariesData;
  if(col==='village_info') return villageInfoData;
+ if(col==='referral_preapprovals') return referralPreapprovalsData;
  return null;
 }
 async function updDoc(col,id,data){

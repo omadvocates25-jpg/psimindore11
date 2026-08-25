@@ -214,3 +214,82 @@ exports.whatsappWebhook = onRequest(
     return res.sendStatus(405);
   }
 );
+
+// ============================================================================
+// Reference से Register (non-OTP onboarding)
+//
+// Client-side "members" create rule Firebase Auth (real OTP) माँगता है, isliye
+// yeh flow client se seedha Firestore likh nahi sakta — Admin SDK (jo rules
+// bypass karta hai) yahan zaroori hai. Yahi function दोनों काम करता है:
+//  1. referral_preapprovals में registrant ka phone dhundhna (kisi member ne
+//     pehle se approve kar rakha hai kya)
+//  2. members doc banana — match mila to seedha 'approved' + custom auth token
+//     (client isse auth.signInWithCustomToken() se turant login kar leta hai),
+//     warna 'pending' (aaj jaisa admin-review wala normal flow)
+// ============================================================================
+const MEMBER_FIELD_KEYS = [
+  'name','surname','phone','email','gender','privacy','age','work_details',
+  'marital_status','blood_group','blood_donor','home_village','home_tehsil','home_district',
+  'home_district_other','home_state','home_pincode','home_police_station','present_address',
+  'present_city','present_tehsil','present_district','present_district_other','present_state',
+  'present_pincode','present_police_station','business_name','business_type','business_type_other',
+  'business_place','business_phone','business_gmap','business_details'
+];
+
+function fmtName(s){ return (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase()); }
+function onlyDigits(s){ return (s||'').toString().replace(/[^0-9]/g,''); }
+
+// यहाँ जानबूझकर सिर्फ जाने-पहचाने text fields ही body से उठाए हैं (photo/pic URLs नहीं) —
+// isse attacker arbitrary field (जैसे status:'approved') inject नहीं कर सकता, वो हम खुद set करते हैं
+function sanitizeMemberData(body, phone){
+  const d = {};
+  MEMBER_FIELD_KEYS.forEach(k => { d[k] = esc((body && body[k]) || '').slice(0, 500); });
+  d.name = fmtName(d.name);
+  d.surname = fmtName(d.surname);
+  d.home_village = fmtName(d.home_village);
+  d.present_city = fmtName(d.present_city);
+  d.phone = phone;
+  d.business_phone = onlyDigits(d.business_phone).slice(0, 10);
+  d.profile_pic = ''; d.business_pic1 = ''; // photo upload sirf logged-in flow me hi allowed
+  return d;
+}
+
+exports.referenceRegister = onRequest({ region: 'asia-south1', cors: true }, async (req, res) => {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
+  try {
+    const body = req.body || {};
+    const phone = onlyDigits(body.phone).slice(0, 10);
+    if (phone.length !== 10) return res.status(400).json({ error: 'invalid_phone' });
+
+    const d = sanitizeMemberData(body, phone);
+    if (!d.name || !d.surname || !d.home_village) {
+      return res.status(400).json({ error: 'missing_fields' });
+    }
+
+    const existing = await db.collection('members').where('phone', '==', phone).limit(1).get();
+    if (!existing.empty) return res.status(400).json({ error: 'already_registered' });
+
+    const preSnap = await db.collection('referral_preapprovals').where('phone', '==', phone).limit(1).get();
+    let approved = false, token = null, referrerPhone = null;
+    if (!preSnap.empty) {
+      approved = true;
+      const preDoc = preSnap.docs[0];
+      referrerPhone = preDoc.data().referrerPhone || null;
+      await preDoc.ref.update({ usedAt: today() });
+    }
+
+    d.status = approved ? 'approved' : 'pending';
+    d.phoneVerified = false; // OTP se verify nahi hua — referrer ki responsibility par based
+    d.referredBy = referrerPhone;
+    d.createdAt = today();
+    await db.collection('members').add(d);
+
+    if (approved) {
+      token = await admin.auth().createCustomToken(phone, { phone_number: '+91' + phone });
+    }
+    return res.status(200).json({ approved, token });
+  } catch (e) {
+    logger.error('referenceRegister error', e);
+    return res.status(500).json({ error: 'server_error' });
+  }
+});
