@@ -2431,6 +2431,9 @@ const AI_FOOD_WORDS = ['khana','khane','food','nashta','restaurant','भोज�
 const AI_NEAR_WORDS = ['nearest','sabse paas','sabse pass','paas','pass','nazdeek','najdeek','निकट','पास','नज़दीक'];
 const AI_HOSPITAL_WORDS = ['hospital','aspatal','अस्पताल'];
 const AI_DHARAMSHALA_WORDS = ['dharamshala','धर्मशाला'];
+// गाँव किस तहसील/जिले में है, या किसी तहसील/जिले में कौन से गाँव आते हैं — यह general, non-personal
+// geography जानकारी है (registered members ने khud bhari hai), isliye Patidar AI freely deta hai।
+const AI_VILLAGE_INFO_WORDS = ['जिला','जिले','जिलें','district','तहसील','tehsil','मंदिर','temple','के बारे में','की जानकारी','गाँव में क्या','गांव में क्या'];
 // Shaadi/Property jaanbhoojkar Patidar AI ke scope se bahar hain — sirf apne dedicated page par milte hain
 // (Shaadi zyada sensitive/personal hai, Property allotment/ownership wali cheez hai) — AI se seedha nahi
 const AI_SHAADI_WORDS = ['shaadi','shादी','विवाह','vivah','matrimony','rishta','रिश्ता'];
@@ -2569,6 +2572,7 @@ function patidarAIReply(qRaw, rounds){
   return '🏠 मकान-किरायेदार/Property की जानकारी सिर्फ Property page पर मिलती है — कृपया वहाँ जाकर देखो।';
  }
  if(AI_COUNT_TRIGGER.some(t => ql.includes(t)) && AI_COUNT_SUBJECT.some(s => ql.includes(s))) return handleAiCount(ql);
+ if(AI_VILLAGE_INFO_WORDS.some(w => ql.includes(w))) return handleAiVillageInfo(q, ql);
  if(rounds===0 && AI_FOOD_WORDS.some(w => ql.includes(w)) && !aiHasAreaHint(ql)){
   aiPending = { originalQuery: q };
   return '📍 कौनसा area चाहिए? और 🍽️ नाश्ता चाहिए या पूरा खाना?';
@@ -2583,6 +2587,41 @@ function handleAiCount(ql){
  const found = list.find(v => ql.includes(v.name.toLowerCase()));
  if(found) return '👨‍🌾 '+found.name+' गाँव के '+found.count+' सदस्य अभी हमारी app पर registered हैं — यह पूरे गाँव की जनसंख्या नहीं, सिर्फ registered members की गिनती है।';
  return '👨‍🌾 अभी हमारी community में कुल '+publicMembers().length+' registered सदस्य हैं। किसी खास गाँव के लिए पूछो, जैसे "Karwad में कितने सदस्य हैं?"';
+}
+// गाँव किस तहसील/जिले में है, या किसी तहसील/जिले में कौन से गाँव आते हैं — दोनों तरफ़ का jawab registered
+// members ke home_village/home_tehsil/home_district se milta hai (koi alag master-list नहीं है)। साथ ही
+// gaanv ka description (mandir/dharamshala/khabar/update jo villagers ne khud likha ho) bhi jod deta hai।
+// Yah sab non-personal, sab members ke liye common jaankari hai — kisi ek insaan ki private detail nahi।
+function villageGeoRows(){
+ return publicMembers().filter(m => m.home_village).map(m => ({village:fmtName(m.home_village), tehsil:fmtName(m.home_tehsil), district:fmtName(m.home_district)}));
+}
+function handleAiVillageInfo(q, ql){
+ const rows = villageGeoRows();
+ const villageNames = [...new Set(rows.map(r => r.village))];
+ const vMatch = villageNames.find(n => ql.includes(n.toLowerCase()));
+ if(vMatch){
+  const row = rows.find(r => r.village===vMatch);
+  const info = villageInfoFor(vMatch);
+  let out = '👨‍🌾 '+vMatch+' गाँव';
+  if(row && (row.tehsil||row.district)) out += ' — '+(row.tehsil?row.tehsil+' तहसील':'')+(row.tehsil&&row.district?', ':'')+(row.district?row.district+' जिला':'');
+  out += ' में है।';
+  if(info && info.description) out += '\n\n📝 '+info.description;
+  else out += '\n\nइस गाँव के मंदिर/धर्मशाला/खबर की details अभी किसी ने नहीं लिखी — "मेरे गाँव ले चलो" पेज पर जाकर जोड़ सकते हो।';
+  return out;
+ }
+ const districtNames = MP_DISTRICTS.map(d => d.split('(')[0].trim());
+ const tehsilNames = [...new Set(rows.map(r => r.tehsil).filter(Boolean))];
+ const tMatch = tehsilNames.find(n => ql.includes(n.toLowerCase()));
+ const dMatch = !tMatch && districtNames.find(n => n && ql.includes(n.toLowerCase()));
+ if(tMatch || dMatch){
+  const key = tMatch || dMatch;
+  const field = tMatch ? 'tehsil' : 'district';
+  const villages = [...new Set(rows.filter(r => r[field]===key).map(r => r.village))];
+  if(!villages.length) return '👨‍🌾 '+key+(field==='tehsil'?' तहसील':' जिले')+' का अभी कोई गाँव registered नहीं है।';
+  return '👨‍🌾 '+key+(field==='tehsil'?' तहसील':' जिले')+' में ये गाँव registered हैं:\n\n'+villages.map((v,i) => (i+1)+'. '+v).join('\n');
+ }
+ aiPending = { originalQuery: q };
+ return '🏡 किस गाँव के बारे में पूछ रहे हो? नाम बताओ।';
 }
 // query mein koi jaana-pehchana place (business ka area ya koi gaanv) mila to uska naam wapas karta hai — isse jawab
 // "generic list" na lagkar us jagah ke liye personalized lage (jaise koi insaan seedha jawab de raha ho)
