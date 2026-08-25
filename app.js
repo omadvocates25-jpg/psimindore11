@@ -44,7 +44,7 @@ let relSearchQ = '';
 let friendSearchQ = '';
 let whomQuery = '';
 
-let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], garbaCoords=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[], teamJoinData=[], labhData=[], villageLeadsData=[], dharamshalaData=[], hospitalsData=[], studentNeedsData=[], studentsData=[];
+let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], garbaCoords=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[], teamJoinData=[], labhData=[], villageLeadsData=[], dharamshalaData=[], hospitalsData=[], studentNeedsData=[], studentsData=[], bloodSosData=[], obituariesData=[];
 let siteMeta = { ticker:'', aboutUs:'', fb:'', insta:'', youtube:'', committee:'', expiryDays:30, propertyValidityDays:365, propertyFeeRent:'500', propertyFeeWanted:'11', razorpayPropRent:'', razorpayPropWanted:'', shaadiFee:'500', shaadiValidityDays:180, razorpayShaadi:'', jobsFeeSeeker:'11', razorpayJobsSeeker:'', bizPromoFee:'300', bizPromoValidityDays:365, razorpayBizPromo:'', olxExtraItemFee:'100', razorpayOlxExtra:'', olxPromoFee:'100', razorpayOlxPromo:'', blocked:[], garbaFormOpen:true, ads:[{},{},{},{},{}], subAdmins:[], texts:{} };
 
 function isSuperAdmin(){ return currentUser === ADMIN_PHONE || localStorage.getItem('psim_admin_ok') === 'true'; }
@@ -282,6 +282,8 @@ function setupRealtimeListeners(){
  watch('hospitals', d => hospitalsData = d);
  watch('student_needs', d => studentNeedsData = d);
  watch('students', d => studentsData = d);
+ watch('blood_sos', d => bloodSosData = d);
+ watch('obituaries', d => obituariesData = d.sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')));
  db.collection('meta').doc('site').onSnapshot(doc => {
   if(doc.exists) siteMeta = Object.assign(siteMeta, doc.data());
   if(!siteMeta.ads || siteMeta.ads.length<5) siteMeta.ads = [{},{},{},{},{}];
@@ -295,7 +297,7 @@ async function saveMeta(){ await db.collection('meta').doc('site').set(siteMeta)
 // ================= ROUTING (login-gated) =================
 // बिना login दिखने वाले pages — Home/News/Pratibha/Events/Gallery + Rozgaar व OLX (सिर्फ browsing) खुले हैं
 // बाकी सब (Community, Business, Garba, Cricket, Blood, Property, Shaadi) के लिए पहले Community member बनना जरूरी है
-const OPEN_PAGES = ['home','news','register','events','gallery','pratibha','rozgaar','olditems','suggestions'];
+const OPEN_PAGES = ['home','news','register','events','gallery','pratibha','rozgaar','olditems','suggestions','obituaries'];
 const LOCKED_PAGES = ['community','business','garba','cricket','blood','property','shaadi','dharamshala','hospitals','students'];
 function goPage(p){
  if(!currentUser && LOCKED_PAGES.includes(p)){
@@ -1092,7 +1094,16 @@ function promotedCarouselHTML(){
   '<div class="flex gap-4 overflow-x-auto pb-3 noscroll">'+cards+'</div></div>';
 }
 function renderHome(){
- let h = '<div class="text-center mb-5"><h2 class="text-3xl md:text-5xl font-bold">🙏 पाटीदार परिवार में आपका स्वागत है</h2><p class="text-lg text-gray-500">Welcome to Patidar Family</p></div>';
+ let h = '';
+ const activeSOSHome = activeBloodSOS();
+ if(activeSOSHome.length){
+  h += '<div class="bg-red-600 text-white rounded-xl shadow-lg p-4 mb-5 cursor-pointer animate-pulse" onclick="goPage(\'blood\')"><p class="font-bold text-center">🆘 URGENT: '+activeSOSHome.map(s=>esc(s.bloodGroup)).join(', ')+' Blood चाहिए — '+activeSOSHome.length+' active request'+(activeSOSHome.length>1?'s':'')+' — यहाँ click करो 👆</p></div>';
+ }
+ const recentObit = recentObituaries(14);
+ if(recentObit.length){
+  h += '<div class="bg-gray-800 text-white rounded-xl shadow-lg p-4 mb-5 cursor-pointer" onclick="goPage(\'obituaries\')"><p class="font-bold text-center">🕯️ शोक समाचार — '+recentObit.map(o=>esc(o.name)).join(', ')+' — श्रद्धांजलि के लिए यहाँ click करो</p></div>';
+ }
+ h += '<div class="text-center mb-5"><h2 class="text-3xl md:text-5xl font-bold">🙏 पाटीदार परिवार में आपका स्वागत है</h2><p class="text-lg text-gray-500">Welcome to Patidar Family</p></div>';
  h += promotedCarouselHTML();
  if(!currentUser){
   h += '<div class="grid grid-cols-4 gap-3 mb-2">';
@@ -1136,7 +1147,8 @@ function renderHome(){
   ['events','lime','📅','EVENTS<br>कार्यक्रम', eventsData.length+' Events'],
   ['dharamshala','orange','🛕','मेरी धर्मशाला<br>Dharamshala', dharamshalaData.filter(d=>d.status==='approved').length+' Listed'],
   ['hospitals','sky','🏥','पाटीदार अस्पताल<br>Hospitals', hospitalsData.filter(h=>h.status==='approved').length+' Listed'],
-  ['students','fuchsia','🎓','STUDENT<br>इंदौर', studentNeedsData.filter(s=>s.status==='approved').length+' Listings']
+  ['students','fuchsia','🎓','STUDENT<br>इंदौर', studentNeedsData.filter(s=>s.status==='approved').length+' Listings'],
+  ['obituaries','gray','🕯️','शोक समाचार<br>Obituaries', obituariesData.length+' Notices']
  ];
  h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">'+portals.slice(0,4).map(portalTile).join('')+'</div>';
 
@@ -1146,7 +1158,7 @@ function renderHome(){
 
  h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">'+portals.slice(8,12).map(portalTile).join('')+'</div>';
 
- h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">'+portals.slice(12,15).map(portalTile).join('')+'</div>';
+ h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">'+portals.slice(12,16).map(portalTile).join('')+'</div>';
 
  h += '<div class="bg-white rounded-xl shadow-lg p-6 mb-8"><h3 class="text-2xl font-bold mb-1 text-center">🎲 जानो अपने साथियों को / Know Your Community</h3><p class="text-center text-gray-500 text-sm mb-4">Random member profiles देखो</p><div id="randProfileBox"></div></div>';
 
@@ -1932,6 +1944,7 @@ function renderCricketPage(){
 
 // ================= BLOOD =================
 let bloodFilterGroup='', bloodFilterDist='', bloodFilterVillage='';
+let showBloodSOSForm=false;
 function allDonors(){
  const fromMembers = publicMembers()
   .filter(m => m.blood_group && (!m.blood_donor || m.blood_donor.indexOf('हाँ')===0))
@@ -1941,11 +1954,64 @@ function allDonors(){
  bloodData.concat(fromMembers).forEach(d => { if(!seen[d.phone]){ seen[d.phone]=1; merged.push(d); } });
  return merged;
 }
+// ================= 🆘 BLOOD EMERGENCY SOS =================
+function activeBloodSOS(){ return bloodSosData.filter(s=>s.status!=='resolved').sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')); }
+async function submitBloodSOS(){
+ const me = myMember();
+ if(!me || me.status!=='approved'){ showRegisterPrompt('SOS post करने के लिए पहले Community member बनो।'); return; }
+ const bloodGroup = document.getElementById('sos_group').value;
+ const hospital = document.getElementById('sos_hospital').value.trim();
+ const city = document.getElementById('sos_city').value.trim();
+ const contactPhone = fmtPhone(document.getElementById('sos_phone').value) || me.phone;
+ const note = document.getElementById('sos_note').value.trim();
+ if(!bloodGroup || !hospital){ alert('❌ Blood Group और Hospital जरूरी!'); return; }
+ busy(true);
+ await db.collection('blood_sos').add({fromPhone:me.phone, fromName:me.name+' '+me.surname, bloodGroup, hospital, city, contactPhone, note, status:'active', createdAt:today()});
+ busy(false); showBloodSOSForm=false;
+ alert('🆘 SOS post हो गई! Home page और Blood page पर सबको दिखेगी।');
+ renderApp();
+}
+async function resolveBloodSOS(id){
+ if(!confirm('✅ Blood मिल गया — SOS बंद करें?')) return;
+ await updDoc('blood_sos', id, {status:'resolved'});
+}
+function bloodSOSCard(s, matchCount){
+ return '<div class="bg-white border-2 border-red-500 rounded-lg p-4 shadow-md">'+
+ '<div class="flex justify-between items-start gap-2 flex-wrap"><div>'+
+ '<p class="text-2xl font-bold text-red-600">🆘 '+esc(s.bloodGroup)+' चाहिए</p>'+
+ '<p class="text-sm text-gray-700 mt-1">🏥 '+esc(s.hospital)+(s.city?' | 📍 '+esc(s.city):'')+'</p>'+
+ (s.note?'<p class="text-sm text-gray-600 mt-1">'+esc(s.note)+'</p>':'')+
+ '<p class="text-xs text-gray-400 mt-1">पूछा: '+esc(s.fromName)+' | '+esc(s.createdAt||'')+(matchCount!=null?' | 🩸 '+matchCount+' matching donors':'')+'</p>'+
+ '</div><div class="flex flex-col gap-2 shrink-0">'+
+ '<a href="tel:'+esc(s.contactPhone)+'" class="bg-green-600 text-white px-4 py-2 rounded-lg font-bold text-sm text-center">📞 Call करो</a>'+
+ ((currentUser===s.fromPhone||isAdmin())?'<button onclick="resolveBloodSOS(\''+s.id+'\')" class="bg-gray-500 text-white px-4 py-2 rounded-lg font-bold text-sm">✅ मिल गया</button>':'')+
+ '</div></div></div>';
+}
 function renderBloodPage(){
  const villQ = bloodFilterVillage.trim().toLowerCase();
  const filtered = allDonors().filter(m => (!bloodFilterGroup || m.blood_group===bloodFilterGroup) && (!bloodFilterDist || m.district===bloodFilterDist) && (!villQ || (m.village||'').toLowerCase().includes(villQ)));
  let h = '<h2 class="text-3xl font-bold mb-2">🩸 BLOOD DONORS / रक्तदाता ('+filtered.length+')</h2>';
  h += '<p class="text-gray-500 mb-6">गाँव/तहसील, District और Group से खोजो — सीधे Call या WhatsApp पर अनुरोध करो | Donors समाज द्वारा verified ✅</p>';
+
+ const activeSOS = activeBloodSOS();
+ h += '<div class="bg-red-50 border-2 border-red-600 rounded-xl p-5 mb-6">';
+ h += '<div class="flex justify-between items-center flex-wrap gap-2 mb-3"><h3 class="text-xl font-bold text-red-700">🆘 Emergency SOS ('+activeSOS.length+')</h3>'+
+ '<button onclick="showBloodSOSForm=!showBloodSOSForm;renderApp()" class="bg-red-600 text-white px-5 py-2 rounded-lg font-bold text-sm">🆘 URGENT चाहिए — SOS Post करो</button></div>';
+ if(showBloodSOSForm){
+  h += '<div class="bg-white border-2 border-red-400 rounded-lg p-4 mb-4"><div class="grid grid-cols-1 md:grid-cols-2 gap-3">'+
+  '<select id="sos_group" class="px-3 py-2 border-2 rounded"><option value="">-- Blood Group --</option>'+BLOOD_GROUPS.map(g=>'<option>'+g+'</option>').join('')+'</select>'+
+  '<input id="sos_hospital" placeholder="Hospital का नाम *" class="px-3 py-2 border-2 rounded">'+
+  '<input id="sos_city" placeholder="शहर/इलाका" class="px-3 py-2 border-2 rounded">'+
+  '<input id="sos_phone" maxlength="10" placeholder="Contact Phone (खाली छोड़ो तो अपना ही जाएगा)" class="px-3 py-2 border-2 rounded">'+
+  '<div class="md:col-span-2"><textarea id="sos_note" rows="2" placeholder="Details (कितने units, कब तक चाहिए...)" class="w-full px-3 py-2 border-2 rounded"></textarea></div></div>'+
+  '<button onclick="submitBloodSOS()" class="mt-3 bg-red-600 text-white px-6 py-2 rounded-lg font-bold">🆘 POST करो</button></div>';
+ }
+ if(activeSOS.length){
+  h += '<div class="space-y-3">'+activeSOS.map(s=>bloodSOSCard(s, allDonors().filter(d=>d.blood_group===s.bloodGroup).length)).join('')+'</div>';
+ } else {
+  h += '<p class="text-sm text-gray-500">अभी कोई urgent request नहीं है 🙏</p>';
+ }
+ h += '</div>';
  h += '<div class="bg-white rounded-lg shadow p-5 mb-6 flex flex-wrap gap-3">';
  h += '<input type="text" value="'+esc(bloodFilterVillage)+'" oninput="bloodFilterVillage=this.value;renderApp()" placeholder="🏡 अपना गाँव/तहसील खुद डालो" class="px-3 py-2 border-2 rounded flex-1 min-w-[180px]">';
  h += '<select onchange="bloodFilterDist=this.value;renderApp()" class="px-3 py-2 border-2 rounded"><option value="">सभी District</option>'+MP_DISTRICTS.map(d=>'<option '+(d===bloodFilterDist?'selected':'')+'>'+d+'</option>').join('')+'</select>';
@@ -1978,6 +2044,42 @@ function renderBloodPage(){
     '<a href="https://wa.me/91'+m.phone+'?text='+encodeURIComponent('🩸 नमस्ते, मुझे आपकी '+m.blood_group+' Blood Group की जरूरत है। क्या आप रक्तदान के लिए उपलब्ध हैं? — पाटीदार समाज इंदौर महानगर')+'" target="_blank" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-bold text-sm text-center">💬 अनुरोध</a></div></div></div>').join('')+'</div>';
   });
  }
+ return h;
+}
+
+// ================= 🕯️ शोक समाचार (Obituaries — सिर्फ Admin/Sub-admin post करते हैं) =================
+let showObitForm=false;
+function recentObituaries(days){
+ const cutoff = new Date(Date.now() - (days||14)*86400000).toISOString().slice(0,10);
+ return obituariesData.filter(o => (o.createdAt||'') >= cutoff);
+}
+async function submitObituaryAdmin(){
+ const name = fmtName(_v('ob_name'));
+ const age = _v('ob_age');
+ const place = _v('ob_place');
+ const deathDate = _v('ob_date');
+ const pic = _v('ob_pic');
+ const message = _v('ob_message');
+ if(!name){ alert('❌ नाम जरूरी!'); return; }
+ busy(true);
+ await db.collection('obituaries').add({name, age, place, deathDate, pic, message, createdAt:today()});
+ busy(false); showObitForm=false;
+ alert('🕯️ शोक समाचार post हो गया।');
+ renderApp();
+}
+function obituaryCard(o){
+ return '<div class="bg-gray-100 border-2 border-gray-400 rounded-lg p-4 flex gap-4 items-start">'+
+ (o.pic?'<img src="'+o.pic+'" class="h-20 w-20 object-cover rounded-full border-2 border-gray-400 shrink-0">':'<div class="h-20 w-20 rounded-full bg-gray-300 flex items-center justify-center text-3xl shrink-0">🕯️</div>')+
+ '<div><p class="font-bold text-lg text-gray-800">'+esc(o.name)+(o.age?' ('+esc(o.age)+')':'')+'</p>'+
+ (o.place||o.deathDate?'<p class="text-sm text-gray-600">'+esc(o.place||'')+(o.deathDate?' | '+esc(o.deathDate):'')+'</p>':'')+
+ (o.message?'<p class="text-sm text-gray-700 mt-2 whitespace-pre-line">'+esc(o.message)+'</p>':'')+
+ '</div></div>';
+}
+function renderObituariesPage(){
+ let h = '<h2 class="text-3xl font-bold mb-2 text-gray-800">🕯️ शोक समाचार</h2>';
+ h += '<p class="text-gray-500 mb-6">समाज के दिवंगत सदस्यों को श्रद्धांजलि</p>';
+ if(!obituariesData.length) h += '<div class="bg-white rounded-lg p-10 text-center shadow"><p class="text-4xl mb-3">🕯️</p><p class="text-lg font-bold text-gray-600">अभी कोई सूचना नहीं है</p></div>';
+ else h += '<div class="space-y-4">'+obituariesData.map(obituaryCard).join('')+'</div>';
  return h;
 }
 
@@ -2680,6 +2782,7 @@ function _localCol(col){
  if(col==='village_leads') return villageLeadsData;
  if(col==='dharamshala') return dharamshalaData; if(col==='hospitals') return hospitalsData;
  if(col==='student_needs') return studentNeedsData; if(col==='students') return studentsData;
+ if(col==='blood_sos') return bloodSosData; if(col==='obituaries') return obituariesData;
  return null;
 }
 async function updDoc(col,id,data){
@@ -3131,6 +3234,7 @@ function renderAdmin(){
   ['dharamshala','🛕 धर्मशाला'+(pendDharamshala.length?' ('+pendDharamshala.length+')':'')],
   ['hospitals','🏥 अस्पताल'+(pendHospitals.length?' ('+pendHospitals.length+')':'')],
   ['students','🎓 STUDENT'+(pendStudentNeeds.length?' ('+pendStudentNeeds.length+')':'')],
+  ['obituaries','🕯️ शोक समाचार'],
   ['site','🌐 SITE']
  ];
  const allowed = allowedTabs();
@@ -3224,6 +3328,20 @@ function renderAdmin(){
   '</div></div>';
  }
 
+ if(adminTab==='obituaries'){
+  h += '<div class="bg-gray-100 border-2 border-gray-400 rounded-lg p-6 mb-6"><h3 class="text-xl font-bold mb-4">➕ ADD शोक समाचार</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+  '<div><label class="text-xs font-bold">नाम *</label><input id="ob_name" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">उम्र / Age</label><input id="ob_age" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">गाँव/शहर</label><input id="ob_place" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">दिनांक</label><input id="ob_date" type="date" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  _photoField('ob_pic','','फोटो 📷')+
+  '<div class="md:col-span-2"><label class="text-xs font-bold">श्रद्धांजलि संदेश</label><textarea id="ob_message" rows="2" class="w-full px-3 py-2 border-2 rounded"></textarea></div></div>'+
+  '<button onclick="submitObituaryAdmin()" class="mt-4 bg-gray-700 text-white px-8 py-3 rounded font-bold">✅ POST करो</button></div>';
+  h += '<div class="bg-white rounded-lg shadow p-6"><h3 class="text-xl font-bold mb-4">🕯️ ALL NOTICES ('+obituariesData.length+')</h3><div class="space-y-2">'+
+  obituariesData.map(o=>'<div class="flex justify-between items-center bg-gray-50 rounded-lg px-4 py-2 flex-wrap gap-2"><span class="text-sm font-bold">'+esc(o.name)+(o.place?' | '+esc(o.place):'')+(o.deathDate?' | '+esc(o.deathDate):'')+'</span><button onclick="delDoc(\'obituaries\',\''+o.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div>').join('')+
+  '</div></div>';
+ }
+
  if(adminTab==='referrals'){
   h += '<div class="bg-orange-50 border-2 border-orange-300 rounded-lg p-6 mb-6"><h3 class="text-2xl font-bold mb-4">🚀 PENDING BUSINESS PROMOTIONS ('+pendBizPromo.length+')</h3>';
   h += pendBizPromo.length ? '<div class="space-y-3">'+pendBizPromo.map(m=>'<div class="bg-white border-2 border-yellow-400 rounded-lg p-4 flex flex-wrap justify-between items-center gap-3"><p><b>'+esc(m.business_name||'-')+'</b> — '+esc(m.name+' '+m.surname)+' ('+esc(m.phone)+')'+(m.biz_promo_referredBy?' | 🎗️ '+esc(referrerNameOf(m.biz_promo_referredBy)):'')+'</p><div class="flex gap-2"><button onclick="approveBizPromo(\''+m.id+'\')" class="bg-green-600 text-white px-4 py-2 rounded font-bold">✅ Activate</button><button onclick="rejectBizPromo(\''+m.id+'\')" class="bg-red-600 text-white px-4 py-2 rounded font-bold">❌</button></div></div>').join('')+'</div>' : '<p class="text-gray-500">कोई pending नहीं</p>';
@@ -3281,6 +3399,10 @@ function renderAdmin(){
  }
 
  if(adminTab==='blood'){
+  const allSOS = bloodSosData.slice().sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+  h += '<div class="bg-red-50 border-2 border-red-500 rounded-lg p-6 mb-6"><h3 class="text-xl font-bold mb-4">🆘 SOS REQUESTS ('+allSOS.length+')</h3>'+
+  (allSOS.length ? '<div class="space-y-2">'+allSOS.map(s=>'<div class="flex justify-between items-center bg-white rounded-lg px-4 py-2 flex-wrap gap-2"><span class="text-sm">'+(s.status==='resolved'?'✅':'🆘')+' <b>'+esc(s.bloodGroup)+'</b> — '+esc(s.hospital)+' | '+esc(s.fromName)+' | 📱'+esc(s.contactPhone)+' | '+esc(s.createdAt||'')+'</span><div class="flex gap-2">'+(s.status!=='resolved'?'<button onclick="resolveBloodSOS(\''+s.id+'\')" class="bg-gray-500 text-white px-3 py-1 rounded font-bold text-sm">✅ Resolve</button>':'')+'<button onclick="delDoc(\'blood_sos\',\''+s.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div></div>').join('')+'</div>' : '<p class="text-gray-500">कोई SOS नहीं</p>')+
+  '</div>';
   h += '<div class="bg-red-50 border-2 border-red-400 rounded-lg p-6 mb-6"><h3 class="text-xl font-bold mb-4">➕ ADD BLOOD DONOR</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-3">'+
   '<input id="bl_name" placeholder="Name *" class="px-3 py-2 border-2 rounded">'+
   '<select id="bl_group" class="px-3 py-2 border-2 rounded"><option value="">Blood Group *</option>'+BLOOD_GROUPS.map(g=>'<option>'+g+'</option>').join('')+'</select>'+
@@ -3485,6 +3607,7 @@ function renderApp(){
  else if(currentPage==='dharamshala') html = renderDharamshalaPage();
  else if(currentPage==='hospitals') html = renderHospitalsPage();
  else if(currentPage==='students') html = renderStudentsPage();
+ else if(currentPage==='obituaries') html = renderObituariesPage();
  else if(currentPage==='news') html = renderNewsPage();
  else if(currentPage==='pratibha') html = renderPratibhaPage();
  else if(currentPage==='events') html = renderEventsPage();

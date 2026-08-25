@@ -179,6 +179,24 @@ service cloud.firestore {
       allow delete: if isAdmin() || isOwnPhone(resource.data.phone);
     }
 
+    // ---- 🆘 Blood Emergency SOS (guests bhi dekhें — emergency ki wide reach zaroori hai) ----
+    match /blood_sos/{docId} {
+      allow read: if true;
+      allow create: if isOwnPhone(request.resource.data.fromPhone) && request.resource.data.status == 'active';
+      // poster सिर्फ अपना request resolve कर सकता है — बाकी fields (hospital/group वगैरह) badal nahi sakta
+      allow update: if isAdmin()
+                    || (isOwnPhone(resource.data.fromPhone)
+                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+                        && request.resource.data.status == 'resolved');
+      allow delete: if isAdmin();
+    }
+
+    // ---- शोक समाचार (Obituaries — सिर्फ Admin/Sub-admin post करते हैं, sensitive content) ----
+    match /obituaries/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // ---- Admin-only visibility ----
     match /suggestions/{docId} {
       allow read: if isAdmin();
