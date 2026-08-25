@@ -1048,22 +1048,26 @@ function villageLeadBoxHTML(){
   '<div class="grid grid-cols-1 md:grid-cols-4 gap-2">';
  if(vlOutsideMP){
   h += '<select id="vl_district" onchange="setVLOutsideMP(this.value)" class="px-3 py-2 border-2 rounded"><option value="OUTSIDE_MP" selected>🌍 MP से बाहर / Outside MP</option>'+MP_DISTRICTS.map(d=>'<option>'+d+'</option>').join('')+'</select>'+
-  '<select id="vl_state" class="px-3 py-2 border-2 rounded md:col-span-2"><option value="">राज्य / State चुनो</option>'+STATES.filter(s=>s!=='Madhya Pradesh').map(s=>'<option>'+s+'</option>').join('')+'</select>';
+  '<input id="vl_state" list="dl_vlstates" placeholder="राज्य / State खोजो..." class="px-3 py-2 border-2 rounded md:col-span-2">'+
+  '<datalist id="dl_vlstates">'+STATES.filter(s=>s!=='Madhya Pradesh').map(s=>'<option value="'+esc(s)+'">').join('')+'</datalist>'+
+  '<button onclick="submitVillageLead()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded font-bold">✅ बताओ</button>'+
+  '<textarea id="vl_notes" rows="2" placeholder="और details बताओ (शहर, इलाका, कुछ भी...)" class="px-3 py-2 border-2 rounded md:col-span-4"></textarea>';
  } else {
   h += '<input id="vl_village" list="dl_villages" placeholder="गाँव / Village" class="px-3 py-2 border-2 rounded">'+
   '<input id="vl_tehsil" list="dl_tehsils" placeholder="तहसील / Tehsil" class="px-3 py-2 border-2 rounded">'+
-  '<select id="vl_district" onchange="setVLOutsideMP(this.value)" class="px-3 py-2 border-2 rounded"><option value="">जिला / District</option><option value="OUTSIDE_MP">🌍 MP से बाहर / Outside MP</option>'+MP_DISTRICTS.map(d=>'<option>'+d+'</option>').join('')+'</select>';
+  '<select id="vl_district" onchange="setVLOutsideMP(this.value)" class="px-3 py-2 border-2 rounded"><option value="">जिला / District</option><option value="OUTSIDE_MP">🌍 MP से बाहर / Outside MP</option>'+MP_DISTRICTS.map(d=>'<option>'+d+'</option>').join('')+'</select>'+
+  '<button onclick="submitVillageLead()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded font-bold">✅ बताओ</button>';
  }
- h += '<button onclick="submitVillageLead()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded font-bold">✅ बताओ</button>'+
-  '</div></div>';
+ h += '</div></div>';
  return h;
 }
 async function submitVillageLead(){
  if(vlOutsideMP){
-  const state = document.getElementById('vl_state').value;
-  if(!state){ alert('❌ राज्य चुनो'); return; }
+  const state = document.getElementById('vl_state').value.trim();
+  const notes = document.getElementById('vl_notes').value.trim();
+  if(!state){ alert('❌ राज्य खोजकर चुनो'); return; }
   busy(true);
-  await db.collection('village_leads').add({ village:'', tehsil:'', district:'MP से बाहर', state, createdAt: today() });
+  await db.collection('village_leads').add({ village:'', tehsil:'', district:'MP से बाहर', state, notes, createdAt: today() });
   busy(false);
   localStorage.setItem('psim_village_lead_done', 'true');
   alert('✅ धन्यवाद! जानकारी मिल गई।');
@@ -3310,8 +3314,8 @@ function renderAdmin(){
   '</div>';
   h += '<div class="bg-white rounded-lg shadow p-6"><h3 class="text-xl font-bold mb-4">📋 सभी Entries</h3>'+
   (villageLeadsData.length ? '<div class="space-y-2">'+villageLeadsData.slice().sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).map(v=>
-   '<div class="flex justify-between items-center bg-gray-50 rounded-lg px-4 py-2"><span class="text-sm">🏡 '+esc(v.village||'-')+(v.tehsil?' | '+esc(v.tehsil):'')+(v.district?' | '+esc(v.district):'')+(v.state?' | '+esc(v.state):'')+' <span class="text-gray-400">('+esc(v.createdAt||'')+')</span></span>'+
-   '<button onclick="delDoc(\'village_leads\',\''+v.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div>'
+   '<div class="flex justify-between items-start bg-gray-50 rounded-lg px-4 py-2 gap-2"><span class="text-sm">🏡 '+esc(v.village||'-')+(v.tehsil?' | '+esc(v.tehsil):'')+(v.district?' | '+esc(v.district):'')+(v.state?' | '+esc(v.state):'')+' <span class="text-gray-400">('+esc(v.createdAt||'')+')</span>'+(v.notes?'<br><span class="text-xs text-gray-500">📝 '+esc(v.notes)+'</span>':'')+'</span>'+
+   '<button onclick="delDoc(\'village_leads\',\''+v.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm shrink-0">🗑️</button></div>'
   ).join('')+'</div>' : '<p class="text-gray-400 text-center py-8">कोई entry नहीं</p>')+
   '</div>';
  }
