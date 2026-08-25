@@ -2853,7 +2853,10 @@ function handleAiNearest(q, ql){
  if(!refInfo || !refInfo.lat){
   if(refName) return '❌ '+refName+' का location अभी set नहीं है। "मेरे गाँव ले चलो" पेज पर जाकर 📍 Location सेट करो, फिर पूछो।';
   aiPending = { originalQuery: q };
-  return '📍 आप किस गाँव/इलाके के पास ढूंढ रहे हो? नाम बताओ (जैसे "Karwad ke paas hospital")';
+  // "mai bimar hu" jaise symptom/personal-need wale sawaal bhi yahan aa sakte hain (Groq keyword se) —
+  // pehle empathetic ek line, फिर seedha area poochkar apne hi samaj ki relevant list dega
+  const prefix = category==='hospital' ? '🏥 ऐसे में नज़दीकी hospital जाना ठीक रहेगा — ' : (category==='dharamshala' ? '🛕 ' : '📍 ');
+  return prefix+'आप किस गाँव/इलाके के पास ढूंढ रहे हो? नाम बताओ, फिर अपने ही समाज की relevant list दे दूंगा (जैसे "Karwad ke paas hospital")';
  }
 
  let candidates;
