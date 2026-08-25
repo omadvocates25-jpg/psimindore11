@@ -2599,6 +2599,9 @@ function aiExpandSynonyms(q){
  Object.keys(AI_SYNONYMS).forEach(k => { if(q.includes(k)) extra += ' '+AI_SYNONYMS[k]; });
  return q + extra;
 }
+// Business/Blood page पर वैसे भी पूरी list already सबको दिखती है (signed-in members को) — यहाँ cap
+// सिर्फ chat message बहुत बड़ी न हो जाए इसके लिए है, privacy control नहीं। इसलिए काफ़ी ऊँचा रखा है।
+const AI_LIST_CAP = 25;
 function aiSearchBusinesses(query){
  const q = aiExpandSynonyms(query.toLowerCase());
  const qWords = q.split(/\s+/).filter(w => w.length>1);
@@ -2612,7 +2615,7 @@ function aiSearchBusinesses(query){
  // Paid/promoted business hamesha pehle — baaki relevance ke hisaab se uske baad
  const promoted = scored.filter(x => x.b.promoted).map(x => x.b);
  const rest = scored.filter(x => !x.b.promoted).map(x => x.b);
- return promoted.concat(rest).slice(0, 6);
+ return promoted.concat(rest);
 }
 // थोड़ी बातचीत वाली variety के लिए — हर बार एक जैसा robotic जवाब न लगे, फिर भी tone सम्मानजनक ही रहे
 function aiPick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
@@ -2621,8 +2624,10 @@ function aiFormatBusinessResults(results, query){
  const intro = place ?
   aiPick(['👨‍🌾 '+place+' में ये अपने पाटीदार भाई-बहनों के व्यापार मिले:', '🙏 '+place+' में देखो, ये अपने समाज के व्यापार मिले:', '👨‍🌾 '+place+' के आसपास ये पाटीदार बंधुओं के व्यापार हैं:']) :
   aiPick(['👨‍🌾 ये अपने पाटीदार भाई-बहनों के व्यापार मिले:', '🙏 देखो, ये अपने समाज के व्यापार मिले:', '👨‍🌾 ये रहे अपने पाटीदार बंधुओं के व्यापार:']);
- const lines = results.map((b,i) => (i+1)+'. '+b.name+(b.promoted?' ⭐':'')+' — '+b.type+(b.place?' | '+b.place:'')+'\n   📞 '+b.phone);
- return intro+'\n\n'+lines.join('\n\n')+'\n\nसभी अपने ही समाज के भरोसेमंद लोग हैं — बेझिझक call/WhatsApp करो। पूरी list के लिए BUSINESS page पर जाओ।';
+ const shown = results.slice(0, AI_LIST_CAP);
+ const lines = shown.map((b,i) => (i+1)+'. '+b.name+(b.promoted?' ⭐':'')+' — '+b.type+(b.place?' | '+b.place:'')+'\n   📞 '+b.phone);
+ const more = results.length > AI_LIST_CAP ? ('\n\n(+'+(results.length-AI_LIST_CAP)+' और भी हैं — पूरी list के लिए BUSINESS page पर जाओ)') : '';
+ return intro+'\n\n'+lines.join('\n\n')+'\n\nसभी अपने ही समाज के भरोसेमंद लोग हैं — बेझिझक call/WhatsApp करो।'+more;
 }
 function aiGreetingReply(){
  const opener = aiPick(['नमस्ते 🙏', 'राम राम 🙏', 'जय पाटीदार समाज 🙏']);
@@ -2634,8 +2639,10 @@ function handleAiBlood(q){
  let donors = publicMembers().filter(mm => (mm.blood_donor||'').indexOf('हाँ')===0 && mm.blood_group);
  if(group) donors = donors.filter(d => d.blood_group===group);
  if(!donors.length) return group ? ('माफ़ कीजिए, अभी '+group+' के कोई registered donor नहीं हैं — BLOOD page पर जाकर 🆘 SOS डालो, ज़्यादा पहुँच मिलेगी।') : 'कौनसा blood group चाहिए? जैसे O+, B+, AB- लिखकर पूछो।';
- const list = donors.slice(0,6).map(d => '🩸 '+d.name+' '+d.surname+' — '+d.blood_group+(d.home_village?(' | '+d.home_village):'')+'\n   📞 '+d.phone);
- return 'ये blood donors मिले:\n\n'+list.join('\n\n')+'\n\nसीधे call/WhatsApp करो, या emergency में BLOOD page पर SOS डालो।';
+ const shown = donors.slice(0, AI_LIST_CAP);
+ const list = shown.map(d => '🩸 '+d.name+' '+d.surname+' — '+d.blood_group+(d.home_village?(' | '+d.home_village):'')+'\n   📞 '+d.phone);
+ const more = donors.length > AI_LIST_CAP ? ('\n\n(+'+(donors.length-AI_LIST_CAP)+' और भी हैं — पूरी list के लिए BLOOD page पर जाओ)') : '';
+ return 'ये blood donors मिले:\n\n'+list.join('\n\n')+'\n\nसीधे call/WhatsApp करो, या emergency में BLOOD page पर SOS डालो।'+more;
 }
 function handleAiNews(){
  const list = newsData.filter(n => n.status!=='pending').slice(0,5);
@@ -2701,7 +2708,7 @@ function handleAiNearest(q, ql){
  let withDist = candidates.map(c => Object.assign({}, c, { km: haversineKmClient(refInfo.lat, refInfo.lng, c.lat, c.lng) }));
  if(radiusKm) withDist = withDist.filter(c => c.km <= radiusKm);
  withDist.sort((a,b) => a.km - b.km);
- withDist = withDist.slice(0, 5);
+ withDist = withDist.slice(0, 10);
  if(!withDist.length) return '❌ '+radiusKm+' km के अंदर कोई '+label+' नहीं मिला (या location set नहीं है)।';
 
  const lines = withDist.map((c,i) => (i+1)+'. '+c.name+' — '+(Math.round(c.km*10)/10)+' km'+(c.phone?'\n   📞 '+c.phone:''));
