@@ -2478,6 +2478,7 @@ function patidarAIHomeHeroHTML(){
 }
 function renderPatidarAI(){
  let h = '<h2 class="text-3xl font-bold mb-2">👨‍🌾 Patidar AI</h2>';
+ h += '<p class="text-gray-500 mb-1">मैं पाटीदार समाज का AI हूँ — सिर्फ पाटीदार समाज की समझ रखता हूँ, बाकी की नहीं। बाकी के लिए AI मुबारक 😄</p>';
  h += '<p class="text-gray-500 mb-1">Business/Profession, 🩸 Blood Donor, 📰 समाज की News, 📅 Events, या दो गाँव के बीच 📍 Distance — कुछ भी पूछो</p>';
  h += '<p class="text-xs text-gray-400 mb-4">⚠️ यह सिर्फ app में मौजूद data के आधार पर जवाब देता है, किसी member की personal profile नहीं देगा।</p>';
  h += '<div class="bg-white rounded-xl shadow-lg p-4 md:p-6">';
@@ -2570,7 +2571,7 @@ function patidarAIReply(qRaw, rounds){
  }
  const results = aiSearchBusinesses(q);
  if(results.length) return aiFormatBusinessResults(results, q);
- return 'माफ़ कीजिए, समझ नहीं आया 🙏 आप पूछ सकते हो: किसी काम/business वाले के बारे में (जैसे "इलेक्ट्रीशियन Vijay Nagar"), सबसे पास का Hospital/धर्मशाला/Business, 🩸 Blood donor, 📰 News, 📅 Events, गाँव के सदस्यों की गिनती, या दो गाँव के बीच Distance। आम/general जानकारी वाले सवाल के लिए Google या किसी normal AI assistant में पूछो — मैं सिर्फ समाज के अपने data के लिए हूँ।';
+ return 'माफ़ कीजिए, समझ नहीं आया 🙏 मैं पाटीदार समाज का AI हूँ — सिर्फ पाटीदार समाज की समझ रखता हूँ, बाकी की नहीं। बाकी के लिए AI मुबारक 😄 आप मुझसे पूछ सकते हो: किसी काम/business वाले के बारे में (जैसे "इलेक्ट्रीशियन Vijay Nagar"), सबसे पास का Hospital/धर्मशाला/Business, 🩸 Blood donor, 📰 News, 📅 Events, गाँव के सदस्यों की गिनती, या दो गाँव के बीच Distance।';
 }
 // सिर्फ ginती — kisi bhi member ki personal detail (naam/phone/address) yahan kabhi nahi dikhti
 function handleAiCount(ql){
@@ -2625,7 +2626,7 @@ function aiFormatBusinessResults(results, query){
 }
 function aiGreetingReply(){
  const opener = aiPick(['नमस्ते 🙏', 'राम राम 🙏', 'जय पाटीदार समाज 🙏']);
- return opener+' मैं Patidar AI हूँ। मुझसे पूछो: कोई भी Business/Profession (डॉक्टर, वकील, इलेक्ट्रीशियन...), 🏥 सबसे पास का Hospital/धर्मशाला/Business, 🩸 Blood donor, 📰 समाज की News, 📅 Events, या दो गाँव के बीच 📍 Distance।';
+ return opener+' मैं पाटीदार समाज का AI हूँ — सिर्फ पाटीदार समाज की समझ रखता हूँ, बाकी की नहीं 😄 मुझसे पूछो: कोई भी Business/Profession (डॉक्टर, वकील, इलेक्ट्रीशियन...), 🏥 सबसे पास का Hospital/धर्मशाला/Business, 🩸 Blood donor, 📰 समाज की News, 📅 Events, या दो गाँव के बीच 📍 Distance।';
 }
 function handleAiBlood(q){
  const m = q.toUpperCase().match(/\b(AB|A|B|O)[+-]/);
