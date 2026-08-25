@@ -1223,6 +1223,7 @@ function renderHome(){
   h += '<div class="bg-gray-800 text-white rounded-xl shadow-lg p-4 mb-5 cursor-pointer" onclick="goPage(\'obituaries\')"><p class="font-bold text-center">🕯️ शोक समाचार — '+recentObit.map(o=>esc(o.name)).join(', ')+' — श्रद्धांजलि के लिए यहाँ click करो</p></div>';
  }
  h += '<div class="text-center mb-5"><h2 class="text-3xl md:text-5xl font-bold">🙏 पाटीदार परिवार में आपका स्वागत है</h2><p class="text-lg text-gray-500">Welcome to Patidar Family</p></div>';
+ if(currentUser) h += patidarAIHomeHeroHTML();
  h += promotedCarouselHTML();
  if(!currentUser){
   h += '<div class="grid grid-cols-4 gap-3 mb-2">';
@@ -2408,6 +2409,27 @@ const AI_SYNONYMS = {
  'transport':'transport logistics driver','construction':'construction builder',
  'beauty':'beauty salon','parlour':'beauty salon','auto':'automobile garage','garage':'automobile garage','mechanic':'automobile garage'
 };
+// Home page पर सबसे ऊपर, बड़ा और आकर्षक — सिर्फ logged-in members को दिखता है, guests को नहीं
+function patidarAIHomeHeroHTML(){
+ return '<div class="bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-700 rounded-2xl shadow-2xl p-8 md:p-14 mb-6 text-center text-white">'+
+  '<p class="text-6xl mb-3">🤖</p>'+
+  '<h2 class="text-3xl md:text-5xl font-extrabold mb-2 tracking-tight">WELCOME TO PATIDAR AI</h2>'+
+  '<p class="text-violet-100 text-sm md:text-base mb-6 max-w-xl mx-auto">Business/Profession, 🩸 Blood Donor, 📰 News, 📅 Events, या 📍 दो गाँव के बीच Distance — कुछ भी पूछो, तुरंत जवाब पाओ</p>'+
+  '<div class="flex flex-col sm:flex-row gap-2 max-w-lg mx-auto">'+
+  '<input id="home_ai_q" onkeydown="if(event.key===\'Enter\'){event.preventDefault();askFromHome();}" placeholder="जैसे: O+ blood donor चाहिए..." class="flex-1 px-4 py-3 rounded-lg text-gray-900 text-sm md:text-base">'+
+  '<button onclick="askFromHome()" class="bg-white text-violet-700 font-bold px-6 py-3 rounded-lg hover:bg-violet-50 whitespace-nowrap">पूछो →</button>'+
+  '</div></div>';
+}
+function askFromHome(){
+ const inp = document.getElementById('home_ai_q');
+ const q = (inp && inp.value || '').trim();
+ goPage('patidarai');
+ if(!q) return;
+ setTimeout(() => {
+  const inp2 = document.getElementById('ai_question');
+  if(inp2){ inp2.value = q; askPatidarAI(); }
+ }, 100);
+}
 function renderPatidarAI(){
  let h = '<h2 class="text-3xl font-bold mb-2">🤖 Patidar AI</h2>';
  h += '<p class="text-gray-500 mb-1">Business/Profession, 🩸 Blood Donor, 📰 समाज की News, 📅 Events, या दो गाँव के बीच 📍 Distance — कुछ भी पूछो</p>';
