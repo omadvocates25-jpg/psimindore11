@@ -1042,20 +1042,21 @@ function doWhomSearch(v){ whomQuery=v; const el=document.getElementById('whomRes
 function villageLeadBoxHTML(){
  if(localStorage.getItem('psim_village_lead_done')==='true') return '';
  return '<div class="bg-white border-2 border-teal-400 rounded-xl shadow-lg p-5 mb-4">'+
-  '<p class="font-bold text-teal-800 mb-1">📍 आपका गाँव/तहसील कौन सा है?</p>'+
-  '<p class="text-xs text-gray-500 mb-3">बिना OTP/Register किए बताओ — इससे हमें पता चलेगा कि हमारा समाज कहाँ-कहाँ फैला है</p>'+
-  '<div class="grid grid-cols-1 md:grid-cols-3 gap-2">'+
+  '<p class="font-bold text-teal-800 mb-3">📍 आपका गाँव/तहसील कौन सा है?</p>'+
+  '<div class="grid grid-cols-1 md:grid-cols-4 gap-2">'+
   '<input id="vl_village" list="dl_villages" placeholder="गाँव / Village" class="px-3 py-2 border-2 rounded">'+
   '<input id="vl_tehsil" list="dl_tehsils" placeholder="तहसील / Tehsil" class="px-3 py-2 border-2 rounded">'+
+  '<select id="vl_district" class="px-3 py-2 border-2 rounded"><option value="">जिला / District</option>'+MP_DISTRICTS.map(d=>'<option>'+d+'</option>').join('')+'</select>'+
   '<button onclick="submitVillageLead()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded font-bold">✅ बताओ</button>'+
   '</div></div>';
 }
 async function submitVillageLead(){
  const village = fmtName(document.getElementById('vl_village').value);
  const tehsil = fmtName(document.getElementById('vl_tehsil').value);
- if(!village && !tehsil){ alert('❌ गाँव या तहसील में से कम से कम एक भरो'); return; }
+ const district = document.getElementById('vl_district').value;
+ if(!village && !tehsil && !district){ alert('❌ गाँव, तहसील या जिला में से कम से कम एक भरो'); return; }
  busy(true);
- await db.collection('village_leads').add({ village, tehsil, createdAt: today() });
+ await db.collection('village_leads').add({ village, tehsil, district, createdAt: today() });
  busy(false);
  localStorage.setItem('psim_village_lead_done', 'true');
  alert('✅ धन्यवाद! जानकारी मिल गई।');
@@ -3280,7 +3281,7 @@ function renderAdmin(){
  if(adminTab==='villageleads'){
   const grouped = {};
   villageLeadsData.forEach(v => {
-   const key = (v.village||'-')+(v.tehsil?' / '+v.tehsil:'');
+   const key = (v.village||'-')+(v.tehsil?' / '+v.tehsil:'')+(v.district?' | '+v.district:'');
    grouped[key] = (grouped[key]||0) + 1;
   });
   const summary = Object.entries(grouped).sort((a,b)=>b[1]-a[1]);
@@ -3289,7 +3290,7 @@ function renderAdmin(){
   '</div>';
   h += '<div class="bg-white rounded-lg shadow p-6"><h3 class="text-xl font-bold mb-4">📋 सभी Entries</h3>'+
   (villageLeadsData.length ? '<div class="space-y-2">'+villageLeadsData.slice().sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).map(v=>
-   '<div class="flex justify-between items-center bg-gray-50 rounded-lg px-4 py-2"><span class="text-sm">🏡 '+esc(v.village||'-')+(v.tehsil?' | '+esc(v.tehsil):'')+' <span class="text-gray-400">('+esc(v.createdAt||'')+')</span></span>'+
+   '<div class="flex justify-between items-center bg-gray-50 rounded-lg px-4 py-2"><span class="text-sm">🏡 '+esc(v.village||'-')+(v.tehsil?' | '+esc(v.tehsil):'')+(v.district?' | '+esc(v.district):'')+' <span class="text-gray-400">('+esc(v.createdAt||'')+')</span></span>'+
    '<button onclick="delDoc(\'village_leads\',\''+v.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div>'
   ).join('')+'</div>' : '<p class="text-gray-400 text-center py-8">कोई entry नहीं</p>')+
   '</div>';
