@@ -38,8 +38,9 @@ service cloud.firestore {
     // ---- members (Community directory) ----
     match /members/{docId} {
       allow read: if true; // guest browsing ke liye khula (privacy-filtering client-side hoti hai)
-      allow create: if isOwnPhone(request.resource.data.phone)
-                    && request.resource.data.status == 'pending'; // koi khud ko approved nahi bana sakta
+      allow create: if isAdmin() // Admin seedha member add/approve kar sake (jaise fake demo data, ya phone-less onboarding)
+                    || (isOwnPhone(request.resource.data.phone)
+                        && request.resource.data.status == 'pending'); // koi khud ko approved nahi bana sakta
       allow update: if isAdmin()
                     || (isOwnPhone(resource.data.phone)
                         && request.resource.data.phone == resource.data.phone // phone badal nahi sakte
@@ -75,7 +76,8 @@ service cloud.firestore {
     // ---- Open-to-guest content (public read; members submit, admin approves) ----
     match /news/{docId} {
       allow read: if true;
-      allow create: if isSignedIn() && request.resource.data.status == 'pending';
+      allow create: if isAdmin() // Admin seedha approved news daal sake (jaise fake demo data)
+                    || (isSignedIn() && request.resource.data.status == 'pending');
       allow update, delete: if isAdmin();
     }
     match /pratibha/{docId} {
@@ -100,7 +102,8 @@ service cloud.firestore {
     // ---- Members-only pages (locked in the app) ----
     match /property/{docId} {
       allow read: if isSignedIn();
-      allow create: if isOwnPhone(request.resource.data.phone) && request.resource.data.status == 'pending';
+      allow create: if isAdmin() // Admin seedha listing add kar sake (jaise fake demo data)
+                    || (isOwnPhone(request.resource.data.phone) && request.resource.data.status == 'pending');
       allow update: if isAdmin() || isOwnPhone(resource.data.phone); // apni listing on/off
       allow delete: if isAdmin();
     }
@@ -140,6 +143,90 @@ service cloud.firestore {
                     && request.resource.data.toPhone != request.resource.data.fromPhone;
       allow update: if false; // कभी edit नहीं होता — सिर्फ create/delete
       allow delete: if isAdmin(); // suspicious entry सिर्फ Admin हटा सकता है (audit trail बचा रहे)
+    }
+
+    // ---- गाँव/तहसील (guest भी बिना OTP भर सके — सिर्फ Admin को दिखे, community का फैलाव जानने के लिए) ----
+    match /village_leads/{docId} {
+      allow read: if isAdmin();
+      allow create: if true; // login/OTP zaroori nahi
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    // ---- EN↔HI शब्दकोश (गाँव/जगह के नाम — community धीरे-धीरे भरती है, सबके लिए फ्री read/contribute) ----
+    match /translit_pairs/{docId} {
+      allow read: if true;
+      allow create: if true; // guest widget भी बिना OTP contribute कर सके
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    // ---- मेरे गाँव ले चलो — गाँव का description (wiki-style, कोई भी signed-in member लिख/सुधार सके) ----
+    match /village_info/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isAdmin();
+    }
+
+    // ---- मेरी धर्मशाला / पाटीदार अस्पताल / Student इंदौर (members-only directories — self-serve create, admin approves) ----
+    // ध्यान दें: "phone" यहाँ contact number है (submitter का अपना number ज़रूरी नहीं — जैसे धर्मशाला के caretaker का
+    // number) — इसलिए isOwnPhone(phone) से बांध नहीं सकते, digits-only रखकर ही free-text/HTML injection रोका है
+    function isPlainPhone(p){ return p is string && p.matches('^[0-9]{7,15}$'); }
+    match /dharamshala/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isOwnPhone(request.resource.data.addedBy) && request.resource.data.status == 'pending'
+                    && isPlainPhone(request.resource.data.phone);
+      allow update, delete: if isAdmin();
+    }
+    match /hospitals/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isOwnPhone(request.resource.data.addedBy) && request.resource.data.status == 'pending'
+                    && isPlainPhone(request.resource.data.phone);
+      allow update, delete: if isAdmin();
+    }
+    match /student_needs/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isOwnPhone(request.resource.data.addedBy) && request.resource.data.status == 'pending'
+                    && isPlainPhone(request.resource.data.phone);
+      allow update, delete: if isAdmin();
+    }
+    match /students/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isOwnPhone(request.resource.data.phone);
+      allow update: if isAdmin();
+      allow delete: if isAdmin() || isOwnPhone(resource.data.phone);
+    }
+
+    // ---- 🆘 Blood Emergency SOS (guests bhi dekhें — emergency ki wide reach zaroori hai) ----
+    match /blood_sos/{docId} {
+      allow read: if true;
+      allow create: if isOwnPhone(request.resource.data.fromPhone) && request.resource.data.status == 'active';
+      // poster सिर्फ अपना request resolve कर सकता है — बाकी fields (hospital/group वगैरह) badal nahi sakta
+      allow update: if isAdmin()
+                    || (isOwnPhone(resource.data.fromPhone)
+                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+                        && request.resource.data.status == 'resolved');
+      allow delete: if isAdmin();
+    }
+
+    // ---- शोक समाचार (Obituaries — सिर्फ Admin/Sub-admin post करते हैं, sensitive content) ----
+    match /obituaries/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ---- Reference से Register (non-OTP) — koi bhi approved member kisi ka phone number
+    // pehle se pre-approve kar sakta hai. Matching aur auto-approve/login server-side
+    // (Cloud Function, Admin SDK) hota hai isliye yahan sirf ownership control hai —
+    // client se kabhi seedha padhi nahi jaati (sirf apni list dikhane ke liye, isliye
+    // public read nahi rakha, sirf signed-in).
+    match /referral_preapprovals/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isOwnPhone(request.resource.data.referrerPhone)
+                    && request.resource.data.phone is string && request.resource.data.phone.matches('^[0-9]{10}$');
+      allow update: if false; // sirf server (Admin SDK, jo rules bypass karta hai) usedAt likhta hai
+      allow delete: if isAdmin() || isOwnPhone(resource.data.referrerPhone);
     }
 
     // ---- Admin-only visibility ----

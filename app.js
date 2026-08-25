@@ -16,6 +16,8 @@ const auth = firebase.auth();
 const ADMIN_PHONE = "8103179376"; // Super Admin ka number - OTP login se auto-admin
 const CONTACT_PHONE = "81031-79376";
 const ADMIN_CONTACTS = ["8103179376"];
+const REFERENCE_REGISTER_URL = "https://asia-south1-psim-2b211.cloudfunctions.net/referenceRegister";
+const GEOCODE_VILLAGE_URL = "https://asia-south1-psim-2b211.cloudfunctions.net/geocodeVillage";
 const DEFAULT_OBJECTIVE_TEXT = "क्या आपको पता है, पाटीदार समाज की अपनी एक App है — जिसमें हम सब आपस में जुड़ सकते हैं, अपने व्यापार को आगे बढ़ा सकते हैं और समाज के अलग-अलग लोगों को जान सकते हैं। सबसे बड़ी बात — हर पाटीदार को अपने ही पाटीदार भाई से व्यापार मिले, यही हमारा सबसे बड़ा उद्देश्य है।\n\nआपको कोई भी काम हो, छोटा हो या बड़ा — फ्रिज-कूलर ठीक करवाना हो या किसी डॉक्टर की जरूरत हो — आप सीधे इस App में search करके सीधे call कर सकते हैं। आखिर, अपने पाटीदार भाई पर भरोसा तो है ही! 🙏";
 const DEFAULT_INVITE_MSG = "🙏 क्या आपको पता है? पाटीदार समाज की अपनी App है जिसमें हम सब आपस में जुड़ सकते हैं और अपने व्यापार को बढ़ा सकते हैं। कोई भी काम हो — छोटा या बड़ा, फ्रिज-कूलर ठीक करवाना हो या डॉक्टर चाहिए — अपने पाटीदार भाई से सीधे जुड़ो। अभी Register करो 👇";
 function T(key, fallback){ return (siteMeta.texts && siteMeta.texts[key]) || fallback; }
@@ -38,12 +40,17 @@ let randIdx = 0, randOrder = [];
 let searchQ = '', searchBy = 'name';
 let adminTab = 'members';
 let showAddForm=false, showItemForm=false, showPratForm=false, showJobForm=false, showRelForm=false, showFriendForm=false, showGarbaForm=false, showPropForm=false, showManageProp=false;
+let showDharamshalaForm=false, dharamshalaKind='village', showHospitalForm=false, hospitalKind='niji', showStudentNeedForm=false, studentNeedKind='tiffin', showStudentRegForm=false;
 let regStep = 0;
+let regMode = 'otp'; // 'otp' | 'reference' — Register page pe chuna gaya tareeka
+let showRegModeChooser = true;
+let aiChatHistory = []; // [{role:'user'|'ai', text}] — session-only, kahin save nahi hota
+let aiThinking = false;
 let relSearchQ = '';
 let friendSearchQ = '';
 let whomQuery = '';
 
-let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], garbaCoords=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[], teamJoinData=[], labhData=[];
+let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], garbaCoords=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[], teamJoinData=[], labhData=[], villageLeadsData=[], dharamshalaData=[], hospitalsData=[], studentNeedsData=[], studentsData=[], bloodSosData=[], obituariesData=[], villageInfoData=[], referralPreapprovalsData=[];
 let siteMeta = { ticker:'', aboutUs:'', fb:'', insta:'', youtube:'', committee:'', expiryDays:30, propertyValidityDays:365, propertyFeeRent:'500', propertyFeeWanted:'11', razorpayPropRent:'', razorpayPropWanted:'', shaadiFee:'500', shaadiValidityDays:180, razorpayShaadi:'', jobsFeeSeeker:'11', razorpayJobsSeeker:'', bizPromoFee:'300', bizPromoValidityDays:365, razorpayBizPromo:'', olxExtraItemFee:'100', razorpayOlxExtra:'', olxPromoFee:'100', razorpayOlxPromo:'', blocked:[], garbaFormOpen:true, ads:[{},{},{},{},{}], subAdmins:[], texts:{} };
 
 function isSuperAdmin(){ return currentUser === ADMIN_PHONE || localStorage.getItem('psim_admin_ok') === 'true'; }
@@ -146,6 +153,45 @@ function randCode(){ return String(Math.floor(1000+Math.random()*9000)); }
 function fmtName(s){ return (s||'').trim().replace(/\s+/g,' ').toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase()); }
 function fmtPhone(s){ return (s||'').replace(/[^0-9]/g,'').slice(0,10); }
 function phoneFromFirebase(fbPhone){ return (fbPhone||'').replace(/[^0-9]/g,'').slice(-10); } // "+919876543210" -> "9876543210"
+
+// ================= BILINGUAL NAME (English + हिंदी) — दो अलग boxes भरो, हर जगह अपने आप "English (हिंदी)" format में दिखेगा =================
+function bilingualHTML(en, hi){
+ en=(en||'').trim(); hi=(hi||'').trim();
+ if(en && hi) return esc(en)+' <span class="text-gray-500 font-normal">('+esc(hi)+')</span>';
+ return esc(en || hi || '-');
+}
+// ================= EN↔HI शब्दकोश (community dictionary) — पहले किसी ने जो नाम दोनों भाषा में भरा हो, वो अगली बार अपने आप आ जाए =================
+let translitData = [];
+function translitLookup(text, dir){
+ // dir: 'en2hi' या 'hi2en'
+ const key = (text||'').trim().toLowerCase();
+ if(!key) return '';
+ const hit = dir==='en2hi' ? translitData.find(t=>(t.en||'').toLowerCase()===key) : translitData.find(t=>(t.hi||'')===text.trim());
+ return hit ? (dir==='en2hi' ? hit.hi : hit.en) : '';
+}
+async function saveTranslitPair(en, hi){
+ en=(en||'').trim(); hi=(hi||'').trim();
+ if(!en || !hi) return; // दोनों भरे हों तभी worth-saving pair है
+ const key = en.toLowerCase();
+ const existing = translitData.find(t=>(t.en||'').toLowerCase()===key);
+ if(existing && existing.hi===hi) return; // पहले से यही pair मौजूद है
+ try{ await db.collection('translit_pairs').add({en:key, hi, createdAt:today()}); }catch(e){}
+}
+function autofillBilingual(prefix){
+ const enEl = document.getElementById(prefix+'_en'), hiEl = document.getElementById(prefix+'_hi');
+ if(!enEl || !hiEl) return;
+ if(enEl.value.trim() && !hiEl.value.trim()){ const hi = translitLookup(enEl.value, 'en2hi'); if(hi) hiEl.value = hi; }
+ else if(hiEl.value.trim() && !enEl.value.trim()){ const en = translitLookup(hiEl.value, 'hi2en'); if(en) enEl.value = fmtName(en); }
+}
+function bilingualInputsHTML(prefix, label){
+ return '<div><label class="text-xs font-bold">'+(label||'Name')+' *</label><div class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1">'+
+  '<input id="'+prefix+'_en" placeholder="Name (English)" onblur="autofillBilingual(\''+prefix+'\')" class="px-3 py-2 border-2 rounded">'+
+  '<input id="'+prefix+'_hi" placeholder="नाम (हिंदी)" onblur="autofillBilingual(\''+prefix+'\')" class="px-3 py-2 border-2 rounded">'+
+  '</div><p class="text-[10px] text-gray-400 mt-1">💡 दोनों भाषा में भरो — अगर कोई पहले भर चुका है तो अपने आप आ जाएगा</p></div>';
+}
+function readBilingual(prefix){
+ return { name_en: fmtName(document.getElementById(prefix+'_en').value), name_hi: document.getElementById(prefix+'_hi').value.trim() };
+}
 
 // ================= ADMIN LOGIN (Phone OTP only — Admin/Sub-admin numbers auto-recognized) =================
 function askAdminLogin(){
@@ -260,6 +306,16 @@ function setupRealtimeListeners(){
  watch('property', d => propertyData = d);
  watch('blood', d => bloodData = d);
  watch('labh', d => labhData = d);
+ watch('village_leads', d => villageLeadsData = d);
+ watch('dharamshala', d => dharamshalaData = d);
+ watch('hospitals', d => hospitalsData = d);
+ watch('student_needs', d => studentNeedsData = d);
+ watch('students', d => studentsData = d);
+ watch('blood_sos', d => bloodSosData = d);
+ watch('obituaries', d => obituariesData = d.sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')));
+ watch('translit_pairs', d => translitData = d);
+ watch('village_info', d => villageInfoData = d);
+ watch('referral_preapprovals', d => referralPreapprovalsData = d);
  db.collection('meta').doc('site').onSnapshot(doc => {
   if(doc.exists) siteMeta = Object.assign(siteMeta, doc.data());
   if(!siteMeta.ads || siteMeta.ads.length<5) siteMeta.ads = [{},{},{},{},{}];
@@ -273,8 +329,8 @@ async function saveMeta(){ await db.collection('meta').doc('site').set(siteMeta)
 // ================= ROUTING (login-gated) =================
 // बिना login दिखने वाले pages — Home/News/Pratibha/Events/Gallery + Rozgaar व OLX (सिर्फ browsing) खुले हैं
 // बाकी सब (Community, Business, Garba, Cricket, Blood, Property, Shaadi) के लिए पहले Community member बनना जरूरी है
-const OPEN_PAGES = ['home','news','register','events','gallery','pratibha','rozgaar','olditems','suggestions'];
-const LOCKED_PAGES = ['community','business','garba','cricket','blood','property','shaadi'];
+const OPEN_PAGES = ['home','news','register','events','gallery','pratibha','rozgaar','olditems','suggestions','obituaries'];
+const LOCKED_PAGES = ['community','business','garba','cricket','blood','property','shaadi','dharamshala','hospitals','students','meregaanv','patidarai'];
 function goPage(p){
  if(!currentUser && LOCKED_PAGES.includes(p)){
   showRegisterPrompt('यह सुविधा सिर्फ रजिस्टर्ड सदस्यों के लिए है — Community से जुड़ने के लिए Register करो।');
@@ -362,6 +418,7 @@ function saveOptionalFieldsAndClose(){
 function startRegister(){
  if(currentUser && myMember()){ alert('✅ आप पहले से registered हैं! आपकी profile Community page पर है।'); goPage('community'); return; }
  regStep = 0;
+ regMode = 'otp'; showRegModeChooser = true;
  if(!draftGet('phone')){
   const saved = localStorage.getItem('psLastPhone');
   if(saved) draftSet('phone', saved);
@@ -515,7 +572,9 @@ function memberFormHTML(prefix, m){
 function stepFormHTML(m){
  m = m || {};
  const g = STEP_GROUPS[regStep];
- let h = '<div class="flex justify-center gap-2 mb-4">';
+ let h = '';
+ if(!currentUser) h += '<button type="button" onclick="showRegModeChooser=true; renderApp();" class="text-xs text-gray-400 hover:text-gray-600 mb-2">← register का तरीका बदलो</button>';
+ h += '<div class="flex justify-center gap-2 mb-4">';
  STEP_GROUPS.forEach((s,i) => { h += '<div class="h-2 w-10 rounded '+(i<=regStep?'bg-blue-600':'bg-gray-300')+'"></div>'; });
  h += '</div>';
  h += '<p class="text-center text-sm text-gray-500 mb-3">Step '+(regStep+1)+' / 3</p>';
@@ -533,6 +592,9 @@ function stepFormHTML(m){
   if(currentUser){
    h += '<p class="text-center mb-4">आपकी सभी जानकारी दर्ज हो गई है। आप पहले से 📱 '+esc(currentUser)+' से login हो (verified) — सीधे submit करो।</p>';
    h += '<button onclick="submitSelfRegistration()" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold text-lg">✅ पूरा हुआ / Submit</button>';
+  } else if(regMode==='reference'){
+   h += '<p class="text-center mb-4">आपकी सभी जानकारी दर्ज हो गई है। अगर किसी member ने आपको पहले से approve कर रखा है तो आप तुरंत बिना OTP के जुड़ जाओगे — वरना आपका request Admin approval के लिए waiting में चला जाएगा।</p>';
+   h += '<button onclick="submitReferenceRegister()" id="refRegSubmitBtn" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold text-lg">✅ Submit करो (बिना OTP)</button>';
   } else {
    h += '<p class="text-center mb-4">आपकी सभी जानकारी दर्ज हो गई है।</p>';
    h += '<button onclick="sendRegOtp()" id="regOtpSendBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold">📲 OTP भेजो</button>';
@@ -914,6 +976,49 @@ async function submitSelfRegistration(){
  alert('✅ स्वागत है, '+fmtName(d.name)+'!\\n\\nआप समुदाय में जुड़ गए हैं। admin approval के बाद आपका profile live हो जाएगा।');
  goPage('community');
 }
+// ---- Reference से Register (बिना OTP) — server-side Cloud Function check karta hai ki koi member
+// pehle se yeh phone pre-approve kar chuka hai; agar haan to seedha login (custom token), warna pending ----
+async function submitReferenceRegister(){
+ stepSaveCurrent();
+ const d = {};
+ MEMBER_FIELDS.forEach(f => { d[f[0]] = draftGet(f[0]) || ''; });
+ d.name=fmtName(d.name); d.surname=fmtName(d.surname);
+ d.home_village=fmtName(d.home_village); d.present_city=fmtName(d.present_city);
+ d.phone = fmtPhone(d.phone);
+ if(!d.name || !d.surname){ alert('❌ Name और Surname दोनों भरो'); return; }
+ if(d.phone.length!==10){ alert('❌ सही 10 अंकों का Mobile Number भरो'); return; }
+ if(membersData.find(m => m.phone === d.phone)){ alert('❌ यह number पहले से registered है!'); return; }
+ const btn = document.getElementById('refRegSubmitBtn');
+ if(btn){ btn.disabled = true; btn.textContent = '⏳ भेज रहे हैं...'; }
+ busy(true);
+ try{
+  const resp = await fetch(REFERENCE_REGISTER_URL, {
+   method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(d)
+  });
+  const out = await resp.json().catch(()=>({}));
+  busy(false);
+  if(!resp.ok){
+   alert('❌ '+(out.error==='already_registered' ? 'यह number पहले से registered है!' : 'कुछ गड़बड़ हुई, दोबारा try करो।'));
+   if(btn){ btn.disabled=false; btn.textContent='✅ Submit करो (बिना OTP)'; }
+   return;
+  }
+  draftClear(); regStep=0; showRegModeChooser=true; _regConfirmation=null;
+  localStorage.setItem('psLastPhone', d.phone);
+  if(out.approved && out.token){
+   await auth.signInWithCustomToken(out.token);
+   currentUser = d.phone; // Firebase का onAuthStateChanged थोड़ी देर से फायर होता है — यहीं तुरंत set कर दो ताकि आगे का redirect सही चले
+   alert('✅ स्वागत है, '+fmtName(d.name)+'! आपको approve कर दिया गया है — आप तुरंत जुड़ गए हो।');
+   goPage('community');
+  } else {
+   alert('✅ स्वागत है, '+fmtName(d.name)+'!\\n\\nआपका request अभी Admin approval के waiting में है।');
+   goPage('home');
+  }
+ } catch(e){
+  busy(false);
+  if(btn){ btn.disabled=false; btn.textContent='✅ Submit करो (बिना OTP)'; }
+  alert('❌ Network error, दोबारा try करो: '+e.message);
+ }
+}
 function buildDatalists(){
  const uniq = a => [...new Set(a.filter(v=>v&&v.trim()))].sort();
  const mk = (id, items) => '<datalist id="'+id+'">'+items.map(v=>'<option value="'+esc(v)+'">').join('')+'</datalist>';
@@ -967,7 +1072,19 @@ const SEARCH_SYNONYMS = {
  'factory':'manufacturing factory', 'manufacturing':'manufacturing factory',
  'auto':'automobile garage', 'garage':'automobile garage', 'mechanic':'automobile garage',
  'tractor':'tractor machinery', 'machine':'tractor machinery',
- 'paint':'painter', 'farm':'farmer agriculture किसान'
+ 'paint':'painter', 'farm':'farmer agriculture किसान',
+ // ---- रोज़मर्रा की ज़रूरत/तकलीफ़ बोलने पर सही business मिले (जैसे "bhukh lagi" → खाना/restaurant) ----
+ 'bhukh':'food restaurant hotel caterer khana', 'bhookh':'food restaurant hotel caterer khana',
+ 'khana':'food restaurant hotel caterer', 'nashta':'restaurant hotel food', 'bhoj':'caterer food restaurant',
+ 'pyaas':'water cold drink', 'pani':'water',
+ 'bimar':'doctor medical hospital clinic', 'ilaj':'doctor medical hospital clinic', 'dawai':'medical pharmacy doctor',
+ 'ghar banwana':'construction builder', 'makan banwana':'construction builder',
+ 'naukri':'job government employment', 'kaam chahiye':'job employment',
+ 'paisa chahiye':'loan finance banking', 'loan':'loan finance banking', 'udhar':'loan finance banking',
+ 'padhna':'teacher coaching education tuition', 'padhai':'teacher coaching education tuition',
+ 'safai':'cleaning housekeeping', 'rishta':'shaadi marriage matrimony vivah', 'shaadi karni':'shaadi marriage matrimony',
+ 'ghumna':'travel tour transport', 'yatra':'travel tour transport',
+ 'xerox':'printing xerox stationery', 'print':'printing xerox stationery'
 };
 function expandSynonyms(q){
  let extra = '';
@@ -1002,6 +1119,68 @@ function whomResultsHTML(){
 }
 function doWhomSearch(v){ whomQuery=v; const el=document.getElementById('whomResults'); if(el) el.innerHTML=whomResultsHTML(); }
 
+// ================= गाँव/तहसील (guest भी बिना OTP/register भर सके — हमें community के फैलाव का अंदाज़ा मिले) =================
+let vlOutsideMP = false;
+function setVLOutsideMP(v){ vlOutsideMP = (v === 'OUTSIDE_MP'); renderApp(); }
+function villageLeadBoxHTML(){
+ if(localStorage.getItem('psim_village_lead_done')==='true') return '';
+ let h = '<div class="bg-white border-2 border-teal-400 rounded-xl shadow-lg p-5 mb-4">'+
+  '<p class="font-bold text-teal-800 mb-3">'+(!vlOutsideMP?'<span onclick="setVLOutsideMP(\'OUTSIDE_MP\')" class="text-xs bg-teal-100 hover:bg-teal-200 text-teal-700 px-2 py-0.5 rounded-full cursor-pointer mr-2 font-normal align-middle">🌍 MP से बाहर?</span>':'')+'📍 आपका गाँव/तहसील कौन सा है?</p>'+
+  '<div class="grid grid-cols-1 md:grid-cols-4 gap-2">';
+ if(vlOutsideMP){
+  h += '<select id="vl_district" onchange="setVLOutsideMP(this.value)" class="px-3 py-2 border-2 rounded"><option value="OUTSIDE_MP" selected>🌍 MP से बाहर / Outside MP</option>'+MP_DISTRICTS.map(d=>'<option>'+d+'</option>').join('')+'</select>'+
+  '<input id="vl_state" list="dl_vlstates" placeholder="राज्य / State खोजो..." class="px-3 py-2 border-2 rounded md:col-span-2">'+
+  '<datalist id="dl_vlstates">'+STATES.filter(s=>s!=='Madhya Pradesh').map(s=>'<option value="'+esc(s)+'">').join('')+'</datalist>'+
+  '<button onclick="submitVillageLead()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded font-bold">✅ बताओ</button>'+
+  '<textarea id="vl_notes" rows="2" placeholder="और details बताओ (शहर, इलाका, कुछ भी...)" class="px-3 py-2 border-2 rounded md:col-span-4"></textarea>';
+ } else {
+  h += '<div><input id="vl_village" list="dl_villages" oninput="vlAutofillHi(\'village\')" placeholder="गाँव / Village" class="px-3 py-2 border-2 rounded w-full">'+
+  '<input type="hidden" id="vl_village_hi"><p id="vl_village_hi_hint" class="text-[10px] text-teal-600 mt-0.5 hidden"></p></div>'+
+  '<div><input id="vl_tehsil" list="dl_tehsils" oninput="vlAutofillHi(\'tehsil\')" placeholder="तहसील / Tehsil" class="px-3 py-2 border-2 rounded w-full">'+
+  '<input type="hidden" id="vl_tehsil_hi"><p id="vl_tehsil_hi_hint" class="text-[10px] text-teal-600 mt-0.5 hidden"></p></div>'+
+  '<select id="vl_district" onchange="setVLOutsideMP(this.value)" class="px-3 py-2 border-2 rounded"><option value="">जिला / District</option><option value="OUTSIDE_MP">🌍 MP से बाहर / Outside MP</option>'+MP_DISTRICTS.map(d=>'<option>'+d+'</option>').join('')+'</select>'+
+  '<button onclick="submitVillageLead()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded font-bold">✅ बताओ</button>';
+ }
+ h += '</div></div>';
+ return h;
+}
+function vlAutofillHi(field){
+ const inp = document.getElementById('vl_'+field);
+ const hiddenHi = document.getElementById('vl_'+field+'_hi');
+ const hint = document.getElementById('vl_'+field+'_hi_hint');
+ if(!inp || !hiddenHi || !hint) return;
+ const hi = translitLookup(inp.value, 'en2hi');
+ if(hi){ hiddenHi.value = hi; hint.textContent = '✓ '+hi; hint.classList.remove('hidden'); }
+ else { hiddenHi.value = ''; hint.classList.add('hidden'); }
+}
+async function submitVillageLead(){
+ if(vlOutsideMP){
+  const state = document.getElementById('vl_state').value.trim();
+  const notes = document.getElementById('vl_notes').value.trim();
+  if(!state){ alert('❌ राज्य खोजकर चुनो'); return; }
+  busy(true);
+  await db.collection('village_leads').add({ village:'', tehsil:'', district:'MP से बाहर', state, notes, createdAt: today() });
+  busy(false);
+  localStorage.setItem('psim_village_lead_done', 'true');
+  alert('✅ धन्यवाद! जानकारी मिल गई।');
+  vlOutsideMP = false;
+  renderApp();
+  return;
+ }
+ const village = fmtName(document.getElementById('vl_village').value);
+ const village_hi = document.getElementById('vl_village_hi').value;
+ const tehsil = fmtName(document.getElementById('vl_tehsil').value);
+ const tehsil_hi = document.getElementById('vl_tehsil_hi').value;
+ const district = document.getElementById('vl_district').value;
+ if(!village && !tehsil && !district){ alert('❌ गाँव, तहसील या जिला में से कम से कम एक भरो'); return; }
+ busy(true);
+ await db.collection('village_leads').add({ village, village_hi, tehsil, tehsil_hi, district, createdAt: today() });
+ busy(false);
+ localStorage.setItem('psim_village_lead_done', 'true');
+ alert('✅ धन्यवाद! जानकारी मिल गई।');
+ renderApp();
+}
+
 // ================= HOME =================
 function portalTile(p){
  const locked = LOCKED_PAGES.includes(p[0]);
@@ -1034,7 +1213,17 @@ function promotedCarouselHTML(){
   '<div class="flex gap-4 overflow-x-auto pb-3 noscroll">'+cards+'</div></div>';
 }
 function renderHome(){
- let h = '<div class="text-center mb-5"><h2 class="text-3xl md:text-5xl font-bold">🙏 पाटीदार परिवार में आपका स्वागत है</h2><p class="text-lg text-gray-500">Welcome to Patidar Family</p></div>';
+ let h = '';
+ const activeSOSHome = activeBloodSOS();
+ if(activeSOSHome.length){
+  h += '<div class="bg-red-600 text-white rounded-xl shadow-lg p-4 mb-5 cursor-pointer animate-pulse" onclick="goPage(\'blood\')"><p class="font-bold text-center">🆘 URGENT: '+activeSOSHome.map(s=>esc(s.bloodGroup)).join(', ')+' Blood चाहिए — '+activeSOSHome.length+' active request'+(activeSOSHome.length>1?'s':'')+' — यहाँ click करो 👆</p></div>';
+ }
+ const recentObit = recentObituaries(14);
+ if(recentObit.length){
+  h += '<div class="bg-gray-800 text-white rounded-xl shadow-lg p-4 mb-5 cursor-pointer" onclick="goPage(\'obituaries\')"><p class="font-bold text-center">🕯️ शोक समाचार — '+recentObit.map(o=>esc(o.name)).join(', ')+' — श्रद्धांजलि के लिए यहाँ click करो</p></div>';
+ }
+ h += '<div class="text-center mb-5"><h2 class="text-3xl md:text-5xl font-bold">🙏 पाटीदार परिवार में आपका स्वागत है</h2><p class="text-lg text-gray-500">Welcome to Patidar Family</p></div>';
+ h += patidarAIHomeHeroHTML();
  h += promotedCarouselHTML();
  if(!currentUser){
   h += '<div class="grid grid-cols-4 gap-3 mb-2">';
@@ -1043,6 +1232,7 @@ function renderHome(){
   h += '</div>';
   if(showQuickLoginBox) h += quickLoginBoxHTML();
   h += '<p class="text-center text-gray-300 text-xs mb-4">•</p>';
+  h += villageLeadBoxHTML();
  }
  h += '<div class="bg-gradient-to-r from-blue-900 via-indigo-800 to-orange-600 rounded-2xl shadow-xl p-6 md:p-8 mb-6"><div class="flex flex-col md:flex-row items-center gap-5 md:gap-8"><img src="data:image/webp;base64,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" class="h-28 w-28 md:h-36 md:w-36 rounded-full border-4 border-yellow-400 shadow-2xl object-cover flex-shrink-0"><div class="text-center md:text-left"><p class="text-xs md:text-sm uppercase tracking-widest text-yellow-300 font-bold mb-1">हमारे आदर्श / Our Inspiration</p><h3 class="text-2xl md:text-3xl font-bold text-white mb-1">सरदार वल्लभभाई पटेल</h3><p class="text-blue-100 text-sm md:text-base">लौह पुरुष — Iron Man of India</p></div></div></div>';
 
@@ -1074,7 +1264,13 @@ function renderHome(){
   ['olditems','indigo','🛒','अपना OLX<br>Old Items', activeOldItems().length+' Items'],
   ['news','amber','📰','NEWS<br>समाचार', newsData.filter(n=>n.status!=='pending').length+' Updates'],
   ['pratibha','cyan','🏆','प्रतिभा परिचय<br>Talents', pratibhaData.filter(p=>p.status==='approved').length+' Stars'],
-  ['events','lime','📅','EVENTS<br>कार्यक्रम', eventsData.length+' Events']
+  ['events','lime','📅','EVENTS<br>कार्यक्रम', eventsData.length+' Events'],
+  ['dharamshala','orange','🛕','मेरी धर्मशाला<br>Dharamshala', dharamshalaData.filter(d=>d.status==='approved').length+' Listed'],
+  ['hospitals','sky','🏥','पाटीदार अस्पताल<br>Hospitals', hospitalsData.filter(h=>h.status==='approved').length+' Listed'],
+  ['students','fuchsia','🎓','STUDENT<br>इंदौर', studentNeedsData.filter(s=>s.status==='approved').length+' Listings'],
+  ['obituaries','gray','🕯️','शोक समाचार<br>Obituaries', obituariesData.length+' Notices'],
+  ['meregaanv','emerald','🏡','मेरे गाँव<br>ले चलो', uniqueVillageCount()+' Villages'],
+  ['patidarai','violet','👨‍🌾','Patidar AI<br>पूछो', 'सवाल पूछो']
  ];
  h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">'+portals.slice(0,4).map(portalTile).join('')+'</div>';
 
@@ -1082,7 +1278,9 @@ function renderHome(){
 
  h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">'+portals.slice(4,8).map(portalTile).join('')+'</div>';
 
- h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">'+portals.slice(8,12).map(portalTile).join('')+'</div>';
+ h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">'+portals.slice(8,12).map(portalTile).join('')+'</div>';
+
+ h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">'+portals.slice(12,18).map(portalTile).join('')+'</div>';
 
  h += '<div class="bg-white rounded-xl shadow-lg p-6 mb-8"><h3 class="text-2xl font-bold mb-1 text-center">🎲 जानो अपने साथियों को / Know Your Community</h3><p class="text-center text-gray-500 text-sm mb-4">Random member profiles देखो</p><div id="randProfileBox"></div></div>';
 
@@ -1389,10 +1587,27 @@ function renderRegisterPage(){
  let h = '<div class="bg-white rounded-lg shadow-lg p-6 max-w-2xl mx-auto">';
  h += '<h2 class="text-2xl md:text-3xl font-bold mb-2 text-center">📝 पाटीदार परिवार से जुड़ो</h2>';
  h += '<p class="text-sm text-red-600 font-bold mb-4 text-center">⚠️ Subject to Admin Approval | सिर्फ जरूरी चीज़ें भरो - बाकी optional</p>';
- h += stepFormHTML({});
+ if(!currentUser && showRegModeChooser){
+  h += regModeChooserHTML();
+ } else {
+  h += stepFormHTML({});
+ }
  h += '</div>';
  return h;
 }
+function regModeChooserHTML(){
+ let h = '<p class="text-center font-bold text-gray-700 mb-3">Register कैसे करना चाहते हो?</p>';
+ h += '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
+ h += '<button type="button" onclick="chooseRegMode(\'otp\')" class="bg-blue-50 hover:bg-blue-100 border-2 border-blue-400 rounded-xl p-6 text-center">'+
+  '<span class="text-4xl block mb-2">📲</span><p class="font-bold text-blue-800 text-lg">OTP से Register</p>'+
+  '<p class="text-xs text-gray-500 mt-1">अपना mobile number OTP से verify करो</p></button>';
+ h += '<button type="button" onclick="chooseRegMode(\'reference\')" class="bg-green-50 hover:bg-green-100 border-2 border-green-400 rounded-xl p-6 text-center">'+
+  '<span class="text-4xl block mb-2">🤝</span><p class="font-bold text-green-800 text-lg">Reference से Register</p>'+
+  '<p class="text-xs text-gray-500 mt-1">किसी member ने पहले से approve कर रखा है? OTP की जरूरत नहीं</p></button>';
+ h += '</div>';
+ return h;
+}
+function chooseRegMode(mode){ regMode = mode; showRegModeChooser = false; renderApp(); }
 function renderCommunity(){
  let top = '<h2 class="text-3xl font-bold mb-6">👥 COMMUNITY / समुदाय</h2>';
  top += '<button onclick="openSwipeView(\'community\')" class="w-full mb-6 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl">🔀 Profiles Explore करें</button>';
@@ -1579,6 +1794,7 @@ function openMyAccountMenu(){
   '<button onclick="myAcc_jobs()" class="bg-green-50 hover:bg-green-100 border-2 border-green-300 rounded-lg p-4 text-center font-bold text-green-800"><span class="text-2xl block mb-1">💼</span>मेरे Jobs</button>'+
   '<button onclick="myAcc_rishtedaar()" class="bg-indigo-50 hover:bg-indigo-100 border-2 border-indigo-300 rounded-lg p-4 text-center font-bold text-indigo-800"><span class="text-2xl block mb-1">👨‍👩‍👧</span>मेरे रिश्तेदार</button>'+
   '<button onclick="myAcc_mitra()" class="bg-pink-50 hover:bg-pink-100 border-2 border-pink-300 rounded-lg p-4 text-center font-bold text-pink-800"><span class="text-2xl block mb-1">🙋</span>मेरे मित्र</button>'+
+  '<button onclick="myAcc_referrals()" class="bg-teal-50 hover:bg-teal-100 border-2 border-teal-300 rounded-lg p-4 text-center font-bold text-teal-800"><span class="text-2xl block mb-1">🤝</span>Reference से जोड़ो</button>'+
   '</div>'+
   '<div class="border-t-2 mt-4 pt-4 grid grid-cols-1 gap-2">'+
   '<button onclick="closeBizForce();openEditProfile()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg font-bold text-sm">✏️ Edit My Profile</button>'+
@@ -1748,6 +1964,63 @@ function myAcc_mitra(){
   '<button onclick="closeBizForce()" class="w-full mt-4 bg-gray-200 text-gray-700 px-4 py-3 rounded-lg font-bold">बंद करो / Close</button></div>';
  document.getElementById('bizModal').classList.remove('hidden');
 }
+// ================= REFERENCE से जोड़ो (pre-approve — non-OTP आसान login) =================
+function myAcc_referrals(){
+ const me = myMember();
+ if(!me){ closeBizForce(); showRegisterPrompt('पहले Register करो।'); return; }
+ const box = document.getElementById('bizModalBox');
+ const mine = referralPreapprovalsData.filter(r => r.referrerPhone===currentUser).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+ let h = '<div class="p-6">';
+ h += '<div class="flex justify-between items-center mb-2"><h3 class="text-xl font-bold text-teal-800">🤝 Reference से जोड़ो</h3><button onclick="closeBizForce()" class="text-gray-500 hover:text-gray-700 text-2xl font-bold">✕</button></div>';
+ h += '<p class="text-xs text-gray-500 mb-4">जिसे यहाँ pre-approve कर दोगे, वो Register page पर "Reference से Register" चुनकर बिना OTP के सीधे समाज से जुड़ सकता है।</p>';
+ h += '<div class="bg-teal-50 border-2 border-teal-300 rounded-lg p-4 mb-4">';
+ h += '<p class="font-bold text-teal-800 mb-2 text-sm">➕ नया व्यक्ति Pre-approve करो</p>';
+ h += '<div class="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">'+
+  '<input id="rp_name" placeholder="नाम" class="px-3 py-2 border-2 rounded">'+
+  '<input id="rp_phone" placeholder="Mobile Number" maxlength="10" inputmode="numeric" class="px-3 py-2 border-2 rounded">'+
+  '</div>';
+ h += '<button onclick="submitPreapproval()" class="w-full bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded font-bold text-sm">✅ Pre-approve करो</button>';
+ h += '</div>';
+ if(!mine.length){
+  h += '<p class="text-center text-gray-400 py-6">अभी तक किसी को pre-approve नहीं किया</p>';
+ } else {
+  h += '<p class="font-bold text-gray-700 text-sm mb-2">List ('+mine.length+')</p>';
+  h += '<div class="space-y-2">'+mine.map(r => {
+   const used = !!r.usedAt;
+   return '<div class="flex items-center justify-between gap-2 bg-gray-50 border rounded-lg p-3">'+
+    '<div><p class="font-bold text-sm">'+esc(r.name)+'</p><p class="text-xs text-gray-500">📱 '+esc(r.phone)+'</p>'+
+    '<p class="text-xs font-bold '+(used?'text-green-600':'text-yellow-600')+'">'+(used?'✅ जुड़ गए':'⏳ Waiting')+'</p></div>'+
+    '<div class="flex gap-2 shrink-0">'+
+    (!used?'<a href="'+waPreapproveLink(r.name,r.phone)+'" target="_blank" class="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded font-bold text-xs">💬 बताओ</a>':'')+
+    '<button onclick="deletePreapproval(\''+r.id+'\')" class="bg-red-100 text-red-600 px-2 py-2 rounded font-bold text-xs">🗑️</button>'+
+    '</div></div>';
+  }).join('')+'</div>';
+ }
+ h += '</div>';
+ box.innerHTML = h;
+ document.getElementById('bizModal').classList.remove('hidden');
+}
+async function submitPreapproval(){
+ const me = myMember(); if(!me) return;
+ const name = fmtName(document.getElementById('rp_name').value);
+ const phone = fmtPhone(document.getElementById('rp_phone').value);
+ if(!name){ alert('❌ नाम भरो'); return; }
+ if(phone.length!==10){ alert('❌ सही 10 अंकों का Mobile Number भरो'); return; }
+ if(phone===currentUser){ alert('❌ खुद को pre-approve नहीं कर सकते'); return; }
+ if(membersData.find(m => m.phone===phone)){ alert('❌ यह number तो पहले से registered member है!'); return; }
+ if(referralPreapprovalsData.find(r => r.referrerPhone===currentUser && r.phone===phone)){ alert('❌ इस number को आप पहले से pre-approve कर चुके हो!'); return; }
+ busy(true);
+ await db.collection('referral_preapprovals').add({
+  referrerPhone: currentUser, referrerName: me.name+' '+me.surname, name, phone, createdAt: today(), usedAt: null
+ });
+ busy(false);
+ myAcc_referrals();
+}
+function waPreapproveLink(name, phone){
+ const msg = 'नमस्ते '+name+' 🙏 मैंने आपको पाटीदार समाज (PSIM) की app में approve कर दिया है — अब आप बिना OTP के सीधे समाज से जुड़ सकते हो, "Reference से Register" चुनकर:\n'+location.origin+'/#register';
+ return 'https://wa.me/91'+phone+'?text='+encodeURIComponent(msg);
+}
+function deletePreapproval(id){ delDoc('referral_preapprovals', id, 'यह pre-approval delete करें?'); }
 // हर page के नीचे चलती-फिरती business पट्टी (बिना search किए भी दिखे)
 function businessStrip(){
  const biz = allBusinesses();
@@ -1868,6 +2141,7 @@ function renderCricketPage(){
 
 // ================= BLOOD =================
 let bloodFilterGroup='', bloodFilterDist='', bloodFilterVillage='';
+let showBloodSOSForm=false;
 function allDonors(){
  const fromMembers = publicMembers()
   .filter(m => m.blood_group && (!m.blood_donor || m.blood_donor.indexOf('हाँ')===0))
@@ -1877,11 +2151,64 @@ function allDonors(){
  bloodData.concat(fromMembers).forEach(d => { if(!seen[d.phone]){ seen[d.phone]=1; merged.push(d); } });
  return merged;
 }
+// ================= 🆘 BLOOD EMERGENCY SOS =================
+function activeBloodSOS(){ return bloodSosData.filter(s=>s.status!=='resolved').sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')); }
+async function submitBloodSOS(){
+ const me = myMember();
+ if(!me || me.status!=='approved'){ showRegisterPrompt('SOS post करने के लिए पहले Community member बनो।'); return; }
+ const bloodGroup = document.getElementById('sos_group').value;
+ const hospital = document.getElementById('sos_hospital').value.trim();
+ const city = document.getElementById('sos_city').value.trim();
+ const contactPhone = fmtPhone(document.getElementById('sos_phone').value) || me.phone;
+ const note = document.getElementById('sos_note').value.trim();
+ if(!bloodGroup || !hospital){ alert('❌ Blood Group और Hospital जरूरी!'); return; }
+ busy(true);
+ await db.collection('blood_sos').add({fromPhone:me.phone, fromName:me.name+' '+me.surname, bloodGroup, hospital, city, contactPhone, note, status:'active', createdAt:today()});
+ busy(false); showBloodSOSForm=false;
+ alert('🆘 SOS post हो गई! Home page और Blood page पर सबको दिखेगी।');
+ renderApp();
+}
+async function resolveBloodSOS(id){
+ if(!confirm('✅ Blood मिल गया — SOS बंद करें?')) return;
+ await updDoc('blood_sos', id, {status:'resolved'});
+}
+function bloodSOSCard(s, matchCount){
+ return '<div class="bg-white border-2 border-red-500 rounded-lg p-4 shadow-md">'+
+ '<div class="flex justify-between items-start gap-2 flex-wrap"><div>'+
+ '<p class="text-2xl font-bold text-red-600">🆘 '+esc(s.bloodGroup)+' चाहिए</p>'+
+ '<p class="text-sm text-gray-700 mt-1">🏥 '+esc(s.hospital)+(s.city?' | 📍 '+esc(s.city):'')+'</p>'+
+ (s.note?'<p class="text-sm text-gray-600 mt-1">'+esc(s.note)+'</p>':'')+
+ '<p class="text-xs text-gray-400 mt-1">पूछा: '+esc(s.fromName)+' | '+esc(s.createdAt||'')+(matchCount!=null?' | 🩸 '+matchCount+' matching donors':'')+'</p>'+
+ '</div><div class="flex flex-col gap-2 shrink-0">'+
+ '<a href="tel:'+esc(s.contactPhone)+'" class="bg-green-600 text-white px-4 py-2 rounded-lg font-bold text-sm text-center">📞 Call करो</a>'+
+ ((currentUser===s.fromPhone||isAdmin())?'<button onclick="resolveBloodSOS(\''+s.id+'\')" class="bg-gray-500 text-white px-4 py-2 rounded-lg font-bold text-sm">✅ मिल गया</button>':'')+
+ '</div></div></div>';
+}
 function renderBloodPage(){
  const villQ = bloodFilterVillage.trim().toLowerCase();
  const filtered = allDonors().filter(m => (!bloodFilterGroup || m.blood_group===bloodFilterGroup) && (!bloodFilterDist || m.district===bloodFilterDist) && (!villQ || (m.village||'').toLowerCase().includes(villQ)));
  let h = '<h2 class="text-3xl font-bold mb-2">🩸 BLOOD DONORS / रक्तदाता ('+filtered.length+')</h2>';
  h += '<p class="text-gray-500 mb-6">गाँव/तहसील, District और Group से खोजो — सीधे Call या WhatsApp पर अनुरोध करो | Donors समाज द्वारा verified ✅</p>';
+
+ const activeSOS = activeBloodSOS();
+ h += '<div class="bg-red-50 border-2 border-red-600 rounded-xl p-5 mb-6">';
+ h += '<div class="flex justify-between items-center flex-wrap gap-2 mb-3"><h3 class="text-xl font-bold text-red-700">🆘 Emergency SOS ('+activeSOS.length+')</h3>'+
+ '<button onclick="showBloodSOSForm=!showBloodSOSForm;renderApp()" class="bg-red-600 text-white px-5 py-2 rounded-lg font-bold text-sm">🆘 URGENT चाहिए — SOS Post करो</button></div>';
+ if(showBloodSOSForm){
+  h += '<div class="bg-white border-2 border-red-400 rounded-lg p-4 mb-4"><div class="grid grid-cols-1 md:grid-cols-2 gap-3">'+
+  '<select id="sos_group" class="px-3 py-2 border-2 rounded"><option value="">-- Blood Group --</option>'+BLOOD_GROUPS.map(g=>'<option>'+g+'</option>').join('')+'</select>'+
+  '<input id="sos_hospital" placeholder="Hospital का नाम *" class="px-3 py-2 border-2 rounded">'+
+  '<input id="sos_city" placeholder="शहर/इलाका" class="px-3 py-2 border-2 rounded">'+
+  '<input id="sos_phone" maxlength="10" placeholder="Contact Phone (खाली छोड़ो तो अपना ही जाएगा)" class="px-3 py-2 border-2 rounded">'+
+  '<div class="md:col-span-2"><textarea id="sos_note" rows="2" placeholder="Details (कितने units, कब तक चाहिए...)" class="w-full px-3 py-2 border-2 rounded"></textarea></div></div>'+
+  '<button onclick="submitBloodSOS()" class="mt-3 bg-red-600 text-white px-6 py-2 rounded-lg font-bold">🆘 POST करो</button></div>';
+ }
+ if(activeSOS.length){
+  h += '<div class="space-y-3">'+activeSOS.map(s=>bloodSOSCard(s, allDonors().filter(d=>d.blood_group===s.bloodGroup).length)).join('')+'</div>';
+ } else {
+  h += '<p class="text-sm text-gray-500">अभी कोई urgent request नहीं है 🙏</p>';
+ }
+ h += '</div>';
  h += '<div class="bg-white rounded-lg shadow p-5 mb-6 flex flex-wrap gap-3">';
  h += '<input type="text" value="'+esc(bloodFilterVillage)+'" oninput="bloodFilterVillage=this.value;renderApp()" placeholder="🏡 अपना गाँव/तहसील खुद डालो" class="px-3 py-2 border-2 rounded flex-1 min-w-[180px]">';
  h += '<select onchange="bloodFilterDist=this.value;renderApp()" class="px-3 py-2 border-2 rounded"><option value="">सभी District</option>'+MP_DISTRICTS.map(d=>'<option '+(d===bloodFilterDist?'selected':'')+'>'+d+'</option>').join('')+'</select>';
@@ -1915,6 +2242,338 @@ function renderBloodPage(){
   });
  }
  return h;
+}
+
+// ================= 🕯️ शोक समाचार (Obituaries — सिर्फ Admin/Sub-admin post करते हैं) =================
+let showObitForm=false;
+function recentObituaries(days){
+ const cutoff = new Date(Date.now() - (days||14)*86400000).toISOString().slice(0,10);
+ return obituariesData.filter(o => (o.createdAt||'') >= cutoff);
+}
+async function submitObituaryAdmin(){
+ const name = fmtName(_v('ob_name'));
+ const age = _v('ob_age');
+ const place = _v('ob_place');
+ const deathDate = _v('ob_date');
+ const pic = _v('ob_pic');
+ const message = _v('ob_message');
+ if(!name){ alert('❌ नाम जरूरी!'); return; }
+ busy(true);
+ await db.collection('obituaries').add({name, age, place, deathDate, pic, message, createdAt:today()});
+ busy(false); showObitForm=false;
+ alert('🕯️ शोक समाचार post हो गया।');
+ renderApp();
+}
+function obituaryCard(o){
+ return '<div class="bg-gray-100 border-2 border-gray-400 rounded-lg p-4 flex gap-4 items-start">'+
+ (o.pic?'<img src="'+o.pic+'" class="h-20 w-20 object-cover rounded-full border-2 border-gray-400 shrink-0">':'<div class="h-20 w-20 rounded-full bg-gray-300 flex items-center justify-center text-3xl shrink-0">🕯️</div>')+
+ '<div><p class="font-bold text-lg text-gray-800">'+esc(o.name)+(o.age?' ('+esc(o.age)+')':'')+'</p>'+
+ (o.place||o.deathDate?'<p class="text-sm text-gray-600">'+esc(o.place||'')+(o.deathDate?' | '+esc(o.deathDate):'')+'</p>':'')+
+ (o.message?'<p class="text-sm text-gray-700 mt-2 whitespace-pre-line">'+esc(o.message)+'</p>':'')+
+ '</div></div>';
+}
+function renderObituariesPage(){
+ let h = '<h2 class="text-3xl font-bold mb-2 text-gray-800">🕯️ शोक समाचार</h2>';
+ h += '<p class="text-gray-500 mb-6">समाज के दिवंगत सदस्यों को श्रद्धांजलि</p>';
+ if(!obituariesData.length) h += '<div class="bg-white rounded-lg p-10 text-center shadow"><p class="text-4xl mb-3">🕯️</p><p class="text-lg font-bold text-gray-600">अभी कोई सूचना नहीं है</p></div>';
+ else h += '<div class="space-y-4">'+obituariesData.map(obituaryCard).join('')+'</div>';
+ return h;
+}
+
+// ================= 🏡 मेरे गाँव ले चलो =================
+let selectedGaanv = '';
+let showVillageDescForm = false;
+function uniqueVillageCount(){
+ return new Set(publicMembers().map(m=>fmtName(m.home_village)).filter(Boolean)).size;
+}
+function villageList(){
+ const counts = {};
+ publicMembers().forEach(m=>{ const v=fmtName(m.home_village); if(v) counts[v]=(counts[v]||0)+1; });
+ return Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([name,count])=>({name,count}));
+}
+function setGaanv(v){ selectedGaanv = fmtName(v); showVillageDescForm=false; renderApp(); window.scrollTo(0,0); }
+function villageInfoFor(v){ return villageInfoData.find(x=>fmtName(x.village)===fmtName(v)); }
+async function saveVillageDescription(){
+ const me = myMember();
+ if(!me || me.status!=='approved'){ showRegisterPrompt('Description जोड़ने के लिए पहले Community member बनो।'); return; }
+ const desc = document.getElementById('vg_desc').value.trim();
+ if(!desc){ alert('❌ कुछ तो लिखो!'); return; }
+ const existing = villageInfoFor(selectedGaanv);
+ busy(true);
+ if(existing) await db.collection('village_info').doc(existing.id).update({description:desc, updatedAt:today(), updatedBy:me.phone});
+ else await db.collection('village_info').add({village:selectedGaanv, description:desc, addedBy:me.phone, createdAt:today()});
+ busy(false); showVillageDescForm=false;
+ alert('✅ Description save हो गई!');
+ renderApp();
+}
+function renderMereGaanvPage(){
+ let h = '<h2 class="text-3xl font-bold mb-2">🏡 मेरे गाँव ले चलो</h2>';
+ h += '<p class="text-gray-500 mb-6">अपने गाँव की पूरी जानकारी — कौन-कौन है, क्या-क्या व्यापार है, सब एक जगह</p>';
+
+ if(!selectedGaanv){
+  h += '<div class="bg-white rounded-lg shadow p-5 mb-6"><div class="flex gap-2">'+
+   '<input id="vg_search" list="dl_villages" placeholder="गाँव का नाम खोजो..." class="flex-1 px-3 py-2 border-2 rounded">'+
+   '<button onclick="setGaanv(document.getElementById(\'vg_search\').value)" class="bg-emerald-600 text-white px-6 py-2 rounded-lg font-bold">ले चलो →</button>'+
+   '</div></div>';
+  const list = villageList();
+  if(!list.length) h += '<p class="text-gray-500 text-center py-8">अभी कोई गाँव data में नहीं है</p>';
+  else {
+   h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3">'+list.map(v=>
+    '<div onclick="setGaanv(\''+esc(v.name).replace(/'/g,"\\'")+'\')" class="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white rounded-xl p-4 text-center cursor-pointer shadow hover:shadow-xl transform hover:scale-105 transition-all"><p class="font-bold truncate">'+bilingualHTML(v.name, translitLookup(v.name,'en2hi'))+'</p><p class="text-xs text-emerald-100 mt-1">'+v.count+' सदस्य</p></div>'
+   ).join('')+'</div>';
+  }
+  return h;
+ }
+
+ const members = publicMembers().filter(m=>fmtName(m.home_village)===selectedGaanv);
+ const businesses = shufflePromotedFirst(allBusinesses().filter(b=>fmtName(b.village)===selectedGaanv));
+ const info = villageInfoFor(selectedGaanv);
+ const hi = translitLookup(selectedGaanv, 'en2hi');
+
+ h += '<button onclick="selectedGaanv=\'\';renderApp()" class="mb-4 bg-gray-200 px-4 py-2 rounded-lg font-bold text-sm">← दूसरा गाँव चुनो</button>';
+ h += '<div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6 mb-6">';
+ h += '<h3 class="text-3xl font-bold mb-2">🏡 '+bilingualHTML(selectedGaanv, hi)+'</h3>';
+ h += '<p class="text-emerald-100">👥 '+members.length+' सदस्य | 🏪 '+businesses.length+' व्यापार</p>';
+ h += (info && info.lat) ?
+  '<p class="text-emerald-100 text-xs mt-2">📍 Location set है — Patidar AI से distance जैसे सवाल पूछ सकते हो</p>' :
+  '<button onclick="geocodeThisVillage()" class="mt-2 bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-3 py-1.5 rounded-full">📍 Location सेट करो</button>';
+ h += '</div>';
+
+ h += '<div class="bg-white rounded-lg shadow p-6 mb-6"><div class="flex justify-between items-center mb-2"><h3 class="text-lg font-bold">📝 गाँव के बारे में</h3><button onclick="showVillageDescForm=!showVillageDescForm;renderApp()" class="text-xs bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full font-bold">✏️ '+(info?'Edit करो':'Add करो')+'</button></div>';
+ if(showVillageDescForm){
+  h += '<textarea id="vg_desc" rows="3" placeholder="गाँव के बारे में लिखो..." class="w-full px-3 py-2 border-2 rounded mb-2">'+esc(info?info.description:'')+'</textarea>'+
+  '<button onclick="saveVillageDescription()" class="bg-emerald-600 text-white px-6 py-2 rounded-lg font-bold text-sm">✅ Save</button>';
+ } else {
+  h += info ? '<p class="text-gray-700 whitespace-pre-line">'+esc(info.description)+'</p>' : '<p class="text-gray-400 text-sm">अभी कोई description नहीं है — पहला बनने वाले बनो!</p>';
+ }
+ h += '</div>';
+
+ h += '<h3 class="text-2xl font-bold mb-3">🏪 यहाँ के व्यापार</h3>';
+ if(!businesses.length) h += '<p class="text-gray-400 text-sm mb-6">अभी कोई business list नहीं है</p>';
+ else h += '<div class="flex gap-3 overflow-x-auto pb-2 noscroll mb-6">'+businesses.map(b=>b.promoted?promoBizCardHTML(b):bizMiniCard(b)).join('')+'</div>';
+
+ h += '<h3 class="text-2xl font-bold mb-3">👥 यहाँ के सदस्य ('+members.length+')</h3>';
+ if(!members.length) h += '<p class="text-gray-400 text-sm">अभी कोई member नहीं है इस गाँव से</p>';
+ else h += '<div class="flex gap-4 overflow-x-auto pb-2 noscroll">'+members.map(memberCard).join('')+'</div>';
+
+ return h;
+}
+// गाँव का lat/lng सेट करना — बिना coordinates के "दो गाँव के बीच distance" जैसे सवाल Patidar AI जवाब नहीं दे सकता
+async function geocodeThisVillage(){
+ const me = myMember();
+ if(!me || me.status!=='approved'){ showRegisterPrompt('Location set करने के लिए पहले Community member बनो।'); return; }
+ const ref = publicMembers().find(m=>fmtName(m.home_village)===selectedGaanv);
+ const district = ref ? (ref.home_district||'') : '';
+ busy(true);
+ try{
+  const resp = await fetch(GEOCODE_VILLAGE_URL+'?village='+encodeURIComponent(selectedGaanv)+'&district='+encodeURIComponent(district));
+  const out = await resp.json().catch(()=>({}));
+  busy(false);
+  if(!out.lat){ alert('❌ Location नहीं मिली — कुछ देर बाद फिर try करो।'); return; }
+  const existing = villageInfoFor(selectedGaanv);
+  if(existing) await db.collection('village_info').doc(existing.id).update({lat:out.lat, lng:out.lng});
+  else await db.collection('village_info').add({village:selectedGaanv, description:'', lat:out.lat, lng:out.lng, addedBy:me.phone, createdAt:today()});
+  alert('✅ Location set हो गई!');
+  renderApp();
+ } catch(e){
+  busy(false);
+  alert('❌ Network error: '+e.message);
+ }
+}
+
+// ================= 👨‍🌾 PATIDAR AI (मौजूदा search को conversational बनाना — कोई paid LLM नहीं, 100% free) =================
+// Design: कोई बाहरी AI API नहीं बुलाई जाती — Community का data (business/blood/news/events/villages)
+// पहले से browser में realtime listeners से load है, बस उसी पर keyword-matching + clarifying-question
+// wala chhota conversation engine chalta hai. Isliye cost = ₹0 (Cloud Function bhi nahi lagti).
+let aiPending = null; // {originalQuery} — jab AI ne clarifying sawaal poocha ho, agla message uska jawab माना jaata hai
+
+const AI_GREETINGS = ['hi','hello','hey','namaste','namaskar','नमस्ते','नमस्कार','हैलो','हाय'];
+const AI_DISTANCE_WORDS = ['distance','doori','दूरी','kitni door','kitna dur','kitni dur'];
+const AI_BLOOD_WORDS = ['blood','khoon','रक्त','donor','donate'];
+const AI_NEWS_WORDS = ['news','samachar','samachaar','खबर','समाचार'];
+const AI_EVENT_WORDS = ['event','karyakram','कार्यक्रम'];
+const AI_FOOD_WORDS = ['khana','khane','food','nashta','restaurant','भोजन','खाना','नाश्ता'];
+const AI_SYNONYMS = {
+ 'dr':'doctor','doc':'doctor','adv':'advocate lawyer','lawyer':'advocate legal',
+ 'ca':'accountant','cs':'accountant','eng':'engineer','engg':'engineer',
+ 'elec':'electrician electronics','electric':'electrician electronics',
+ 'plum':'plumber','carp':'carpenter','mistri':'mason carpenter',
+ 'darji':'tailor','nai':'barber salon','cook':'cook caterer restaurant food',
+ 'khana':'food restaurant hotel caterer khana','khane':'food restaurant hotel caterer khana',
+ 'nashta':'restaurant hotel food','bhukh':'food restaurant hotel caterer khana',
+ 'med':'medical pharmacy','medicine':'medical pharmacy','pharma':'medical pharmacy',
+ 'mobile':'mobile electronics','photo':'photographer','video':'videographer',
+ 'comp':'computer it','computer':'computer it','property':'property dealer real estate',
+ 'kirana':'kirana general store','grocery':'kirana general store',
+ 'jewel':'jewellery jeweller','sona':'jewellery jeweller','cloth':'textiles garments cloth',
+ 'transport':'transport logistics driver','construction':'construction builder',
+ 'beauty':'beauty salon','parlour':'beauty salon','auto':'automobile garage','garage':'automobile garage','mechanic':'automobile garage'
+};
+// Home page पर सबसे ऊपर, सबको दिखता है (guests भी) — biggest attraction है, isliye chhupana nahi।
+// Chhota/compact rakha hai jaanbhoojkar — scroll na karna pade, sirf ek nazar mein attract kare aur click karaye।
+// पूछने के लिए login जरूरी है — guest click kare to normal register-prompt अपने आप आ जाता है (goPage locked-page check से)।
+function patidarAIHomeHeroHTML(){
+ // हल्का, खेत-जैसा हरा-सुनहरा theme + हल्का circuit pattern पीछे — "गाँव वाला AI से जुड़कर smart हो गया" वाला भाव
+ return '<div onclick="goPage(\'patidarai\')" class="relative overflow-hidden bg-gradient-to-br from-amber-50 via-lime-50 to-emerald-100 border-2 border-emerald-400 rounded-2xl shadow-lg px-6 py-5 mb-6 text-center cursor-pointer hover:shadow-2xl transform hover:scale-[1.01] transition-all">'+
+  '<svg class="absolute inset-0 w-full h-full opacity-[0.12]" viewBox="0 0 400 120" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">'+
+  '<path d="M20 60 H95 M95 60 V22 M95 60 V98 M305 60 H380 M305 60 V32 M305 60 V88 M150 22 H250" stroke="#047857" stroke-width="2" fill="none"/>'+
+  '<circle cx="95" cy="22" r="4" fill="#047857"/><circle cx="95" cy="98" r="4" fill="#047857"/>'+
+  '<circle cx="305" cy="32" r="4" fill="#047857"/><circle cx="305" cy="88" r="4" fill="#047857"/>'+
+  '<circle cx="150" cy="22" r="4" fill="#047857"/><circle cx="250" cy="22" r="4" fill="#047857"/>'+
+  '</svg>'+
+  '<div class="relative">'+
+  '<p class="text-[11px] uppercase tracking-[0.2em] text-emerald-700 font-bold mb-0.5">Welcome to</p>'+
+  '<p class="text-4xl md:text-6xl font-extrabold tracking-tight mb-2 text-emerald-900">🌾👨‍🌾 PATIDAR AI</p>'+
+  '<span class="inline-block bg-emerald-600 text-white font-bold text-sm px-5 py-1.5 rounded-full">'+(currentUser?'बात करो →':'🔒 Login करके पूछो →')+'</span>'+
+  '</div></div>';
+}
+function renderPatidarAI(){
+ let h = '<h2 class="text-3xl font-bold mb-2">👨‍🌾 Patidar AI</h2>';
+ h += '<p class="text-gray-500 mb-1">Business/Profession, 🩸 Blood Donor, 📰 समाज की News, 📅 Events, या दो गाँव के बीच 📍 Distance — कुछ भी पूछो</p>';
+ h += '<p class="text-xs text-gray-400 mb-4">⚠️ यह सिर्फ app में मौजूद data के आधार पर जवाब देता है, किसी member की personal profile नहीं देगा।</p>';
+ h += '<div class="bg-white rounded-xl shadow-lg p-4 md:p-6">';
+ h += '<div id="aiChatBox" class="space-y-3 mb-4 overflow-y-auto" style="max-height:50vh;">';
+ if(!aiChatHistory.length){
+  h += '<div class="text-center text-gray-400 py-8"><p class="text-4xl mb-2">👨‍🌾</p><p class="text-sm">नमस्ते! कुछ भी पूछो, जैसे नीचे दिए उदाहरण</p></div>';
+ } else {
+  h += aiChatHistory.map(aiChatBubble).join('');
+  if(aiThinking) h += aiThinkingBubble();
+ }
+ h += '</div>';
+ if(!aiChatHistory.length){
+  const samples = ['इंदौर में खाने के option चाहिए','O+ blood donor चाहिए','आने वाले events कौन से हैं?'];
+  h += '<div class="flex flex-wrap gap-2 mb-3">'+samples.map(s=>'<button onclick="askPatidarAISample(\''+esc(s).replace(/'/g,"\\'")+'\')" class="text-xs bg-violet-50 text-violet-700 border border-violet-300 rounded-full px-3 py-1.5 hover:bg-violet-100">'+esc(s)+'</button>').join('')+'</div>';
+ }
+ h += '<div class="flex gap-2">'+
+  '<input id="ai_question" onkeydown="if(event.key===\'Enter\'){event.preventDefault();askPatidarAI();}" placeholder="अपना सवाल लिखो..." class="flex-1 px-4 py-3 border-2 border-violet-300 rounded-lg"'+(aiThinking?' disabled':'')+'>'+
+  '<button onclick="askPatidarAI()"'+(aiThinking?' disabled':'')+' class="bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white px-5 py-3 rounded-lg font-bold">'+(aiThinking?'⏳':'भेजो →')+'</button>'+
+  '</div>';
+ h += '</div>';
+ return h;
+}
+function aiChatBubble(m){
+ const mine = m.role==='user';
+ return '<div class="flex '+(mine?'justify-end':'justify-start')+'">'+
+  '<div class="max-w-[85%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-line '+(mine?'bg-violet-600 text-white rounded-br-sm':'bg-gray-100 text-gray-800 rounded-bl-sm')+'">'+esc(m.text)+'</div></div>';
+}
+function aiThinkingBubble(){
+ return '<div class="flex justify-start"><div class="max-w-[85%] rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm bg-gray-100 text-gray-400">सोच रहा है...</div></div>';
+}
+function askPatidarAISample(q){ const inp=document.getElementById('ai_question'); if(inp){ inp.value=q; askPatidarAI(); } }
+function scrollAiChatToBottom(){ setTimeout(()=>{ const box=document.getElementById('aiChatBox'); if(box) box.scrollTop = box.scrollHeight; }, 30); }
+function askPatidarAI(){
+ if(!currentUser){ showRegisterPrompt('Patidar AI इस्तेमाल करने के लिए पहले login करो।'); return; }
+ const inp = document.getElementById('ai_question');
+ const q = (inp && inp.value || '').trim();
+ if(!q || aiThinking) return;
+ aiChatHistory.push({role:'user', text:q});
+ aiThinking = true;
+ renderApp(); scrollAiChatToBottom();
+ // असली network call नहीं है — chhota सा artificial pause taaki reply "socha hua" lage, ek robot jaisa turant-jawab na lage
+ setTimeout(() => {
+  let answer;
+  if(aiPending){
+   const combined = aiPending.originalQuery + ' ' + q;
+   aiPending = null;
+   answer = patidarAIReply(combined, 1);
+  } else {
+   answer = patidarAIReply(q, 0);
+  }
+  aiThinking = false;
+  aiChatHistory.push({role:'ai', text:answer});
+  renderApp(); scrollAiChatToBottom();
+ }, 500);
+}
+
+// ---- Core conversation router — sab kuch sirf app ke apne data (members/business/blood/news/events/villages) se, bahar se kuch nahi ----
+function patidarAIReply(qRaw, rounds){
+ const q = qRaw.trim();
+ const ql = q.toLowerCase();
+ if(!q) return 'कुछ तो पूछो 🙂';
+
+ if(AI_GREETINGS.some(g => ql===g || ql.startsWith(g+' '))){
+  return 'नमस्ते 🙏 मैं Patidar AI हूँ। मुझसे पूछो: कोई भी Business/Profession (डॉक्टर, वकील, इलेक्ट्रीशियन...), 🩸 Blood donor, 📰 समाज की News, 📅 Events, या दो गाँव के बीच 📍 Distance।';
+ }
+ if(AI_DISTANCE_WORDS.some(w => ql.includes(w))) return handleAiDistance(q, ql);
+ if(AI_BLOOD_WORDS.some(w => ql.includes(w))) return handleAiBlood(q);
+ if(AI_NEWS_WORDS.some(w => ql.includes(w))) return handleAiNews();
+ if(AI_EVENT_WORDS.some(w => ql.includes(w))) return handleAiEvents();
+ if(rounds===0 && AI_FOOD_WORDS.some(w => ql.includes(w)) && !aiHasAreaHint(ql)){
+  aiPending = { originalQuery: q };
+  return '📍 कौनसा area चाहिए? और 🍽️ नाश्ता चाहिए या पूरा खाना?';
+ }
+ const results = aiSearchBusinesses(q);
+ if(results.length) return aiFormatBusinessResults(results);
+ return 'माफ़ कीजिए, समझ नहीं आया 🙏 आप पूछ सकते हो: किसी काम/business वाले के बारे में (जैसे "इलेक्ट्रीशियन Vijay Nagar"), 🩸 Blood donor, 📰 News, 📅 Events, या दो गाँव के बीच Distance।';
+}
+function aiHasAreaHint(qlText){
+ let hit = false;
+ allBusinesses().forEach(b => { if(!hit && b.place && b.place.length>2 && qlText.includes(b.place.toLowerCase())) hit = true; });
+ if(!hit) villageList().forEach(v => { if(!hit && v.name.length>2 && qlText.includes(v.name.toLowerCase())) hit = true; });
+ return hit;
+}
+function aiExpandSynonyms(q){
+ let extra = '';
+ Object.keys(AI_SYNONYMS).forEach(k => { if(q.includes(k)) extra += ' '+AI_SYNONYMS[k]; });
+ return q + extra;
+}
+function aiSearchBusinesses(query){
+ const q = aiExpandSynonyms(query.toLowerCase());
+ const qWords = q.split(/\s+/).filter(w => w.length>1);
+ const scored = allBusinesses().map(b => {
+  const hay = (b.type+' '+b.name+' '+(b.place||'')+' '+(b.village||'')+' '+(b.city||'')).toLowerCase();
+  let score = 0;
+  if(hay.includes(q)) score += 10;
+  qWords.forEach(w => { if(hay.includes(w)) score += 1; });
+  return {b, score};
+ }).filter(x => x.score>0).sort((a,b) => b.score-a.score);
+ // Paid/promoted business hamesha pehle — baaki relevance ke hisaab se uske baad
+ const promoted = scored.filter(x => x.b.promoted).map(x => x.b);
+ const rest = scored.filter(x => !x.b.promoted).map(x => x.b);
+ return promoted.concat(rest).slice(0, 6);
+}
+function aiFormatBusinessResults(results){
+ const lines = results.map((b,i) => (i+1)+'. '+b.name+(b.promoted?' ⭐':'')+' — '+b.type+(b.place?' | '+b.place:'')+'\n   📞 '+b.phone);
+ return '🔍 ये मिले:\n\n'+lines.join('\n\n')+'\n\nपूरी list के लिए BUSINESS page पर जाओ।';
+}
+function handleAiBlood(q){
+ const m = q.toUpperCase().match(/\b(AB|A|B|O)[+-]/);
+ const group = m ? m[0] : null;
+ let donors = publicMembers().filter(mm => (mm.blood_donor||'').indexOf('हाँ')===0 && mm.blood_group);
+ if(group) donors = donors.filter(d => d.blood_group===group);
+ if(!donors.length) return group ? ('माफ़ कीजिए, अभी '+group+' के कोई registered donor नहीं हैं — BLOOD page पर जाकर 🆘 SOS डालो, ज़्यादा पहुँच मिलेगी।') : 'कौनसा blood group चाहिए? जैसे O+, B+, AB- लिखकर पूछो।';
+ const list = donors.slice(0,6).map(d => '🩸 '+d.name+' '+d.surname+' — '+d.blood_group+(d.home_village?(' | '+d.home_village):'')+'\n   📞 '+d.phone);
+ return 'ये blood donors मिले:\n\n'+list.join('\n\n')+'\n\nसीधे call/WhatsApp करो, या emergency में BLOOD page पर SOS डालो।';
+}
+function handleAiNews(){
+ const list = newsData.filter(n => n.status!=='pending').slice(0,5);
+ if(!list.length) return 'अभी कोई News नहीं है।';
+ return '📰 ताज़ा समाचार:\n\n'+list.map(n => '• '+n.title+(n.date?' ('+n.date+')':'')).join('\n')+'\n\nपूरी details NEWS page पर मिलेंगी।';
+}
+function handleAiEvents(){
+ const list = eventsData.filter(e => (e.date||'')>=today()).slice(0,5);
+ if(!list.length) return 'अभी कोई upcoming event नहीं है।';
+ return '📅 आने वाले Events:\n\n'+list.map(e => '• '+e.title+' — '+e.date+(e.location?(' | '+e.location):'')).join('\n')+'\n\nपूरी details EVENTS page पर मिलेंगी।';
+}
+function handleAiDistance(q, ql){
+ const names = villageList().map(v => v.name);
+ const found = names.filter(n => ql.includes(n.toLowerCase()));
+ if(found.length<2){
+  aiPending = { originalQuery: q };
+  return '📍 कौन से दो गाँव के बीच? दोनों नाम एक साथ लिखो, जैसे "Karwad aur Sanwer"';
+ }
+ const a = villageInfoFor(found[0]), b = villageInfoFor(found[1]);
+ if(!a || !a.lat || !b || !b.lat){
+  return '❌ '+found[0]+' या '+found[1]+' का location अभी set नहीं है। "मेरे गाँव ले चलो" पेज पर जाकर 📍 Location सेट करो, फिर पूछो।';
+ }
+ const km = Math.round(haversineKmClient(a.lat, a.lng, b.lat, b.lng)*10)/10;
+ return '📍 '+found[0]+' और '+found[1]+' के बीच सीधी (हवाई) दूरी लगभग '+km+' km है — सड़क की असल दूरी इससे ज़्यादा हो सकती है।';
+}
+function haversineKmClient(lat1, lon1, lat2, lon2){
+ const R = 6371;
+ const dLat = (lat2-lat1)*Math.PI/180, dLon = (lon2-lon1)*Math.PI/180;
+ const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+ return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
 // ================= PROPERTY (मकान-किरायेदार) =================
@@ -2041,6 +2700,195 @@ function renderPropertyPage(){
 
  if(!list.length) h += '<div class="bg-white rounded-lg p-10 text-center shadow"><p class="text-4xl mb-3">'+(isMakan?'🏠':'🏪')+'</p><p class="text-lg font-bold text-gray-600">अभी इस portal में कोई listing नहीं है</p></div>';
  else h += '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">'+list.map(propCard).join('')+'</div>';
+ return h;
+}
+
+// ================= मेरी धर्मशाला =================
+function approvedDharamshala(){ return dharamshalaData.filter(d=>d.status==='approved'); }
+function setDharamshalaKind(k){ dharamshalaKind=k; showDharamshalaForm=false; renderApp(); }
+async function submitDharamshala(){
+ const me = myMember();
+ if(!me || me.status!=='approved'){ showRegisterPrompt('धर्मशाला जोड़ने के लिए पहले Community member बनो।'); return; }
+ const {name_en, name_hi} = readBilingual('dh');
+ const village = document.getElementById('dh_village').value.trim();
+ const tehsil = document.getElementById('dh_tehsil').value.trim();
+ const ownerType = document.getElementById('dh_owner_type').value;
+ const ownerName = document.getElementById('dh_owner_name').value.trim();
+ const phone = fmtPhone(document.getElementById('dh_phone').value);
+ const gmap = document.getElementById('dh_gmap').value.trim();
+ const details = document.getElementById('dh_details').value.trim();
+ if((!name_en && !name_hi) || !phone){ alert('❌ Name और Phone जरूरी!'); return; }
+ saveTranslitPair(name_en, name_hi);
+ busy(true);
+ await db.collection('dharamshala').add({kind:dharamshalaKind, name_en, name_hi, village, tehsil, ownerType, ownerName, phone, gmap, details, status:'pending', createdAt:today(), addedBy:me.phone});
+ busy(false); showDharamshalaForm=false;
+ alert('✅ जानकारी submit हो गई! Admin approval के बाद list में दिखेगी।');
+ renderApp();
+}
+function dharamshalaCard(d){
+ return '<div class="bg-white border-2 border-orange-300 rounded-lg overflow-hidden shadow-md p-4">'+
+ '<p class="font-bold text-lg">'+bilingualHTML(d.name_en,d.name_hi)+'</p>'+
+ '<p class="inline-block bg-orange-100 text-orange-800 px-2 py-0.5 rounded text-xs font-bold mt-1">'+(d.ownerType==='samaj'?'🛕 समाज की':'👤 व्यक्ति विशेष की')+(d.ownerName?' — '+esc(d.ownerName):'')+'</p>'+
+ (d.village||d.tehsil?'<p class="text-sm text-gray-600 mt-1">📍 '+esc(d.village||'-')+(d.tehsil?' / '+esc(d.tehsil):'')+'</p>':'')+
+ (d.details?'<p class="text-sm text-gray-600 mt-2">'+esc(d.details)+'</p>':'')+
+ (d.gmap?'<a href="'+esc(d.gmap)+'" target="_blank" rel="noopener" class="block text-center mt-2 bg-blue-50 text-blue-700 border-2 border-blue-300 px-4 py-2 rounded-lg font-bold text-sm">📍 Google Maps पर देखें</a>':'')+
+ '<a href="tel:'+esc(d.phone)+'" class="block text-center mt-2 bg-green-600 text-white px-4 py-2 rounded-lg font-bold">📞 '+esc(d.phone)+'</a></div>';
+}
+function renderDharamshalaPage(){
+ const all = approvedDharamshala();
+ const list = all.filter(d => (d.kind||'village') === dharamshalaKind);
+ const nVillage = all.filter(d=>(d.kind||'village')==='village').length;
+ const nHotel = all.filter(d=>d.kind==='hotel').length;
+ const isVillage = dharamshalaKind==='village';
+ let h = '<h2 class="text-3xl font-bold mb-2">🛕 मेरी धर्मशाला</h2>';
+ h += '<p class="text-gray-500 mb-4">यात्रा/कार्यक्रम के लिए ठहरने की जगह ढूंढो या अपनी धर्मशाला/होटल यहाँ जोड़ो</p>';
+ h += '<div class="grid grid-cols-2 gap-3 mb-5">'+
+ '<button onclick="setDharamshalaKind(\'village\')" class="px-4 py-5 rounded-xl font-bold text-center '+(isVillage?'bg-orange-600 text-white shadow-lg':'bg-white border-2 border-orange-300 text-orange-700')+'"><p class="text-3xl mb-1">🛕</p><p>गाँव की धर्मशाला</p><p class="text-xs font-normal">('+nVillage+')</p></button>'+
+ '<button onclick="setDharamshalaKind(\'hotel\')" class="px-4 py-5 rounded-xl font-bold text-center '+(!isVillage?'bg-orange-600 text-white shadow-lg':'bg-white border-2 border-orange-300 text-orange-700')+'"><p class="text-3xl mb-1">🏨</p><p>Hotels — शहर/Town</p><p class="text-xs font-normal">('+nHotel+')</p></button></div>';
+ h += '<div class="text-center mb-6"><button onclick="showDharamshalaForm=!showDharamshalaForm;renderApp()" class="bg-orange-600 hover:bg-orange-700 text-white px-8 py-3 rounded-lg font-bold">➕ यहाँ जोड़ो</button></div>';
+ if(showDharamshalaForm){
+  h += '<div class="bg-orange-50 border-2 border-orange-400 rounded-lg p-6 mb-8"><h3 class="text-xl font-bold mb-4">➕ ADD '+(isVillage?'धर्मशाला':'HOTEL')+'</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+  bilingualInputsHTML('dh', (isVillage?'धर्मशाला':'Hotel')+' Name')+
+  '<div><label class="text-xs font-bold">'+(isVillage?'गाँव / Village':'शहर / City-Area')+' *</label><input id="dh_village" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">तहसील / Tehsil</label><input id="dh_tehsil" list="dl_tehsils" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">किसकी है?</label><select id="dh_owner_type" class="w-full px-3 py-2 border-2 rounded"><option value="samaj">🛕 समाज की (Samaj)</option><option value="person">👤 व्यक्ति विशेष की (Individual)</option></select></div>'+
+  '<div><label class="text-xs font-bold">मालिक/Trust का नाम</label><input id="dh_owner_name" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Phone *</label><input id="dh_phone" maxlength="10" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Google Maps Link</label><input id="dh_gmap" placeholder="https://maps.google.com/..." class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div class="md:col-span-2"><label class="text-xs font-bold">Details</label><textarea id="dh_details" rows="2" class="w-full px-3 py-2 border-2 rounded"></textarea></div></div>'+
+  '<div class="flex gap-3 mt-4"><button onclick="submitDharamshala()" class="bg-orange-600 text-white px-8 py-3 rounded font-bold">✅ SUBMIT</button><button onclick="showDharamshalaForm=false;renderApp()" class="bg-gray-400 text-white px-8 py-3 rounded font-bold">CANCEL</button></div></div>';
+ }
+ if(!list.length) h += '<div class="bg-white rounded-lg p-10 text-center shadow"><p class="text-4xl mb-3">🛕</p><p class="text-lg font-bold text-gray-600">अभी कोई listing नहीं है</p></div>';
+ else h += '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">'+list.map(dharamshalaCard).join('')+'</div>';
+ return h;
+}
+
+// ================= पाटीदार अस्पताल =================
+function approvedHospitals(){ return hospitalsData.filter(h=>h.status==='approved'); }
+function setHospitalKind(k){ hospitalKind=k; showHospitalForm=false; renderApp(); }
+async function submitHospital(){
+ const me = myMember();
+ if(!me || me.status!=='approved'){ showRegisterPrompt('Hospital जोड़ने के लिए पहले Community member बनो।'); return; }
+ const {name_en, name_hi} = readBilingual('hp');
+ const runBy = document.getElementById('hp_run_by').value.trim();
+ const phone = fmtPhone(document.getElementById('hp_phone').value);
+ const gmap = document.getElementById('hp_gmap').value.trim();
+ const details = document.getElementById('hp_details').value.trim();
+ if((!name_en && !name_hi) || !phone){ alert('❌ Name और Phone जरूरी!'); return; }
+ saveTranslitPair(name_en, name_hi);
+ busy(true);
+ await db.collection('hospitals').add({kind:hospitalKind, name_en, name_hi, runBy, phone, gmap, details, status:'pending', createdAt:today(), addedBy:me.phone});
+ busy(false); showHospitalForm=false;
+ alert('✅ जानकारी submit हो गई! Admin approval के बाद list में दिखेगी।');
+ renderApp();
+}
+function hospitalCard(h){
+ return '<div class="bg-white border-2 border-sky-300 rounded-lg overflow-hidden shadow-md p-4">'+
+ '<p class="font-bold text-lg">'+bilingualHTML(h.name_en,h.name_hi)+'</p>'+
+ '<p class="inline-block bg-sky-100 text-sky-800 px-2 py-0.5 rounded text-xs font-bold mt-1">'+(h.kind==='samaj'?'🛕 समाज का अस्पताल (Trust)':'🏥 निजी अस्पताल (Private)')+'</p>'+
+ (h.runBy?'<p class="text-sm text-gray-600 mt-1">👤 '+esc(h.runBy)+'</p>':'')+
+ (h.details?'<p class="text-sm text-gray-600 mt-2">'+esc(h.details)+'</p>':'')+
+ (h.gmap?'<a href="'+esc(h.gmap)+'" target="_blank" rel="noopener" class="block text-center mt-2 bg-blue-50 text-blue-700 border-2 border-blue-300 px-4 py-2 rounded-lg font-bold text-sm">📍 Google Maps पर देखें</a>':'')+
+ '<a href="tel:'+esc(h.phone)+'" class="block text-center mt-2 bg-green-600 text-white px-4 py-2 rounded-lg font-bold">📞 '+esc(h.phone)+'</a></div>';
+}
+function renderHospitalsPage(){
+ const all = approvedHospitals();
+ const list = all.filter(h => (h.kind||'niji') === hospitalKind);
+ const nNiji = all.filter(h=>(h.kind||'niji')==='niji').length;
+ const nSamaj = all.filter(h=>h.kind==='samaj').length;
+ const isNiji = hospitalKind==='niji';
+ let h = '<h2 class="text-3xl font-bold mb-2">🏥 पाटीदार अस्पताल</h2>';
+ h += '<p class="text-gray-500 mb-4">जरूरत के वक्त भरोसेमंद अस्पताल की जानकारी</p>';
+ h += '<div class="grid grid-cols-2 gap-3 mb-5">'+
+ '<button onclick="setHospitalKind(\'niji\')" class="px-4 py-5 rounded-xl font-bold text-center '+(isNiji?'bg-sky-600 text-white shadow-lg':'bg-white border-2 border-sky-300 text-sky-700')+'"><p class="text-3xl mb-1">🏥</p><p>निजी अस्पताल</p><p class="text-xs font-normal">Private ('+nNiji+')</p></button>'+
+ '<button onclick="setHospitalKind(\'samaj\')" class="px-4 py-5 rounded-xl font-bold text-center '+(!isNiji?'bg-sky-600 text-white shadow-lg':'bg-white border-2 border-sky-300 text-sky-700')+'"><p class="text-3xl mb-1">🛕</p><p>समाज के अस्पताल</p><p class="text-xs font-normal">Trust ('+nSamaj+')</p></button></div>';
+ h += '<div class="text-center mb-6"><button onclick="showHospitalForm=!showHospitalForm;renderApp()" class="bg-sky-600 hover:bg-sky-700 text-white px-8 py-3 rounded-lg font-bold">➕ यहाँ जोड़ो</button></div>';
+ if(showHospitalForm){
+  h += '<div class="bg-sky-50 border-2 border-sky-400 rounded-lg p-6 mb-8"><h3 class="text-xl font-bold mb-4">➕ ADD HOSPITAL</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+  bilingualInputsHTML('hp', 'Hospital Name')+
+  '<div><label class="text-xs font-bold">'+(isNiji?'चलाने वाला / Owner':'Trust का नाम')+'</label><input id="hp_run_by" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">Phone *</label><input id="hp_phone" maxlength="10" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div class="md:col-span-2"><label class="text-xs font-bold">Google Maps Link</label><input id="hp_gmap" placeholder="https://maps.google.com/..." class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div class="md:col-span-2"><label class="text-xs font-bold">Details (specialities, etc.)</label><textarea id="hp_details" rows="2" class="w-full px-3 py-2 border-2 rounded"></textarea></div></div>'+
+  '<div class="flex gap-3 mt-4"><button onclick="submitHospital()" class="bg-sky-600 text-white px-8 py-3 rounded font-bold">✅ SUBMIT</button><button onclick="showHospitalForm=false;renderApp()" class="bg-gray-400 text-white px-8 py-3 rounded font-bold">CANCEL</button></div></div>';
+ }
+ if(!list.length) h += '<div class="bg-white rounded-lg p-10 text-center shadow"><p class="text-4xl mb-3">🏥</p><p class="text-lg font-bold text-gray-600">अभी कोई listing नहीं है</p></div>';
+ else h += '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">'+list.map(hospitalCard).join('')+'</div>';
+ return h;
+}
+
+// ================= STUDENT IN इंदौर =================
+const STUDENT_NEED_KINDS = [['tiffin','🍱','Tiffin Centers'],['room_hostel','🏠','Samaj Rooms / Hostel'],['kirana','🛒','Kirana Shops'],['gas','🔥','Gas Connection Help'],['stationery','📚','Stationery Shops'],['other','📌','Other']];
+function approvedStudentNeeds(){ return studentNeedsData.filter(s=>s.status==='approved'); }
+function myStudentReg(){ return studentsData.find(s=>s.phone===currentUser); }
+function setStudentNeedKind(k){ studentNeedKind=k; showStudentNeedForm=false; renderApp(); }
+async function registerStudent(){
+ const me = myMember();
+ if(!me || me.status!=='approved'){ showRegisterPrompt('Register करने के लिए पहले Community member बनो।'); return; }
+ const college = document.getElementById('st_college').value.trim();
+ const homeVillage = document.getElementById('st_home').value.trim();
+ if(!college){ alert('❌ College/Course जरूरी!'); return; }
+ busy(true);
+ await db.collection('students').add({name:me.name+' '+me.surname, phone:me.phone, college, homeVillage, createdAt:today()});
+ busy(false); showStudentRegForm=false;
+ alert('✅ Register हो गए! अब नीचे directory देखो।');
+ renderApp();
+}
+async function submitStudentNeed(){
+ const me = myMember();
+ if(!me || me.status!=='approved'){ showRegisterPrompt('जोड़ने के लिए पहले Community member बनो।'); return; }
+ const {name_en, name_hi} = readBilingual('sn');
+ const phone = fmtPhone(document.getElementById('sn_phone').value);
+ const area = document.getElementById('sn_area').value.trim();
+ const gmap = document.getElementById('sn_gmap').value.trim();
+ const details = document.getElementById('sn_details').value.trim();
+ if((!name_en && !name_hi) || !phone){ alert('❌ Name और Phone जरूरी!'); return; }
+ saveTranslitPair(name_en, name_hi);
+ busy(true);
+ await db.collection('student_needs').add({kind:studentNeedKind, name_en, name_hi, phone, area, gmap, details, status:'pending', createdAt:today(), addedBy:me.phone});
+ busy(false); showStudentNeedForm=false;
+ alert('✅ जानकारी submit हो गई! Admin approval के बाद list में दिखेगी।');
+ renderApp();
+}
+function studentNeedCard(s){
+ return '<div class="bg-white border-2 border-fuchsia-300 rounded-lg overflow-hidden shadow-md p-4">'+
+ '<p class="font-bold text-lg">'+bilingualHTML(s.name_en,s.name_hi)+'</p>'+
+ (s.area?'<p class="text-sm text-gray-600 mt-1">📍 '+esc(s.area)+'</p>':'')+
+ (s.details?'<p class="text-sm text-gray-600 mt-2">'+esc(s.details)+'</p>':'')+
+ (s.gmap?'<a href="'+esc(s.gmap)+'" target="_blank" rel="noopener" class="block text-center mt-2 bg-blue-50 text-blue-700 border-2 border-blue-300 px-4 py-2 rounded-lg font-bold text-sm">📍 Google Maps पर देखें</a>':'')+
+ '<a href="tel:'+esc(s.phone)+'" class="block text-center mt-2 bg-green-600 text-white px-4 py-2 rounded-lg font-bold">📞 '+esc(s.phone)+'</a></div>';
+}
+function renderStudentsPage(){
+ const all = approvedStudentNeeds();
+ const list = all.filter(s => (s.kind||'tiffin') === studentNeedKind);
+ const me = myStudentReg();
+ let h = '<h2 class="text-3xl font-bold mb-2">🎓 STUDENT इंदौर</h2>';
+ h += '<p class="text-gray-500 mb-4">इंदौर में पढ़ने वाले पाटीदार students के लिए — Tiffin, Room/Hostel, Kirana, Gas, Stationery सब एक जगह</p>';
+ if(me){
+  h += '<div class="bg-green-50 border-2 border-green-400 rounded-lg p-4 mb-6"><p class="font-bold text-green-800">✅ आप registered हो — '+esc(me.college)+'</p></div>';
+ } else {
+  h += '<div class="bg-fuchsia-50 border-2 border-fuchsia-400 rounded-lg p-5 mb-6"><h3 class="font-bold mb-3">📝 Student के रूप में Register करो</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-3">'+
+  '<input id="st_college" placeholder="College / Course *" class="px-3 py-2 border-2 rounded">'+
+  '<input id="st_home" placeholder="गाँव/शहर (घर) — Home Village" class="px-3 py-2 border-2 rounded">'+
+  '</div><button onclick="registerStudent()" class="mt-3 bg-fuchsia-600 text-white px-6 py-2 rounded-lg font-bold">✅ Register</button></div>';
+ }
+ h += '<div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">'+STUDENT_NEED_KINDS.map(k=>{
+  const n = all.filter(s=>(s.kind||'tiffin')===k[0]).length;
+  const active = studentNeedKind===k[0];
+  return '<button onclick="setStudentNeedKind(\''+k[0]+'\')" class="px-3 py-4 rounded-xl font-bold text-center '+(active?'bg-fuchsia-600 text-white shadow-lg':'bg-white border-2 border-fuchsia-300 text-fuchsia-700')+'"><p class="text-2xl mb-1">'+k[1]+'</p><p class="text-xs">'+k[2]+'</p><p class="text-[10px] font-normal">('+n+')</p></button>';
+ }).join('')+'</div>';
+ h += '<div class="text-center mb-6"><button onclick="showStudentNeedForm=!showStudentNeedForm;renderApp()" class="bg-fuchsia-600 hover:bg-fuchsia-700 text-white px-8 py-3 rounded-lg font-bold">➕ यहाँ जोड़ो</button></div>';
+ if(showStudentNeedForm){
+  h += '<div class="bg-fuchsia-50 border-2 border-fuchsia-400 rounded-lg p-6 mb-8"><h3 class="text-xl font-bold mb-4">➕ ADD — '+STUDENT_NEED_KINDS.find(k=>k[0]===studentNeedKind)[2]+'</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+  bilingualInputsHTML('sn', 'Name')+
+  '<div><label class="text-xs font-bold">Phone *</label><input id="sn_phone" maxlength="10" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">इलाका / Area</label><input id="sn_area" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div class="md:col-span-2"><label class="text-xs font-bold">Google Maps Link</label><input id="sn_gmap" placeholder="https://maps.google.com/..." class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div class="md:col-span-2"><label class="text-xs font-bold">Details</label><textarea id="sn_details" rows="2" class="w-full px-3 py-2 border-2 rounded"></textarea></div></div>'+
+  '<div class="flex gap-3 mt-4"><button onclick="submitStudentNeed()" class="bg-fuchsia-600 text-white px-8 py-3 rounded font-bold">✅ SUBMIT</button><button onclick="showStudentNeedForm=false;renderApp()" class="bg-gray-400 text-white px-8 py-3 rounded font-bold">CANCEL</button></div></div>';
+ }
+ if(!list.length) h += '<div class="bg-white rounded-lg p-10 text-center shadow"><p class="text-4xl mb-3">'+STUDENT_NEED_KINDS.find(k=>k[0]===studentNeedKind)[1]+'</p><p class="text-lg font-bold text-gray-600">अभी कोई listing नहीं है</p></div>';
+ else h += '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">'+list.map(studentNeedCard).join('')+'</div>';
  return h;
 }
 
@@ -2415,6 +3263,112 @@ function renderGalleryPage(){
  photosData.map(p => '<div class="bg-white border-2 border-purple-300 rounded-lg overflow-hidden shadow-md"><img src="'+p.url+'" class="w-full h-56 object-cover"><div class="p-4"><p class="font-bold text-purple-700">'+esc(p.title||'')+'</p><p class="text-sm text-gray-600">'+esc(p.caption||'')+'</p></div></div>').join('')+'</div>';
 }
 
+// ================= 🎭 FAKE DEMO DATA (admin-only — app दिखाने के लिए, बाद में delete करने लायक) =================
+// हर fake document पर isFake:true flag रहता है (delete करने के लिए) और हर नाम/title के आगे "(Fake)" लिखा रहता है
+// (असली data से कभी confuse न हो) — इसीलिए normal search/AI logic को कहीं छूने की जरूरत नहीं पड़ी।
+const FAKE_MALE_NAMES = ['Ramesh','Suresh','Mahesh','Naveen','Deepak','Rajesh','Sanjay','Vijay','Ashok','Pankaj','Manoj','Dinesh','Anil','Sunil','Prakash','Ratan','Mukesh','Rakesh','Yogesh','Bharat','Kishore','Narendra','Jitendra','Hitesh','Nitin','Sandeep','Vinod','Girish','Amit','Rohit'];
+const FAKE_FEMALE_NAMES = ['Kavita','Sunita','Rekha','Geeta','Meena','Pooja','Priya','Anjali','Nisha','Sarita','Kiran','Manisha','Usha','Radha','Seema','Kalpana','Neelam','Jyoti','Shobha','Vandana'];
+const FAKE_SURNAMES = ['Patel','Patidar'];
+const FAKE_VILLAGES = ['Karwad','Sanwer','Depalpur','Betma','Gautampura','Rau','Manpur','Hatod','Mhow','Simrol'];
+function fakePh(base,i){ return String(base+i); }
+function fakePick(arr,i){ return arr[i%arr.length]; }
+async function seedFakeDemoData(){
+ if(!isSuperAdmin()){ alert('❌ सिर्फ Admin कर सकता है'); return; }
+ if(!confirm('⚠️ यह ~150 FAKE demo documents बनाएगा (members, business, शादी, property, news, events) — हर नाम के आगे "(Fake)" लिखा रहेगा। सिर्फ demo दिखाने के लिए, बाद में delete कर सकते हो। आगे बढ़ें?')) return;
+ busy(true);
+ try{
+  const batch = db.batch();
+  const bizTypes = BUSINESS_TYPES.filter(t => t!=='Other');
+  for(let i=1;i<=30;i++){ // 30 personal profiles (कोई business नहीं)
+   const male = i%3!==0;
+   const ref = db.collection('members').doc();
+   batch.set(ref, {
+    name: male?fakePick(FAKE_MALE_NAMES,i):fakePick(FAKE_FEMALE_NAMES,i), surname: fakePick(FAKE_SURNAMES,i)+' (Fake)',
+    phone: fakePh(9000000000,i), gender: male?'Male / पुरुष':'Female / महिला',
+    home_village: fakePick(FAKE_VILLAGES,i), home_district:'Indore', present_city:'Indore',
+    blood_group: fakePick(BLOOD_GROUPS,i), blood_donor: (i%2===0)?'हाँ / Yes':'नहीं / No',
+    status:'approved', createdAt: today(), phoneVerified:true, isFake:true
+   });
+  }
+  for(let i=1;i<=30;i++){ // 30 business profiles
+   const male = i%3!==0;
+   const btype = fakePick(bizTypes,i);
+   const ref = db.collection('members').doc();
+   batch.set(ref, {
+    name: male?fakePick(FAKE_MALE_NAMES,i+7):fakePick(FAKE_FEMALE_NAMES,i+7), surname: fakePick(FAKE_SURNAMES,i+1)+' (Fake)',
+    phone: fakePh(9000000100,i), gender: male?'Male / पुरुष':'Female / महिला',
+    home_village: fakePick(FAKE_VILLAGES,i+2), home_district:'Indore', present_city:'Indore',
+    business_name: btype+' '+fakePick(FAKE_SURNAMES,i)+' (Fake)', business_type: btype,
+    business_place: fakePick(FAKE_VILLAGES,i+2)+', Indore', business_phone: fakePh(9000000100,i),
+    business_details: 'Demo के लिए बनाया गया fake business listing।',
+    status:'approved', createdAt: today(), phoneVerified:true, isFake:true
+   });
+  }
+  for(let i=1;i<=20;i++){ // 20 महिला profiles Secret privacy पर — publicMembers()/Patidar AI से अपने-आप बाहर रहेंगी
+   const ref = db.collection('members').doc();
+   batch.set(ref, {
+    name: fakePick(FAKE_FEMALE_NAMES,i+3), surname: fakePick(FAKE_SURNAMES,i)+' (Fake)', phone: fakePh(9000000400,i),
+    gender:'Female / महिला', privacy:'Secret / सिर्फ PSIM Team को',
+    home_village: fakePick(FAKE_VILLAGES,i), home_district:'Indore', present_city:'Indore',
+    blood_group: fakePick(BLOOD_GROUPS,i),
+    status:'approved', createdAt: today(), phoneVerified:true, isFake:true
+   });
+  }
+  const EDUCATIONS = ['B.Com','B.E./B.Tech','MBA','B.A.','M.Com','CA','Doctor (MBBS)'];
+  for(let i=1;i<=30;i++){ // 30 शादी profiles
+   const male = i%2===0;
+   const ref = db.collection('shaadi').doc();
+   batch.set(ref, {
+    name: (male?fakePick(FAKE_MALE_NAMES,i+11):fakePick(FAKE_FEMALE_NAMES,i+11))+' '+fakePick(FAKE_SURNAMES,i)+' (Fake)',
+    gender: male?'Male / पुरुष':'Female / महिला', age: String(22+(i%15)), education: fakePick(EDUCATIONS,i),
+    village: fakePick(FAKE_VILLAGES,i), district:'Indore', contact: fakePh(9000000200,i),
+    details:'Demo के लिए बनाई गई fake profile।', paid:true, status:'approved', createdAt: today(), isFake:true
+   });
+  }
+  for(let i=1;i<=30;i++){ // 30 Property listings
+   const kind = i%4===0?'dukan':'makan';
+   const ref = db.collection('property').doc();
+   batch.set(ref, {
+    kind, type: i%3===0?'wanted':'rent',
+    name: fakePick(FAKE_MALE_NAMES,i)+' '+fakePick(FAKE_SURNAMES,i)+' (Fake)', phone: fakePh(9000000300,i),
+    area: fakePick(FAKE_VILLAGES,i)+', Indore', rent: String(3000+(i*250)),
+    bhk: kind==='makan'?fakePick(['1 BHK','2 BHK','3 BHK'],i):'',
+    description:'Demo के लिए बनाई गई fake listing।', pics:[], pic:'', code:'FAKE'+i,
+    status:'approved', active:true, createdAt: today(), isFake:true
+   });
+  }
+  ['समाज की वार्षिक बैठक संपन्न','नए सदस्यों का स्वागत समारोह','पाटीदार युवा सम्मेलन की घोषणा','समाज भवन निर्माण हेतु सहयोग अपील','होली मिलन कार्यक्रम की तैयारी'].forEach(t => {
+   const ref = db.collection('news').doc();
+   batch.set(ref, { title:t+' (Fake)', content:'यह एक demo/fake समाचार है, सिर्फ app दिखाने के लिए बनाया गया है।', pic:'', date:today(), status:'approved', createdAt:today(), isFake:true });
+  });
+  ['होली मिलन समारोह','वार्षिक सम्मेलन','युवा खेल महोत्सव','सामूहिक विवाह सम्मेलन','रक्तदान शिविर'].forEach((t,idx) => {
+   const ref = db.collection('events').doc();
+   batch.set(ref, { title:t+' (Fake)', date:new Date(Date.now()+(idx+5)*86400000).toISOString().slice(0,10), time:'18:00', location:'Indore', description:'यह एक demo/fake event है, सिर्फ app दिखाने के लिए बनाया गया है।', pic:'', isFake:true });
+  });
+  await batch.commit();
+  busy(false);
+  alert('✅ Fake demo data बन गया! हर नाम के आगे "(Fake)" लिखा है। हटाने के लिए "🗑️ सारा Fake Data Delete करो" इस्तेमाल करो।');
+  renderApp();
+ } catch(e){ busy(false); alert('❌ Error: '+e.message); }
+}
+async function deleteFakeDemoData(){
+ if(!isSuperAdmin()){ alert('❌ सिर्फ Admin कर सकता है'); return; }
+ if(!confirm('⚠️ सारा FAKE demo data permanently delete हो जाएगा (असली data को हाथ नहीं लगेगा)। पक्का?')) return;
+ busy(true);
+ try{
+  for(const col of ['members','shaadi','property','news','events']){
+   const snap = await db.collection(col).where('isFake','==',true).get();
+   if(snap.empty) continue;
+   const batch = db.batch();
+   snap.forEach(d => batch.delete(d.ref));
+   await batch.commit();
+  }
+  busy(false);
+  alert('✅ सारा fake demo data delete हो गया।');
+  renderApp();
+ } catch(e){ busy(false); alert('❌ Error: '+e.message); }
+}
+
 // ================= ADMIN HELPERS =================
 function switchTab(t){ adminTab=t; editingId=null; adminEditTarget=null; renderApp(); }
 function _localCol(col){
@@ -2426,7 +3380,14 @@ function _localCol(col){
  if(col==='garba_regs') return garbaRegs; if(col==='garba_team') return garbaTeam;
  if(col==='garba_coords') return garbaCoords;
  if(col==='cricket') return cricketData; if(col==='property') return propertyData;
- if(col==='blood') return bloodData; if(col==='suggestions') return suggestionsData; return null;
+ if(col==='blood') return bloodData; if(col==='suggestions') return suggestionsData;
+ if(col==='village_leads') return villageLeadsData;
+ if(col==='dharamshala') return dharamshalaData; if(col==='hospitals') return hospitalsData;
+ if(col==='student_needs') return studentNeedsData; if(col==='students') return studentsData;
+ if(col==='blood_sos') return bloodSosData; if(col==='obituaries') return obituariesData;
+ if(col==='village_info') return villageInfoData;
+ if(col==='referral_preapprovals') return referralPreapprovalsData;
+ return null;
 }
 async function updDoc(col,id,data){
  // OPTIMISTIC: pehle screen par turant dikhाओ, phir server par save karo
@@ -2851,6 +3812,9 @@ function renderAdmin(){
  const pendSuggest = suggestionsData.filter(s=>s.status==='pending');
  const pendNews = newsData.filter(n=>n.status==='pending');
  const pendBizPromo = membersData.filter(m=>m.biz_promo_status==='pending');
+ const pendDharamshala = dharamshalaData.filter(d=>d.status==='pending');
+ const pendHospitals = hospitalsData.filter(h=>h.status==='pending');
+ const pendStudentNeeds = studentNeedsData.filter(s=>s.status==='pending');
  let h = '<div class="bg-gradient-to-r from-red-900 to-red-800 text-white rounded-lg px-6 py-5 mb-6 flex flex-wrap justify-between items-center gap-3"><h2 class="text-2xl md:text-3xl font-bold">⚙️ ADMIN DASHBOARD</h2>'+
  '<div class="text-sm">👥 '+approved.length+' approved | ⏳ '+pending.length+' pending</div>'+
  '<button onclick="goPage(\'home\')" class="bg-blue-600 px-5 py-2 rounded font-bold">← BACK</button></div>';
@@ -2870,6 +3834,12 @@ function renderAdmin(){
   ['gallery','🖼️ GALLERY'],
   ['suggestions','💡 SUGGESTIONS'+(pendSuggest.length?' ('+pendSuggest.length+')':'')],
   ['referrals','🎗️ REFERRAL'+(pendBizPromo.length?' ('+pendBizPromo.length+')':'')],
+  ['villageleads','📍 गाँव/तहसील'+(villageLeadsData.length?' ('+villageLeadsData.length+')':'')],
+  ['dharamshala','🛕 धर्मशाला'+(pendDharamshala.length?' ('+pendDharamshala.length+')':'')],
+  ['hospitals','🏥 अस्पताल'+(pendHospitals.length?' ('+pendHospitals.length+')':'')],
+  ['students','🎓 STUDENT'+(pendStudentNeeds.length?' ('+pendStudentNeeds.length+')':'')],
+  ['obituaries','🕯️ शोक समाचार'],
+  ['meregaanv','🏡 मेरे गाँव'],
   ['site','🌐 SITE']
  ];
  const allowed = allowedTabs();
@@ -2910,6 +3880,77 @@ function renderAdmin(){
    '<p class="text-gray-700 mt-2 whitespace-pre-line">'+esc(s.text)+'</p></div>'
   ).join('')+'</div>' : '<p class="text-gray-400 text-center py-8">अभी कोई suggestion नहीं आई</p>')+
   '</div>';
+ }
+
+ if(adminTab==='villageleads'){
+  const grouped = {};
+  villageLeadsData.forEach(v => {
+   const key = (v.village||'-')+(v.tehsil?' / '+v.tehsil:'')+(v.district?' | '+v.district:'')+(v.state?' | '+v.state:'');
+   grouped[key] = (grouped[key]||0) + 1;
+  });
+  const summary = Object.entries(grouped).sort((a,b)=>b[1]-a[1]);
+  h += '<div class="bg-teal-50 border-2 border-teal-300 rounded-lg p-6 mb-6"><h3 class="text-2xl font-bold mb-4">📊 गाँव/तहसील के हिसाब से (Total: '+villageLeadsData.length+')</h3>'+
+  (summary.length ? '<div class="space-y-1">'+summary.map(([k,c])=>'<div class="flex justify-between bg-white rounded px-3 py-2 text-sm"><span class="font-bold">'+esc(k)+'</span><span class="text-teal-700 font-bold">'+c+'</span></div>').join('')+'</div>' : '<p class="text-gray-500">अभी कोई data नहीं</p>')+
+  '</div>';
+  h += '<div class="bg-white rounded-lg shadow p-6"><h3 class="text-xl font-bold mb-4">📋 सभी Entries</h3>'+
+  (villageLeadsData.length ? '<div class="space-y-2">'+villageLeadsData.slice().sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).map(v=>
+   '<div class="flex justify-between items-start bg-gray-50 rounded-lg px-4 py-2 gap-2"><span class="text-sm">🏡 '+(v.village?bilingualHTML(v.village,v.village_hi):'-')+(v.tehsil?' | '+bilingualHTML(v.tehsil,v.tehsil_hi):'')+(v.district?' | '+esc(v.district):'')+(v.state?' | '+esc(v.state):'')+' <span class="text-gray-400">('+esc(v.createdAt||'')+')</span>'+(v.notes?'<br><span class="text-xs text-gray-500">📝 '+esc(v.notes)+'</span>':'')+'</span>'+
+   '<button onclick="delDoc(\'village_leads\',\''+v.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm shrink-0">🗑️</button></div>'
+  ).join('')+'</div>' : '<p class="text-gray-400 text-center py-8">कोई entry नहीं</p>')+
+  '</div>';
+ }
+
+ if(adminTab==='dharamshala'){
+  h += '<div class="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-6 mb-6"><h3 class="text-2xl font-bold mb-4">⏳ PENDING ('+pendDharamshala.length+')</h3>';
+  h += pendDharamshala.length ? '<div class="space-y-3">'+pendDharamshala.map(d=>'<div class="bg-white border-2 border-yellow-400 rounded-lg p-4 flex flex-wrap justify-between items-center gap-3"><p><b>'+bilingualHTML(d.name_en,d.name_hi)+'</b> — '+(d.kind==='hotel'?'🏨 Hotel':'🛕 गाँव')+' | '+(d.ownerType==='samaj'?'समाज की':'व्यक्ति विशेष')+' | 📍 '+esc(d.village||'-')+(d.tehsil?'/'+esc(d.tehsil):'')+' | 📞 '+esc(d.phone)+'</p><div class="flex gap-2"><button onclick="updDoc(\'dharamshala\',\''+d.id+'\',{status:\'approved\'})" class="bg-green-600 text-white px-4 py-2 rounded font-bold">✅</button><button onclick="delDoc(\'dharamshala\',\''+d.id+'\')" class="bg-red-600 text-white px-4 py-2 rounded font-bold">❌</button></div></div>').join('')+'</div>' : '<p class="text-gray-500">कोई pending नहीं</p>';
+  h += '</div>';
+  const liveD = dharamshalaData.filter(d=>d.status==='approved');
+  h += '<div class="bg-white rounded-lg shadow p-6"><h3 class="text-xl font-bold mb-4">✅ LIVE ('+liveD.length+')</h3><div class="space-y-2">'+
+  liveD.map(d=>'<div class="flex justify-between items-center bg-orange-50 rounded-lg px-4 py-2 flex-wrap gap-2"><span class="text-sm font-bold">'+bilingualHTML(d.name_en,d.name_hi)+' | '+(d.kind==='hotel'?'🏨':'🛕')+' | 📞'+esc(d.phone)+'</span><button onclick="delDoc(\'dharamshala\',\''+d.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div>').join('')+
+  '</div></div>';
+ }
+
+ if(adminTab==='hospitals'){
+  h += '<div class="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-6 mb-6"><h3 class="text-2xl font-bold mb-4">⏳ PENDING ('+pendHospitals.length+')</h3>';
+  h += pendHospitals.length ? '<div class="space-y-3">'+pendHospitals.map(hp=>'<div class="bg-white border-2 border-yellow-400 rounded-lg p-4 flex flex-wrap justify-between items-center gap-3"><p><b>'+bilingualHTML(hp.name_en,hp.name_hi)+'</b> — '+(hp.kind==='samaj'?'🛕 समाज/Trust':'🏥 निजी')+(hp.runBy?' | '+esc(hp.runBy):'')+' | 📞 '+esc(hp.phone)+'</p><div class="flex gap-2"><button onclick="updDoc(\'hospitals\',\''+hp.id+'\',{status:\'approved\'})" class="bg-green-600 text-white px-4 py-2 rounded font-bold">✅</button><button onclick="delDoc(\'hospitals\',\''+hp.id+'\')" class="bg-red-600 text-white px-4 py-2 rounded font-bold">❌</button></div></div>').join('')+'</div>' : '<p class="text-gray-500">कोई pending नहीं</p>';
+  h += '</div>';
+  const liveH = hospitalsData.filter(hp=>hp.status==='approved');
+  h += '<div class="bg-white rounded-lg shadow p-6"><h3 class="text-xl font-bold mb-4">✅ LIVE ('+liveH.length+')</h3><div class="space-y-2">'+
+  liveH.map(hp=>'<div class="flex justify-between items-center bg-sky-50 rounded-lg px-4 py-2 flex-wrap gap-2"><span class="text-sm font-bold">'+bilingualHTML(hp.name_en,hp.name_hi)+' | '+(hp.kind==='samaj'?'🛕':'🏥')+' | 📞'+esc(hp.phone)+'</span><button onclick="delDoc(\'hospitals\',\''+hp.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div>').join('')+
+  '</div></div>';
+ }
+
+ if(adminTab==='students'){
+  h += '<div class="bg-fuchsia-50 border-2 border-fuchsia-300 rounded-lg p-6 mb-6"><h3 class="text-2xl font-bold mb-4">🎓 REGISTERED STUDENTS ('+studentsData.length+')</h3>'+
+  (studentsData.length ? '<div class="space-y-1">'+studentsData.slice().sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).map(s=>'<div class="flex justify-between bg-white rounded px-3 py-2 text-sm"><span>'+esc(s.name)+' — '+esc(s.college)+(s.homeVillage?' | 🏡 '+esc(s.homeVillage):'')+'</span><span class="text-gray-400">📞'+esc(s.phone)+'</span></div>').join('')+'</div>' : '<p class="text-gray-500">अभी कोई registered नहीं</p>')+
+  '</div>';
+  h += '<div class="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-6 mb-6"><h3 class="text-2xl font-bold mb-4">⏳ PENDING NEEDS-DIRECTORY ('+pendStudentNeeds.length+')</h3>';
+  h += pendStudentNeeds.length ? '<div class="space-y-3">'+pendStudentNeeds.map(s=>'<div class="bg-white border-2 border-yellow-400 rounded-lg p-4 flex flex-wrap justify-between items-center gap-3"><p><b>'+bilingualHTML(s.name_en,s.name_hi)+'</b> — '+esc((STUDENT_NEED_KINDS.find(k=>k[0]===s.kind)||[,,'Other'])[2])+(s.area?' | 📍 '+esc(s.area):'')+' | 📞 '+esc(s.phone)+'</p><div class="flex gap-2"><button onclick="updDoc(\'student_needs\',\''+s.id+'\',{status:\'approved\'})" class="bg-green-600 text-white px-4 py-2 rounded font-bold">✅</button><button onclick="delDoc(\'student_needs\',\''+s.id+'\')" class="bg-red-600 text-white px-4 py-2 rounded font-bold">❌</button></div></div>').join('')+'</div>' : '<p class="text-gray-500">कोई pending नहीं</p>';
+  h += '</div>';
+  const liveS = studentNeedsData.filter(s=>s.status==='approved');
+  h += '<div class="bg-white rounded-lg shadow p-6"><h3 class="text-xl font-bold mb-4">✅ LIVE DIRECTORY ('+liveS.length+')</h3><div class="space-y-2">'+
+  liveS.map(s=>'<div class="flex justify-between items-center bg-fuchsia-50 rounded-lg px-4 py-2 flex-wrap gap-2"><span class="text-sm font-bold">'+bilingualHTML(s.name_en,s.name_hi)+' | '+esc((STUDENT_NEED_KINDS.find(k=>k[0]===s.kind)||[,,'Other'])[2])+' | 📞'+esc(s.phone)+'</span><button onclick="delDoc(\'student_needs\',\''+s.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div>').join('')+
+  '</div></div>';
+ }
+
+ if(adminTab==='obituaries'){
+  h += '<div class="bg-gray-100 border-2 border-gray-400 rounded-lg p-6 mb-6"><h3 class="text-xl font-bold mb-4">➕ ADD शोक समाचार</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+  '<div><label class="text-xs font-bold">नाम *</label><input id="ob_name" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">उम्र / Age</label><input id="ob_age" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">गाँव/शहर</label><input id="ob_place" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  '<div><label class="text-xs font-bold">दिनांक</label><input id="ob_date" type="date" class="w-full px-3 py-2 border-2 rounded"></div>'+
+  _photoField('ob_pic','','फोटो 📷')+
+  '<div class="md:col-span-2"><label class="text-xs font-bold">श्रद्धांजलि संदेश</label><textarea id="ob_message" rows="2" class="w-full px-3 py-2 border-2 rounded"></textarea></div></div>'+
+  '<button onclick="submitObituaryAdmin()" class="mt-4 bg-gray-700 text-white px-8 py-3 rounded font-bold">✅ POST करो</button></div>';
+  h += '<div class="bg-white rounded-lg shadow p-6"><h3 class="text-xl font-bold mb-4">🕯️ ALL NOTICES ('+obituariesData.length+')</h3><div class="space-y-2">'+
+  obituariesData.map(o=>'<div class="flex justify-between items-center bg-gray-50 rounded-lg px-4 py-2 flex-wrap gap-2"><span class="text-sm font-bold">'+esc(o.name)+(o.place?' | '+esc(o.place):'')+(o.deathDate?' | '+esc(o.deathDate):'')+'</span><button onclick="delDoc(\'obituaries\',\''+o.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div>').join('')+
+  '</div></div>';
+ }
+
+ if(adminTab==='meregaanv'){
+  h += '<div class="bg-white rounded-lg shadow p-6"><h3 class="text-xl font-bold mb-4">🏡 गाँव Descriptions ('+villageInfoData.length+')</h3><p class="text-xs text-gray-500 mb-4">कोई भी member ये लिख/सुधार सकता है — गलत/spam content यहाँ से हटाओ</p><div class="space-y-2">'+
+  (villageInfoData.length ? villageInfoData.map(v=>'<div class="flex justify-between items-start bg-gray-50 rounded-lg px-4 py-2 gap-2"><span class="text-sm"><b>'+esc(v.village)+'</b><br><span class="text-gray-600">'+esc(v.description)+'</span></span><button onclick="delDoc(\'village_info\',\''+v.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm shrink-0">🗑️</button></div>').join('') : '<p class="text-gray-400 text-center py-8">कोई description नहीं है</p>')+
+  '</div></div>';
  }
 
  if(adminTab==='referrals'){
@@ -2969,6 +4010,10 @@ function renderAdmin(){
  }
 
  if(adminTab==='blood'){
+  const allSOS = bloodSosData.slice().sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+  h += '<div class="bg-red-50 border-2 border-red-500 rounded-lg p-6 mb-6"><h3 class="text-xl font-bold mb-4">🆘 SOS REQUESTS ('+allSOS.length+')</h3>'+
+  (allSOS.length ? '<div class="space-y-2">'+allSOS.map(s=>'<div class="flex justify-between items-center bg-white rounded-lg px-4 py-2 flex-wrap gap-2"><span class="text-sm">'+(s.status==='resolved'?'✅':'🆘')+' <b>'+esc(s.bloodGroup)+'</b> — '+esc(s.hospital)+' | '+esc(s.fromName)+' | 📱'+esc(s.contactPhone)+' | '+esc(s.createdAt||'')+'</span><div class="flex gap-2">'+(s.status!=='resolved'?'<button onclick="resolveBloodSOS(\''+s.id+'\')" class="bg-gray-500 text-white px-3 py-1 rounded font-bold text-sm">✅ Resolve</button>':'')+'<button onclick="delDoc(\'blood_sos\',\''+s.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div></div>').join('')+'</div>' : '<p class="text-gray-500">कोई SOS नहीं</p>')+
+  '</div>';
   h += '<div class="bg-red-50 border-2 border-red-400 rounded-lg p-6 mb-6"><h3 class="text-xl font-bold mb-4">➕ ADD BLOOD DONOR</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-3">'+
   '<input id="bl_name" placeholder="Name *" class="px-3 py-2 border-2 rounded">'+
   '<select id="bl_group" class="px-3 py-2 border-2 rounded"><option value="">Blood Group *</option>'+BLOOD_GROUPS.map(g=>'<option>'+g+'</option>').join('')+'</select>'+
@@ -3151,6 +4196,13 @@ function renderAdmin(){
   '<div class="mt-3 space-y-2">'+committeeData.map(c=>'<div class="flex justify-between items-center bg-blue-50 rounded-lg px-3 py-2"><span class="font-bold text-sm">'+esc(c.name)+' ('+esc(c.post)+')</span><div class="flex gap-2"><button onclick="startAdminEdit(\'committee\',\''+c.id+'\')" class="bg-blue-500 text-white px-3 py-1 rounded font-bold text-sm">✏️</button><button onclick="delDoc(\'committee\',\''+c.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div></div>').join('')+'</div></div>';
 
   h += '</div><button onclick="saveSiteMeta()" class="mt-5 bg-blue-600 text-white px-8 py-3 rounded font-bold">✅ SAVE SETTINGS</button></div>';
+
+  h += '<div class="bg-purple-50 border-2 border-purple-400 rounded-lg p-6"><h3 class="text-xl font-bold mb-2">🎭 Fake Demo Data</h3>'+
+   '<p class="text-sm text-gray-600 mb-4">App दिखाने के लिए ~150 fake documents बनाओ (30 personal profiles, 30 businesses, 20 secret-privacy महिला profiles, 30 शादी profiles, 30 Property listings, कुछ News/Events) — हर नाम के आगे "(Fake)" लिखा होगा ताकि कोई असली न समझे। जब असली data आने लगे, नीचे वाले button से सारा fake data एक साथ delete कर सकते हो।</p>'+
+   '<div class="flex flex-wrap gap-3">'+
+   '<button onclick="seedFakeDemoData()" class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-bold">🎭 Fake Demo Data बनाओ</button>'+
+   '<button onclick="deleteFakeDemoData()" class="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-bold">🗑️ सारा Fake Data Delete करो</button>'+
+   '</div></div>';
  }
  return h;
 }
@@ -3170,6 +4222,12 @@ function renderApp(){
  else if(currentPage==='shaadi') html = renderShaadiPage();
  else if(currentPage==='rozgaar') html = renderRozgaarPage();
  else if(currentPage==='olditems') html = renderOldItemsPage();
+ else if(currentPage==='dharamshala') html = renderDharamshalaPage();
+ else if(currentPage==='hospitals') html = renderHospitalsPage();
+ else if(currentPage==='students') html = renderStudentsPage();
+ else if(currentPage==='obituaries') html = renderObituariesPage();
+ else if(currentPage==='meregaanv') html = renderMereGaanvPage();
+ else if(currentPage==='patidarai') html = renderPatidarAI();
  else if(currentPage==='news') html = renderNewsPage();
  else if(currentPage==='pratibha') html = renderPratibhaPage();
  else if(currentPage==='events') html = renderEventsPage();
