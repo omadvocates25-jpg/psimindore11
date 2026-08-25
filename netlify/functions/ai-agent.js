@@ -87,25 +87,39 @@ exports.handler = async (event) => {
   }
 
   try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 12000);
-    const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + apiKey
-      },
-      body: JSON.stringify({
-        model: 'openai/gpt-oss-20b',
-        messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
-        tools: TOOLS,
-        tool_choice: 'auto',
-        temperature: 0.4,
-        max_tokens: 600
-      }),
-      signal: ctrl.signal
-    });
-    clearTimeout(timer);
+    // gpt-oss-120b (bada, zyada capable model) primary hai — free-tier limit gpt-oss-20b jitna hi hai,
+    // isliye better reasoning/tool-selection bilkul free mein milta hai। Agar yeh fail/timeout ho (jaise
+    // rate-limit ka transient error) to chhote-tez gpt-oss-20b par ek retry hota hai, taaki koi single
+    // model down/slow hone se poora agent na ruke।
+    async function callGroq(model){
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 12000);
+      try{
+        const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + apiKey
+          },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
+            tools: TOOLS,
+            tool_choice: 'auto',
+            temperature: 0.4,
+            max_tokens: 700
+          }),
+          signal: ctrl.signal
+        });
+        return resp;
+      } finally { clearTimeout(timer); }
+    }
+
+    let resp = await callGroq('openai/gpt-oss-120b');
+    if (!resp.ok) {
+      console.error('ai-agent: gpt-oss-120b responded', resp.status, '— retrying with gpt-oss-20b');
+      resp = await callGroq('openai/gpt-oss-20b');
+    }
 
     if (!resp.ok) {
       const errText = await resp.text().catch(() => '');
