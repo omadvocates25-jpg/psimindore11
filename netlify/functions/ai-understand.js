@@ -5,6 +5,8 @@
 //     app ke baare mein general sawaal) — usi call mein ek natural reply bhi de deta hai, taaki har tarah ki
 //     phrasing "sikhani" na pade। Is mode mein bhi Groq ko explicitly mana kiya gaya hai ki koi bhi specific
 //     data (naam/phone/count/list) khud se na banaye — sirf general/conversational baat kare।
+// Client pichle kuch messages ("history") bhi bhejta hai taaki follow-up (jaise AI ke clarifying sawaal ka
+// jawab) crude string-jodne ke bajaye असल conversation context ke saath sahi se samjha ja sake.
 // Groq key sirf yahan (server-side env var) rehti hai, browser mein kabhi nahi jaati.
 
 const CATEGORIES = ['business','hospital','dharamshala','blood','village_info','count','distance','nearest','news','events','greeting','shaadi','property','chat'];
@@ -57,6 +59,13 @@ General Principles:
    agar aisa kuch pooche to wahan bhejo, is chat reply mein khud mat batao।
 7. Chhota, natural, respectful jawab rakho — lamba lecture mat do।
 
+Conversation history bhi mil sakti hai (pichle kuch messages) — usse pura context samajho। Khaaskar: agar
+tumhara (ya app ke) pichla message koi clarifying sawaal tha (jaise "kis area mein?", "kis cheez mein madad
+chahiye?"), aur naya user message uska seedha jawab lag raha hai (jaise sirf ek jagah ka naam, ya "haan"/"nahi"),
+to dono ko jodkar poori tarah samjho — asli category, keywords aur place PICHLE topic ke hisaab se do, na ki
+sirf naye chhote message ko akela padhkar। Agar history nahi bhi ho to bhi sirf current message se best-effort
+judge karo.
+
 Agar sure na ho ki kaunsi category hai, "chat" chuno aur usi tarah general reply do.`;
 
 exports.handler = async (event) => {
@@ -71,9 +80,16 @@ exports.handler = async (event) => {
   }
 
   let question = '';
+  let history = [];
   try {
     const parsed = JSON.parse(event.body || '{}');
     question = (parsed.question || '').toString().trim().slice(0, 300);
+    if (Array.isArray(parsed.history)) {
+      history = parsed.history
+        .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.text === 'string')
+        .slice(-6)
+        .map(m => ({ role: m.role, content: m.text.slice(0, 300) }));
+    }
   } catch (e) {
     return { statusCode: 400, body: JSON.stringify({ category: null }) };
   }
@@ -94,6 +110,7 @@ exports.handler = async (event) => {
         model: 'openai/gpt-oss-20b',
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
+          ...history,
           { role: 'user', content: question }
         ],
         response_format: { type: 'json_object' },
