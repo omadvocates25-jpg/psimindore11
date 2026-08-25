@@ -2500,10 +2500,15 @@ function renderPatidarAI(){
  h += '</div>';
  return h;
 }
+// हर AI जवाब के ऊपर एक छोटा सा लाल नारा — pre-approved list में से ही, हर बार अलग हो सकता है
+const AI_NARAS = ['🚩 जय सरदार जय पाटीदार 🚩', '🚩 जय माँ अंबे 🚩', '🚩 जय माँ उमिया 🚩'];
 function aiChatBubble(m){
  const mine = m.role==='user';
- return '<div class="flex '+(mine?'justify-end':'justify-start')+'">'+
+ let h = '';
+ if(!mine) h += '<div class="flex justify-start"><div class="max-w-[85%] w-fit bg-red-600 text-white text-center text-xs font-bold py-1 px-4 rounded-md mb-1">'+aiPick(AI_NARAS)+'</div></div>';
+ h += '<div class="flex '+(mine?'justify-end':'justify-start')+'">'+
   '<div class="max-w-[85%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-line '+(mine?'bg-violet-600 text-white rounded-br-sm':'bg-gray-100 text-gray-800 rounded-bl-sm')+'">'+esc(m.text)+'</div></div>';
+ return h;
 }
 function aiThinkingBubble(){
  return '<div class="flex justify-start"><div class="max-w-[85%] rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm bg-gray-100 text-gray-400">सोच रहा है...</div></div>';
