@@ -44,7 +44,22 @@ let showDharamshalaForm=false, dharamshalaKind='village', showHospitalForm=false
 let regStep = 0;
 let regMode = 'otp'; // 'otp' | 'reference' — Register page pe chuna gaya tareeka
 let showRegModeChooser = true;
-let aiChatHistory = []; // [{role:'user'|'ai', text}] — session-only, kahin save nahi hota
+let aiChatHistory = []; // [{role:'user'|'ai', text}] — kisi server/Firestore pe save nahi hota (privacy),
+// sirf isi device ke localStorage mein, phone number se scoped taaki shared device par doosre member ki
+// chat na dikhe
+let aiChatLoadedFor = null;
+function aiChatStorageKey(){ return 'psim_ai_chat_'+(currentUser||''); }
+function aiChatLoad(){
+ if(!currentUser || aiChatLoadedFor===currentUser) return;
+ aiChatLoadedFor = currentUser;
+ try{
+  const raw = localStorage.getItem(aiChatStorageKey());
+  if(raw){ const parsed = JSON.parse(raw); if(Array.isArray(parsed)) aiChatHistory = parsed; }
+ } catch(e){}
+}
+function aiChatSave(){
+ try{ localStorage.setItem(aiChatStorageKey(), JSON.stringify(aiChatHistory.slice(-40))); } catch(e){}
+}
 let aiThinking = false;
 let relSearchQ = '';
 let friendSearchQ = '';
@@ -433,6 +448,7 @@ auth.onAuthStateChanged(user => {
   currentUser = ph;
  } else {
   currentUser = '';
+  aiChatHistory = []; // logout par turant clear — shared device par agle login tak purani chat na dikhe
  }
  route();
 });
@@ -2469,6 +2485,7 @@ function patidarAIHomeHeroHTML(){
   '</div></div>';
 }
 function renderPatidarAI(){
+ aiChatLoad(); // isi device par pichli chat ho to load kar do (guard ke andar hai, baar-baar overwrite nahi karta)
  let h = '<div class="flex items-start justify-between gap-3 mb-2 flex-wrap">'+
   '<h2 class="text-3xl font-bold">👨‍🌾 Patidar AI</h2>'+
   '<button onclick="goPage(\'business\')" class="shrink-0 text-xs bg-white border-2 border-violet-300 text-violet-700 rounded-full px-3 py-1.5 font-bold hover:bg-violet-50">🛍️ बाज़ार घूमो →</button>'+
@@ -2517,6 +2534,7 @@ function askPatidarAI(){
  const q = (inp && inp.value || '').trim();
  if(!q || aiThinking) return;
  aiChatHistory.push({role:'user', text:q});
+ aiChatSave();
  aiThinking = true;
  renderApp(); scrollAiChatToBottom();
  // असली network call नहीं है — chhota सा artificial pause taaki reply "socha hua" lage, ek robot jaisa turant-jawab na lage
@@ -2524,6 +2542,7 @@ function askPatidarAI(){
   const answer = await patidarAIReply(q);
   aiThinking = false;
   aiChatHistory.push({role:'ai', text:answer});
+  aiChatSave();
   renderApp(); scrollAiChatToBottom();
  }, 500);
 }
