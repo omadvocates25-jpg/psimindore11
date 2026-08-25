@@ -1270,7 +1270,7 @@ function renderHome(){
   ['students','fuchsia','🎓','STUDENT<br>इंदौर', studentNeedsData.filter(s=>s.status==='approved').length+' Listings'],
   ['obituaries','gray','🕯️','शोक समाचार<br>Obituaries', obituariesData.length+' Notices'],
   ['meregaanv','emerald','🏡','मेरे गाँव<br>ले चलो', uniqueVillageCount()+' Villages'],
-  ['patidarai','violet','🤖','Patidar AI<br>पूछो', 'सवाल पूछो']
+  ['patidarai','violet','👨‍🌾','Patidar AI<br>पूछो', 'सवाल पूछो']
  ];
  h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">'+portals.slice(0,4).map(portalTile).join('')+'</div>';
 
@@ -2381,7 +2381,7 @@ async function geocodeThisVillage(){
  }
 }
 
-// ================= 🤖 PATIDAR AI (मौजूदा search को conversational बनाना — कोई paid LLM नहीं, 100% free) =================
+// ================= 👨‍🌾 PATIDAR AI (मौजूदा search को conversational बनाना — कोई paid LLM नहीं, 100% free) =================
 // Design: कोई बाहरी AI API नहीं बुलाई जाती — Community का data (business/blood/news/events/villages)
 // पहले से browser में realtime listeners से load है, बस उसी पर keyword-matching + clarifying-question
 // wala chhota conversation engine chalta hai. Isliye cost = ₹0 (Cloud Function bhi nahi lagti).
@@ -2415,18 +2415,18 @@ const AI_SYNONYMS = {
 function patidarAIHomeHeroHTML(){
  return '<div onclick="goPage(\'patidarai\')" class="bg-gradient-to-r from-violet-600 to-indigo-700 rounded-2xl shadow-xl px-6 py-5 mb-6 text-center text-white cursor-pointer hover:shadow-2xl transform hover:scale-[1.01] transition-all">'+
   '<p class="text-[11px] uppercase tracking-[0.2em] text-violet-200 mb-0.5">Welcome to</p>'+
-  '<p class="text-4xl md:text-6xl font-extrabold tracking-tight mb-2">🤖 PATIDAR AI</p>'+
+  '<p class="text-4xl md:text-6xl font-extrabold tracking-tight mb-2">👨‍🌾 PATIDAR AI</p>'+
   '<span class="inline-block bg-white text-violet-700 font-bold text-sm px-5 py-1.5 rounded-full">'+(currentUser?'बात करो →':'🔒 Login करके पूछो →')+'</span>'+
   '</div>';
 }
 function renderPatidarAI(){
- let h = '<h2 class="text-3xl font-bold mb-2">🤖 Patidar AI</h2>';
+ let h = '<h2 class="text-3xl font-bold mb-2">👨‍🌾 Patidar AI</h2>';
  h += '<p class="text-gray-500 mb-1">Business/Profession, 🩸 Blood Donor, 📰 समाज की News, 📅 Events, या दो गाँव के बीच 📍 Distance — कुछ भी पूछो</p>';
  h += '<p class="text-xs text-gray-400 mb-4">⚠️ यह सिर्फ app में मौजूद data के आधार पर जवाब देता है, किसी member की personal profile नहीं देगा।</p>';
  h += '<div class="bg-white rounded-xl shadow-lg p-4 md:p-6">';
  h += '<div id="aiChatBox" class="space-y-3 mb-4 overflow-y-auto" style="max-height:50vh;">';
  if(!aiChatHistory.length){
-  h += '<div class="text-center text-gray-400 py-8"><p class="text-4xl mb-2">🤖</p><p class="text-sm">नमस्ते! कुछ भी पूछो, जैसे नीचे दिए उदाहरण</p></div>';
+  h += '<div class="text-center text-gray-400 py-8"><p class="text-4xl mb-2">👨‍🌾</p><p class="text-sm">नमस्ते! कुछ भी पूछो, जैसे नीचे दिए उदाहरण</p></div>';
  } else {
   h += aiChatHistory.map(aiChatBubble).join('');
   if(aiThinking) h += aiThinkingBubble();
