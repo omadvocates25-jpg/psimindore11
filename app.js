@@ -2602,11 +2602,18 @@ function patidarAIRouteDeterministic(q, ql, rounds){
 // jawab khud generate nahi karta, sirf category+keywords+place bata deta hai। Fail/timeout/rate-limit par
 // chup-chaap null — caller purane rule-based fallback par chala jaata hai, user ko kabhi pata nahi chalta।
 const AI_UNDERSTAND_URL = '/.netlify/functions/ai-understand';
+// Pichli 3 baat-cheet (6 messages) bhi bhejta hai — sirf current message akela string-jodkar samajhne ke bajaye,
+// Groq ko असली conversation dikhti hai। Isse jab AI ne khud koi clarifying sawaal poocha ho (jaise "kis cheez
+// mein madad chahiye"), agla message uska "jawab" samajh kar poora context ke saath judge karta hai, generic
+// keyword-substring wale galat matches (jaise "Mandav is a place" business search maan lena) nahi hote।
+function aiRecentHistory(){
+ return aiChatHistory.slice(-7, -1).map(m => ({ role: m.role==='user'?'user':'assistant', text: (m.text||'').slice(0,300) }));
+}
 async function aiUnderstandQuestion(q){
  try{
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 4000);
-  const resp = await fetch(AI_UNDERSTAND_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({question:q}), signal: ctrl.signal });
+  const resp = await fetch(AI_UNDERSTAND_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({question:q, history:aiRecentHistory()}), signal: ctrl.signal });
   clearTimeout(timer);
   if(!resp.ok) return null;
   const data = await resp.json();
@@ -2710,14 +2717,19 @@ function aiExpandSynonyms(q){
 // सबको दिखती है (signed-in members को), पर AI chat में एक ही सवाल में सारा data "ek shot mai" nikalna
 // nahi chahiye — isliye top matches दिखाकर आगे narrowing सवाल पूछता है (देखो aiAskNarrower)।
 const AI_LIST_CAP = 3;
+// Bahut chhote/generic words (is, to, hai, ka...) raw substring match mein kisi bhi lambe word ke andar
+// galti se match ho jaate the (jaise "is" → "Logistics") — isliye ab word-boundary match hota hai aur
+// generic filler words explicitly exclude hain, taaki sentence ke beech ka koi chhota word irrelevant
+// businesses ko score na de de।
+const AI_STOPWORDS = new Set(['is','a','an','the','to','of','in','on','at','ka','ki','ke','ko','se','hai','ho','hu','hoon','mein','me','aur','ya','wala','wali','plz','please','and','for']);
 function aiSearchBusinesses(query){
  const q = aiExpandSynonyms(query.toLowerCase());
- const qWords = q.split(/\s+/).filter(w => w.length>1);
+ const qWords = q.split(/\s+/).filter(w => w.length>2 && !AI_STOPWORDS.has(w));
  const scored = allBusinesses().map(b => {
   const hay = (b.type+' '+b.name+' '+(b.place||'')+' '+(b.village||'')+' '+(b.city||'')).toLowerCase();
   let score = 0;
   if(hay.includes(q)) score += 10;
-  qWords.forEach(w => { if(hay.includes(w)) score += 1; });
+  qWords.forEach(w => { if(new RegExp('\\b'+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b').test(hay)) score += 1; });
   return {b, score};
  }).filter(x => x.score>0).sort((a,b) => b.score-a.score);
  // Paid/promoted business hamesha pehle — baaki relevance ke hisaab se uske baad
