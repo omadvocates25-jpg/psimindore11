@@ -1044,7 +1044,7 @@ function setVLOutsideMP(v){ vlOutsideMP = (v === 'OUTSIDE_MP'); renderApp(); }
 function villageLeadBoxHTML(){
  if(localStorage.getItem('psim_village_lead_done')==='true') return '';
  let h = '<div class="bg-white border-2 border-teal-400 rounded-xl shadow-lg p-5 mb-4">'+
-  '<p class="font-bold text-teal-800 mb-3">📍 आपका गाँव/तहसील कौन सा है?</p>'+
+  '<p class="font-bold text-teal-800 mb-3">'+(!vlOutsideMP?'<span onclick="setVLOutsideMP(\'OUTSIDE_MP\')" class="text-xs bg-teal-100 hover:bg-teal-200 text-teal-700 px-2 py-0.5 rounded-full cursor-pointer mr-2 font-normal align-middle">🌍 MP से बाहर?</span>':'')+'📍 आपका गाँव/तहसील कौन सा है?</p>'+
   '<div class="grid grid-cols-1 md:grid-cols-4 gap-2">';
  if(vlOutsideMP){
   h += '<select id="vl_district" onchange="setVLOutsideMP(this.value)" class="px-3 py-2 border-2 rounded"><option value="OUTSIDE_MP" selected>🌍 MP से बाहर / Outside MP</option>'+MP_DISTRICTS.map(d=>'<option>'+d+'</option>').join('')+'</select>'+
