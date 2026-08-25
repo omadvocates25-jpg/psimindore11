@@ -2431,6 +2431,11 @@ const AI_FOOD_WORDS = ['khana','khane','food','nashta','restaurant','भोज�
 const AI_NEAR_WORDS = ['nearest','sabse paas','sabse pass','paas','pass','nazdeek','najdeek','निकट','पास','नज़दीक'];
 const AI_HOSPITAL_WORDS = ['hospital','aspatal','अस्पताल'];
 const AI_DHARAMSHALA_WORDS = ['dharamshala','धर्मशाला'];
+// यह generative AI नहीं है (कोई bhi text खुद नहीं बनाता, सिर्फ हमारे अपने data से जवाब देता है) —
+// isliye galat/obscene content "generate" karna structurally possible hi nahi hai। फिर भी, अगर कोई
+// aisa sawaal type kare, respectfully mना कर देना chahiye — search logic tak jaane hi na de।
+const AI_BLOCKED_WORDS = ['sex','porn','xxx','nude','nangi','chudai','रंडी','वेश्या','रेप','rape','drugs','ganja','charas','नशा','हथियार','weapon','gun','बम','bomb','kill','murder','हत्या'];
+const AI_SELFHARM_WORDS = ['suicide','सुसाइड','आत्महत्या','khudkushi','खुदकुशी','जान दे'];
 const AI_SYNONYMS = {
  'dr':'doctor','doc':'doctor','adv':'advocate lawyer','lawyer':'advocate legal',
  'ca':'accountant','cs':'accountant','eng':'engineer','engg':'engineer',
@@ -2529,9 +2534,13 @@ function patidarAIReply(qRaw, rounds){
  const ql = q.toLowerCase();
  if(!q) return 'कुछ तो पूछो 🙂';
 
- if(AI_GREETINGS.some(g => ql===g || ql.startsWith(g+' '))){
-  return 'नमस्ते 🙏 मैं Patidar AI हूँ। मुझसे पूछो: कोई भी Business/Profession (डॉक्टर, वकील, इलेक्ट्रीशियन...), 🏥 सबसे पास का Hospital/धर्मशाला/Business, 🩸 Blood donor, 📰 समाज की News, 📅 Events, या दो गाँव के बीच 📍 Distance।';
+ if(AI_SELFHARM_WORDS.some(w => ql.includes(w))){
+  return '🙏 अगर आप या आपका कोई अपना मुश्किल दौर से गुज़र रहा है, तो कृपया अभी बात करो — KIRAN Helpline: 1800-599-0019 (24x7, फ्री) या Vandrevala Foundation: 1860-2662-345। आप अकेले नहीं हो, मदद मौजूद है।';
  }
+ if(AI_BLOCKED_WORDS.some(w => ql.includes(w))){
+  return '🙏 माफ़ कीजिए, इस तरह के सवाल का जवाब मैं नहीं दे सकता। मैं सिर्फ समाज से जुड़ी जानकारी में मदद करता हूँ — Business, Hospital, Blood donor, News, Events वगैरह बेझिझक पूछो।';
+ }
+ if(AI_GREETINGS.some(g => ql===g || ql.startsWith(g+' '))) return aiGreetingReply();
  if(AI_DISTANCE_WORDS.some(w => ql.includes(w))) return handleAiDistance(q, ql);
  if(AI_NEAR_WORDS.some(w => ql.includes(w))) return handleAiNearest(q, ql);
  if(AI_BLOOD_WORDS.some(w => ql.includes(w))) return handleAiBlood(q);
@@ -2579,11 +2588,19 @@ function aiSearchBusinesses(query){
  const rest = scored.filter(x => !x.b.promoted).map(x => x.b);
  return promoted.concat(rest).slice(0, 6);
 }
+// थोड़ी बातचीत वाली variety के लिए — हर बार एक जैसा robotic जवाब न लगे, फिर भी tone सम्मानजनक ही रहे
+function aiPick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
 function aiFormatBusinessResults(results, query){
  const place = aiFindPlaceInQuery((query||'').toLowerCase());
- const intro = place ? ('👨‍🌾 '+place+' में ये अपने पाटीदार भाई-बहनों के व्यापार मिले:') : '👨‍🌾 ये अपने पाटीदार भाई-बहनों के व्यापार मिले:';
+ const intro = place ?
+  aiPick(['👨‍🌾 '+place+' में ये अपने पाटीदार भाई-बहनों के व्यापार मिले:', '🙏 '+place+' में देखो, ये अपने समाज के व्यापार मिले:', '👨‍🌾 '+place+' के आसपास ये पाटीदार बंधुओं के व्यापार हैं:']) :
+  aiPick(['👨‍🌾 ये अपने पाटीदार भाई-बहनों के व्यापार मिले:', '🙏 देखो, ये अपने समाज के व्यापार मिले:', '👨‍🌾 ये रहे अपने पाटीदार बंधुओं के व्यापार:']);
  const lines = results.map((b,i) => (i+1)+'. '+b.name+(b.promoted?' ⭐':'')+' — '+b.type+(b.place?' | '+b.place:'')+'\n   📞 '+b.phone);
  return intro+'\n\n'+lines.join('\n\n')+'\n\nसभी अपने ही समाज के भरोसेमंद लोग हैं — बेझिझक call/WhatsApp करो। पूरी list के लिए BUSINESS page पर जाओ।';
+}
+function aiGreetingReply(){
+ const opener = aiPick(['नमस्ते 🙏', 'राम राम 🙏', 'जय पाटीदार समाज 🙏']);
+ return opener+' मैं Patidar AI हूँ। मुझसे पूछो: कोई भी Business/Profession (डॉक्टर, वकील, इलेक्ट्रीशियन...), 🏥 सबसे पास का Hospital/धर्मशाला/Business, 🩸 Blood donor, 📰 समाज की News, 📅 Events, या दो गाँव के बीच 📍 Distance।';
 }
 function handleAiBlood(q){
  const m = q.toUpperCase().match(/\b(AB|A|B|O)[+-]/);
@@ -2662,7 +2679,8 @@ function handleAiNearest(q, ql){
  if(!withDist.length) return '❌ '+radiusKm+' km के अंदर कोई '+label+' नहीं मिला (या location set नहीं है)।';
 
  const lines = withDist.map((c,i) => (i+1)+'. '+c.name+' — '+(Math.round(c.km*10)/10)+' km'+(c.phone?'\n   📞 '+c.phone:''));
- return '👨‍🌾 '+refName+' के सबसे पास ये अपने पाटीदार भाई-बहन मिले:\n\n'+lines.join('\n\n')+'\n\nदूरी हवाई (सीधी रेखा) है — सड़क की असल दूरी इससे ज़्यादा हो सकती है।';
+ const nearIntro = aiPick(['👨‍🌾 '+refName+' के सबसे पास ये अपने पाटीदार भाई-बहन मिले:', '🙏 '+refName+' के आसपास देखो, ये मिले:']);
+ return nearIntro+'\n\n'+lines.join('\n\n')+'\n\nदूरी हवाई (सीधी रेखा) है — सड़क की असल दूरी इससे ज़्यादा हो सकती है।';
 }
 // हर searchable portal पर छोटा सा quick-link — "सबसे पास कौन सा..." जैसे सवाल सीधे Patidar AI से पूछ सको
 function patidarAIQuickLinkHTML(){
