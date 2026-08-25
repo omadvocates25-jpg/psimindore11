@@ -2555,6 +2555,10 @@ function patidarAIReply(qRaw, rounds){
  if(AI_GREETINGS.some(g => ql===g || ql.startsWith(g+' '))) return aiGreetingReply();
  if(AI_DISTANCE_WORDS.some(w => ql.includes(w))) return handleAiDistance(q, ql);
  if(AI_NEAR_WORDS.some(w => ql.includes(w))) return handleAiNearest(q, ql);
+ // "nearest/paas" na bola ho, sirf "hospital/dharamshala hai kya" jaisa general sawaal poocha ho — तब भी
+ // seedha uska data dikhana chahiye, generic business search में गुम नहीं होना चाहिए
+ if(AI_HOSPITAL_WORDS.some(w => ql.includes(w))) return handleAiHospitalList();
+ if(AI_DHARAMSHALA_WORDS.some(w => ql.includes(w))) return handleAiDharamshalaList();
  if(AI_BLOOD_WORDS.some(w => ql.includes(w))) return handleAiBlood(q);
  if(AI_NEWS_WORDS.some(w => ql.includes(w))) return handleAiNews();
  if(AI_EVENT_WORDS.some(w => ql.includes(w))) return handleAiEvents();
@@ -2653,6 +2657,24 @@ function handleAiEvents(){
  const list = eventsData.filter(e => (e.date||'')>=today()).slice(0,5);
  if(!list.length) return 'अभी कोई upcoming event नहीं है।';
  return '📅 आने वाले Events:\n\n'+list.map(e => '• '+e.title+' — '+e.date+(e.location?(' | '+e.location):'')).join('\n')+'\n\nपूरी details EVENTS page पर मिलेंगी।';
+}
+// "nearest/paas" bole bina bhi sirf "hospital hai kya" jaisa general sawaal pucha ho — तब भी seedha data dikhao,
+// generic business search में गुम नहीं होना चाहिए। Area-filter yahan jaanboojhkar nahi — precise filtering "nearest" flow mein hai।
+function handleAiHospitalList(){
+ const list = approvedHospitals();
+ if(!list.length) return 'माफ़ कीजिए, अभी कोई Hospital listed नहीं है — Hospital page पर जाकर add कर सकते हो।';
+ const shown = list.slice(0, AI_LIST_CAP);
+ const lines = shown.map((h,i) => (i+1)+'. '+(h.name_en||h.name_hi)+(h.area?' | '+h.area:'')+'\n   📞 '+h.phone);
+ const more = list.length > AI_LIST_CAP ? ('\n\n(+'+(list.length-AI_LIST_CAP)+' और भी हैं — Hospital page पर जाओ)') : '';
+ return '🏥 ये Hospitals मिले:\n\n'+lines.join('\n\n')+more;
+}
+function handleAiDharamshalaList(){
+ const list = approvedDharamshala();
+ if(!list.length) return 'माफ़ कीजिए, अभी कोई धर्मशाला listed नहीं है — धर्मशाला page पर जाकर add कर सकते हो।';
+ const shown = list.slice(0, AI_LIST_CAP);
+ const lines = shown.map((d,i) => (i+1)+'. '+(d.name_en||d.name_hi)+(d.village?' | '+d.village+(d.tehsil?', '+d.tehsil:''):'')+'\n   📞 '+d.phone);
+ const more = list.length > AI_LIST_CAP ? ('\n\n(+'+(list.length-AI_LIST_CAP)+' और भी हैं — धर्मशाला page पर जाओ)') : '';
+ return '🛕 ये धर्मशाला मिलीं:\n\n'+lines.join('\n\n')+more;
 }
 function handleAiDistance(q, ql){
  const names = villageList().map(v => v.name);
