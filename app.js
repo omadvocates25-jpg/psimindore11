@@ -1039,18 +1039,38 @@ function whomResultsHTML(){
 function doWhomSearch(v){ whomQuery=v; const el=document.getElementById('whomResults'); if(el) el.innerHTML=whomResultsHTML(); }
 
 // ================= गाँव/तहसील (guest भी बिना OTP/register भर सके — हमें community के फैलाव का अंदाज़ा मिले) =================
+let vlOutsideMP = false;
+function setVLOutsideMP(v){ vlOutsideMP = (v === 'OUTSIDE_MP'); renderApp(); }
 function villageLeadBoxHTML(){
  if(localStorage.getItem('psim_village_lead_done')==='true') return '';
- return '<div class="bg-white border-2 border-teal-400 rounded-xl shadow-lg p-5 mb-4">'+
+ let h = '<div class="bg-white border-2 border-teal-400 rounded-xl shadow-lg p-5 mb-4">'+
   '<p class="font-bold text-teal-800 mb-3">📍 आपका गाँव/तहसील कौन सा है?</p>'+
-  '<div class="grid grid-cols-1 md:grid-cols-4 gap-2">'+
-  '<input id="vl_village" list="dl_villages" placeholder="गाँव / Village" class="px-3 py-2 border-2 rounded">'+
+  '<div class="grid grid-cols-1 md:grid-cols-4 gap-2">';
+ if(vlOutsideMP){
+  h += '<select id="vl_district" onchange="setVLOutsideMP(this.value)" class="px-3 py-2 border-2 rounded"><option value="OUTSIDE_MP" selected>🌍 MP से बाहर / Outside MP</option>'+MP_DISTRICTS.map(d=>'<option>'+d+'</option>').join('')+'</select>'+
+  '<select id="vl_state" class="px-3 py-2 border-2 rounded md:col-span-2"><option value="">राज्य / State चुनो</option>'+STATES.filter(s=>s!=='Madhya Pradesh').map(s=>'<option>'+s+'</option>').join('')+'</select>';
+ } else {
+  h += '<input id="vl_village" list="dl_villages" placeholder="गाँव / Village" class="px-3 py-2 border-2 rounded">'+
   '<input id="vl_tehsil" list="dl_tehsils" placeholder="तहसील / Tehsil" class="px-3 py-2 border-2 rounded">'+
-  '<select id="vl_district" class="px-3 py-2 border-2 rounded"><option value="">जिला / District</option>'+MP_DISTRICTS.map(d=>'<option>'+d+'</option>').join('')+'</select>'+
-  '<button onclick="submitVillageLead()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded font-bold">✅ बताओ</button>'+
+  '<select id="vl_district" onchange="setVLOutsideMP(this.value)" class="px-3 py-2 border-2 rounded"><option value="">जिला / District</option><option value="OUTSIDE_MP">🌍 MP से बाहर / Outside MP</option>'+MP_DISTRICTS.map(d=>'<option>'+d+'</option>').join('')+'</select>';
+ }
+ h += '<button onclick="submitVillageLead()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded font-bold">✅ बताओ</button>'+
   '</div></div>';
+ return h;
 }
 async function submitVillageLead(){
+ if(vlOutsideMP){
+  const state = document.getElementById('vl_state').value;
+  if(!state){ alert('❌ राज्य चुनो'); return; }
+  busy(true);
+  await db.collection('village_leads').add({ village:'', tehsil:'', district:'MP से बाहर', state, createdAt: today() });
+  busy(false);
+  localStorage.setItem('psim_village_lead_done', 'true');
+  alert('✅ धन्यवाद! जानकारी मिल गई।');
+  vlOutsideMP = false;
+  renderApp();
+  return;
+ }
  const village = fmtName(document.getElementById('vl_village').value);
  const tehsil = fmtName(document.getElementById('vl_tehsil').value);
  const district = document.getElementById('vl_district').value;
@@ -3281,7 +3301,7 @@ function renderAdmin(){
  if(adminTab==='villageleads'){
   const grouped = {};
   villageLeadsData.forEach(v => {
-   const key = (v.village||'-')+(v.tehsil?' / '+v.tehsil:'')+(v.district?' | '+v.district:'');
+   const key = (v.village||'-')+(v.tehsil?' / '+v.tehsil:'')+(v.district?' | '+v.district:'')+(v.state?' | '+v.state:'');
    grouped[key] = (grouped[key]||0) + 1;
   });
   const summary = Object.entries(grouped).sort((a,b)=>b[1]-a[1]);
@@ -3290,7 +3310,7 @@ function renderAdmin(){
   '</div>';
   h += '<div class="bg-white rounded-lg shadow p-6"><h3 class="text-xl font-bold mb-4">📋 सभी Entries</h3>'+
   (villageLeadsData.length ? '<div class="space-y-2">'+villageLeadsData.slice().sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).map(v=>
-   '<div class="flex justify-between items-center bg-gray-50 rounded-lg px-4 py-2"><span class="text-sm">🏡 '+esc(v.village||'-')+(v.tehsil?' | '+esc(v.tehsil):'')+(v.district?' | '+esc(v.district):'')+' <span class="text-gray-400">('+esc(v.createdAt||'')+')</span></span>'+
+   '<div class="flex justify-between items-center bg-gray-50 rounded-lg px-4 py-2"><span class="text-sm">🏡 '+esc(v.village||'-')+(v.tehsil?' | '+esc(v.tehsil):'')+(v.district?' | '+esc(v.district):'')+(v.state?' | '+esc(v.state):'')+' <span class="text-gray-400">('+esc(v.createdAt||'')+')</span></span>'+
    '<button onclick="delDoc(\'village_leads\',\''+v.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div>'
   ).join('')+'</div>' : '<p class="text-gray-400 text-center py-8">कोई entry नहीं</p>')+
   '</div>';
