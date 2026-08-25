@@ -2629,10 +2629,16 @@ function aiFormatBusinessResults(results, query){
  const intro = place ?
   aiPick(['👨‍🌾 '+place+' में ये अपने पाटीदार भाई-बहनों के व्यापार मिले:', '🙏 '+place+' में देखो, ये अपने समाज के व्यापार मिले:', '👨‍🌾 '+place+' के आसपास ये पाटीदार बंधुओं के व्यापार हैं:']) :
   aiPick(['👨‍🌾 ये अपने पाटीदार भाई-बहनों के व्यापार मिले:', '🙏 देखो, ये अपने समाज के व्यापार मिले:', '👨‍🌾 ये रहे अपने पाटीदार बंधुओं के व्यापार:']);
- const shown = results.slice(0, AI_LIST_CAP);
+ // Paid/promoted businesses कभी cap नहीं होते — जितने भी paid हों सब दिखेंगे (यही तो paid लेने का फ़ायदा है)।
+ // Free wale sirf बची हुई slots भरते हैं (cap - paid count तक); paid count cap छू/पार कर जाए तो free एक भी नहीं आएगा।
+ const promotedList = results.filter(b => b.promoted);
+ const freeList = results.filter(b => !b.promoted);
+ const freeSlots = Math.max(0, AI_LIST_CAP - promotedList.length);
+ const shown = promotedList.concat(freeList.slice(0, freeSlots));
+ const remainingFree = freeList.length - Math.min(freeSlots, freeList.length);
  const lines = shown.map((b,i) => (i+1)+'. '+b.name+(b.promoted?' ⭐':'')+' — '+b.type+(b.place?' | '+b.place:'')+'\n   📞 '+b.phone);
- const tail = results.length > AI_LIST_CAP ?
-  aiNarrowTail(results.length-AI_LIST_CAP, 'किस area का चाहिए, या पूरा नाम/काम बता दो', 'BUSINESS', query) :
+ const tail = remainingFree>0 ?
+  aiNarrowTail(remainingFree, 'किस area का चाहिए, या पूरा नाम/काम बता दो', 'BUSINESS', query) :
   '';
  return intro+'\n\n'+lines.join('\n\n')+'\n\nसभी अपने ही समाज के भरोसेमंद लोग हैं — बेझिझक call/WhatsApp करो।'+tail;
 }
