@@ -226,13 +226,6 @@ service cloud.firestore {
       allow delete: if isAdmin() || isOwnPhone(resource.data.referrerPhone);
     }
 
-    // ---- 🤖 Patidar AI — daily usage counter (spam/cost-abuse rokne ke liye, LLM call ka real cost hota hai) ----
-    // Sirf Cloud Function (Admin SDK, jo rules bypass karta hai) yahan likhta hai — client se kabhi nahi.
-    match /ai_usage/{docId} {
-      allow read: if isAdmin();
-      allow write: if false;
-    }
-
     // ---- Admin-only visibility ----
     match /suggestions/{docId} {
       allow read: if isAdmin();

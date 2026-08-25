@@ -17,7 +17,6 @@ const ADMIN_PHONE = "8103179376"; // Super Admin ka number - OTP login se auto-a
 const CONTACT_PHONE = "81031-79376";
 const ADMIN_CONTACTS = ["8103179376"];
 const REFERENCE_REGISTER_URL = "https://asia-south1-psim-2b211.cloudfunctions.net/referenceRegister";
-const PATIDAR_AI_URL = "https://asia-south1-psim-2b211.cloudfunctions.net/patidarAI";
 const GEOCODE_VILLAGE_URL = "https://asia-south1-psim-2b211.cloudfunctions.net/geocodeVillage";
 const DEFAULT_OBJECTIVE_TEXT = "क्या आपको पता है, पाटीदार समाज की अपनी एक App है — जिसमें हम सब आपस में जुड़ सकते हैं, अपने व्यापार को आगे बढ़ा सकते हैं और समाज के अलग-अलग लोगों को जान सकते हैं। सबसे बड़ी बात — हर पाटीदार को अपने ही पाटीदार भाई से व्यापार मिले, यही हमारा सबसे बड़ा उद्देश्य है।\n\nआपको कोई भी काम हो, छोटा हो या बड़ा — फ्रिज-कूलर ठीक करवाना हो या किसी डॉक्टर की जरूरत हो — आप सीधे इस App में search करके सीधे call कर सकते हैं। आखिर, अपने पाटीदार भाई पर भरोसा तो है ही! 🙏";
 const DEFAULT_INVITE_MSG = "🙏 क्या आपको पता है? पाटीदार समाज की अपनी App है जिसमें हम सब आपस में जुड़ सकते हैं और अपने व्यापार को बढ़ा सकते हैं। कोई भी काम हो — छोटा या बड़ा, फ्रिज-कूलर ठीक करवाना हो या डॉक्टर चाहिए — अपने पाटीदार भाई से सीधे जुड़ो। अभी Register करो 👇";
@@ -2381,11 +2380,38 @@ async function geocodeThisVillage(){
  }
 }
 
-// ================= 🤖 PATIDAR AI (app के data पर आधारित सवाल-जवाब) =================
+// ================= 🤖 PATIDAR AI (मौजूदा search को conversational बनाना — कोई paid LLM नहीं, 100% free) =================
+// Design: कोई बाहरी AI API नहीं बुलाई जाती — Community का data (business/blood/news/events/villages)
+// पहले से browser में realtime listeners से load है, बस उसी पर keyword-matching + clarifying-question
+// wala chhota conversation engine chalta hai. Isliye cost = ₹0 (Cloud Function bhi nahi lagti).
+let aiPending = null; // {originalQuery} — jab AI ne clarifying sawaal poocha ho, agla message uska jawab माना jaata hai
+
+const AI_GREETINGS = ['hi','hello','hey','namaste','namaskar','नमस्ते','नमस्कार','हैलो','हाय'];
+const AI_DISTANCE_WORDS = ['distance','doori','दूरी','kitni door','kitna dur','kitni dur'];
+const AI_BLOOD_WORDS = ['blood','khoon','रक्त','donor','donate'];
+const AI_NEWS_WORDS = ['news','samachar','samachaar','खबर','समाचार'];
+const AI_EVENT_WORDS = ['event','karyakram','कार्यक्रम'];
+const AI_FOOD_WORDS = ['khana','khane','food','nashta','restaurant','भोजन','खाना','नाश्ता'];
+const AI_SYNONYMS = {
+ 'dr':'doctor','doc':'doctor','adv':'advocate lawyer','lawyer':'advocate legal',
+ 'ca':'accountant','cs':'accountant','eng':'engineer','engg':'engineer',
+ 'elec':'electrician electronics','electric':'electrician electronics',
+ 'plum':'plumber','carp':'carpenter','mistri':'mason carpenter',
+ 'darji':'tailor','nai':'barber salon','cook':'cook caterer restaurant food',
+ 'khana':'food restaurant hotel caterer khana','khane':'food restaurant hotel caterer khana',
+ 'nashta':'restaurant hotel food','bhukh':'food restaurant hotel caterer khana',
+ 'med':'medical pharmacy','medicine':'medical pharmacy','pharma':'medical pharmacy',
+ 'mobile':'mobile electronics','photo':'photographer','video':'videographer',
+ 'comp':'computer it','computer':'computer it','property':'property dealer real estate',
+ 'kirana':'kirana general store','grocery':'kirana general store',
+ 'jewel':'jewellery jeweller','sona':'jewellery jeweller','cloth':'textiles garments cloth',
+ 'transport':'transport logistics driver','construction':'construction builder',
+ 'beauty':'beauty salon','parlour':'beauty salon','auto':'automobile garage','garage':'automobile garage','mechanic':'automobile garage'
+};
 function renderPatidarAI(){
  let h = '<h2 class="text-3xl font-bold mb-2">🤖 Patidar AI</h2>';
- h += '<p class="text-gray-500 mb-1">Villages, businesses, events, news — community की जानकारी के बारे में कुछ भी पूछो</p>';
- h += '<p class="text-xs text-gray-400 mb-4">⚠️ यह सिर्फ app में मौजूद data के आधार पर जवाब देता है, किसी member की personal जानकारी (number/address) नहीं देगा — उसके लिए Community सेक्शन में search करो।</p>';
+ h += '<p class="text-gray-500 mb-1">Business/Profession, 🩸 Blood Donor, 📰 समाज की News, 📅 Events, या दो गाँव के बीच 📍 Distance — कुछ भी पूछो</p>';
+ h += '<p class="text-xs text-gray-400 mb-4">⚠️ यह सिर्फ app में मौजूद data के आधार पर जवाब देता है, किसी member की personal profile नहीं देगा।</p>';
  h += '<div class="bg-white rounded-xl shadow-lg p-4 md:p-6">';
  h += '<div id="aiChatBox" class="space-y-3 mb-4 overflow-y-auto" style="max-height:50vh;">';
  if(!aiChatHistory.length){
@@ -2396,7 +2422,7 @@ function renderPatidarAI(){
  }
  h += '</div>';
  if(!aiChatHistory.length){
-  const samples = ['सबसे ज़्यादा members किस गाँव में हैं?','Karwad में कौन-कौन से business हैं?','आने वाले events कौन से हैं?'];
+  const samples = ['इंदौर में खाने के option चाहिए','O+ blood donor चाहिए','आने वाले events कौन से हैं?'];
   h += '<div class="flex flex-wrap gap-2 mb-3">'+samples.map(s=>'<button onclick="askPatidarAISample(\''+esc(s).replace(/'/g,"\\'")+'\')" class="text-xs bg-violet-50 text-violet-700 border border-violet-300 rounded-full px-3 py-1.5 hover:bg-violet-100">'+esc(s)+'</button>').join('')+'</div>';
  }
  h += '<div class="flex gap-2">'+
@@ -2416,7 +2442,7 @@ function aiThinkingBubble(){
 }
 function askPatidarAISample(q){ const inp=document.getElementById('ai_question'); if(inp){ inp.value=q; askPatidarAI(); } }
 function scrollAiChatToBottom(){ setTimeout(()=>{ const box=document.getElementById('aiChatBox'); if(box) box.scrollTop = box.scrollHeight; }, 30); }
-async function askPatidarAI(){
+function askPatidarAI(){
  if(!currentUser){ showRegisterPrompt('Patidar AI इस्तेमाल करने के लिए पहले login करो।'); return; }
  const inp = document.getElementById('ai_question');
  const q = (inp && inp.value || '').trim();
@@ -2424,23 +2450,111 @@ async function askPatidarAI(){
  aiChatHistory.push({role:'user', text:q});
  aiThinking = true;
  renderApp(); scrollAiChatToBottom();
- try{
-  const resp = await fetch(PATIDAR_AI_URL, {
-   method:'POST', headers:{'Content-Type':'application/json'},
-   body: JSON.stringify({ phone: currentUser, question: q, history: aiChatHistory.slice(-9,-1) })
-  });
-  const out = await resp.json().catch(()=>({}));
-  aiThinking = false;
-  if(!resp.ok){
-   aiChatHistory.push({role:'ai', text: out.error==='limit_reached' ? '⚠️ आज की सीमा पूरी हो गई — कल फिर पूछो।' : '⚠️ कुछ गड़बड़ हुई, दोबारा try करो।'});
+ // असली network call नहीं है — chhota सा artificial pause taaki reply "socha hua" lage, ek robot jaisa turant-jawab na lage
+ setTimeout(() => {
+  let answer;
+  if(aiPending){
+   const combined = aiPending.originalQuery + ' ' + q;
+   aiPending = null;
+   answer = patidarAIReply(combined, 1);
   } else {
-   aiChatHistory.push({role:'ai', text: out.answer || '...'});
+   answer = patidarAIReply(q, 0);
   }
- } catch(e){
   aiThinking = false;
-  aiChatHistory.push({role:'ai', text: '⚠️ Network error — दोबारा try करो।'});
+  aiChatHistory.push({role:'ai', text:answer});
+  renderApp(); scrollAiChatToBottom();
+ }, 500);
+}
+
+// ---- Core conversation router — sab kuch sirf app ke apne data (members/business/blood/news/events/villages) se, bahar se kuch nahi ----
+function patidarAIReply(qRaw, rounds){
+ const q = qRaw.trim();
+ const ql = q.toLowerCase();
+ if(!q) return 'कुछ तो पूछो 🙂';
+
+ if(AI_GREETINGS.some(g => ql===g || ql.startsWith(g+' '))){
+  return 'नमस्ते 🙏 मैं Patidar AI हूँ। मुझसे पूछो: कोई भी Business/Profession (डॉक्टर, वकील, इलेक्ट्रीशियन...), 🩸 Blood donor, 📰 समाज की News, 📅 Events, या दो गाँव के बीच 📍 Distance।';
  }
- renderApp(); scrollAiChatToBottom();
+ if(AI_DISTANCE_WORDS.some(w => ql.includes(w))) return handleAiDistance(q, ql);
+ if(AI_BLOOD_WORDS.some(w => ql.includes(w))) return handleAiBlood(q);
+ if(AI_NEWS_WORDS.some(w => ql.includes(w))) return handleAiNews();
+ if(AI_EVENT_WORDS.some(w => ql.includes(w))) return handleAiEvents();
+ if(rounds===0 && AI_FOOD_WORDS.some(w => ql.includes(w)) && !aiHasAreaHint(ql)){
+  aiPending = { originalQuery: q };
+  return '📍 कौनसा area चाहिए? और 🍽️ नाश्ता चाहिए या पूरा खाना?';
+ }
+ const results = aiSearchBusinesses(q);
+ if(results.length) return aiFormatBusinessResults(results);
+ return 'माफ़ कीजिए, समझ नहीं आया 🙏 आप पूछ सकते हो: किसी काम/business वाले के बारे में (जैसे "इलेक्ट्रीशियन Vijay Nagar"), 🩸 Blood donor, 📰 News, 📅 Events, या दो गाँव के बीच Distance।';
+}
+function aiHasAreaHint(qlText){
+ let hit = false;
+ allBusinesses().forEach(b => { if(!hit && b.place && b.place.length>2 && qlText.includes(b.place.toLowerCase())) hit = true; });
+ if(!hit) villageList().forEach(v => { if(!hit && v.name.length>2 && qlText.includes(v.name.toLowerCase())) hit = true; });
+ return hit;
+}
+function aiExpandSynonyms(q){
+ let extra = '';
+ Object.keys(AI_SYNONYMS).forEach(k => { if(q.includes(k)) extra += ' '+AI_SYNONYMS[k]; });
+ return q + extra;
+}
+function aiSearchBusinesses(query){
+ const q = aiExpandSynonyms(query.toLowerCase());
+ const qWords = q.split(/\s+/).filter(w => w.length>1);
+ const scored = allBusinesses().map(b => {
+  const hay = (b.type+' '+b.name+' '+(b.place||'')+' '+(b.village||'')+' '+(b.city||'')).toLowerCase();
+  let score = 0;
+  if(hay.includes(q)) score += 10;
+  qWords.forEach(w => { if(hay.includes(w)) score += 1; });
+  return {b, score};
+ }).filter(x => x.score>0).sort((a,b) => b.score-a.score);
+ // Paid/promoted business hamesha pehle — baaki relevance ke hisaab se uske baad
+ const promoted = scored.filter(x => x.b.promoted).map(x => x.b);
+ const rest = scored.filter(x => !x.b.promoted).map(x => x.b);
+ return promoted.concat(rest).slice(0, 6);
+}
+function aiFormatBusinessResults(results){
+ const lines = results.map((b,i) => (i+1)+'. '+b.name+(b.promoted?' ⭐':'')+' — '+b.type+(b.place?' | '+b.place:'')+'\n   📞 '+b.phone);
+ return '🔍 ये मिले:\n\n'+lines.join('\n\n')+'\n\nपूरी list के लिए BUSINESS page पर जाओ।';
+}
+function handleAiBlood(q){
+ const m = q.toUpperCase().match(/\b(AB|A|B|O)[+-]/);
+ const group = m ? m[0] : null;
+ let donors = publicMembers().filter(mm => (mm.blood_donor||'').indexOf('हाँ')===0 && mm.blood_group);
+ if(group) donors = donors.filter(d => d.blood_group===group);
+ if(!donors.length) return group ? ('माफ़ कीजिए, अभी '+group+' के कोई registered donor नहीं हैं — BLOOD page पर जाकर 🆘 SOS डालो, ज़्यादा पहुँच मिलेगी।') : 'कौनसा blood group चाहिए? जैसे O+, B+, AB- लिखकर पूछो।';
+ const list = donors.slice(0,6).map(d => '🩸 '+d.name+' '+d.surname+' — '+d.blood_group+(d.home_village?(' | '+d.home_village):'')+'\n   📞 '+d.phone);
+ return 'ये blood donors मिले:\n\n'+list.join('\n\n')+'\n\nसीधे call/WhatsApp करो, या emergency में BLOOD page पर SOS डालो।';
+}
+function handleAiNews(){
+ const list = newsData.filter(n => n.status!=='pending').slice(0,5);
+ if(!list.length) return 'अभी कोई News नहीं है।';
+ return '📰 ताज़ा समाचार:\n\n'+list.map(n => '• '+n.title+(n.date?' ('+n.date+')':'')).join('\n')+'\n\nपूरी details NEWS page पर मिलेंगी।';
+}
+function handleAiEvents(){
+ const list = eventsData.filter(e => (e.date||'')>=today()).slice(0,5);
+ if(!list.length) return 'अभी कोई upcoming event नहीं है।';
+ return '📅 आने वाले Events:\n\n'+list.map(e => '• '+e.title+' — '+e.date+(e.location?(' | '+e.location):'')).join('\n')+'\n\nपूरी details EVENTS page पर मिलेंगी।';
+}
+function handleAiDistance(q, ql){
+ const names = villageList().map(v => v.name);
+ const found = names.filter(n => ql.includes(n.toLowerCase()));
+ if(found.length<2){
+  aiPending = { originalQuery: q };
+  return '📍 कौन से दो गाँव के बीच? दोनों नाम एक साथ लिखो, जैसे "Karwad aur Sanwer"';
+ }
+ const a = villageInfoFor(found[0]), b = villageInfoFor(found[1]);
+ if(!a || !a.lat || !b || !b.lat){
+  return '❌ '+found[0]+' या '+found[1]+' का location अभी set नहीं है। "मेरे गाँव ले चलो" पेज पर जाकर 📍 Location सेट करो, फिर पूछो।';
+ }
+ const km = Math.round(haversineKmClient(a.lat, a.lng, b.lat, b.lng)*10)/10;
+ return '📍 '+found[0]+' और '+found[1]+' के बीच सीधी (हवाई) दूरी लगभग '+km+' km है — सड़क की असल दूरी इससे ज़्यादा हो सकती है।';
+}
+function haversineKmClient(lat1, lon1, lat2, lon2){
+ const R = 6371;
+ const dLat = (lat2-lat1)*Math.PI/180, dLon = (lon2-lon1)*Math.PI/180;
+ const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+ return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
 // ================= PROPERTY (मकान-किरायेदार) =================
