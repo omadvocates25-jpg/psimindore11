@@ -2413,11 +2413,19 @@ const AI_SYNONYMS = {
 // Chhota/compact rakha hai jaanbhoojkar — scroll na karna pade, sirf ek nazar mein attract kare aur click karaye।
 // पूछने के लिए login जरूरी है — guest click kare to normal register-prompt अपने आप आ जाता है (goPage locked-page check से)।
 function patidarAIHomeHeroHTML(){
- return '<div onclick="goPage(\'patidarai\')" class="bg-gradient-to-r from-violet-600 to-indigo-700 rounded-2xl shadow-xl px-6 py-5 mb-6 text-center text-white cursor-pointer hover:shadow-2xl transform hover:scale-[1.01] transition-all">'+
-  '<p class="text-[11px] uppercase tracking-[0.2em] text-violet-200 mb-0.5">Welcome to</p>'+
-  '<p class="text-4xl md:text-6xl font-extrabold tracking-tight mb-2">👨‍🌾 PATIDAR AI</p>'+
-  '<span class="inline-block bg-white text-violet-700 font-bold text-sm px-5 py-1.5 rounded-full">'+(currentUser?'बात करो →':'🔒 Login करके पूछो →')+'</span>'+
-  '</div>';
+ // हल्का, खेत-जैसा हरा-सुनहरा theme + हल्का circuit pattern पीछे — "गाँव वाला AI से जुड़कर smart हो गया" वाला भाव
+ return '<div onclick="goPage(\'patidarai\')" class="relative overflow-hidden bg-gradient-to-br from-amber-50 via-lime-50 to-emerald-100 border-2 border-emerald-400 rounded-2xl shadow-lg px-6 py-5 mb-6 text-center cursor-pointer hover:shadow-2xl transform hover:scale-[1.01] transition-all">'+
+  '<svg class="absolute inset-0 w-full h-full opacity-[0.12]" viewBox="0 0 400 120" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">'+
+  '<path d="M20 60 H95 M95 60 V22 M95 60 V98 M305 60 H380 M305 60 V32 M305 60 V88 M150 22 H250" stroke="#047857" stroke-width="2" fill="none"/>'+
+  '<circle cx="95" cy="22" r="4" fill="#047857"/><circle cx="95" cy="98" r="4" fill="#047857"/>'+
+  '<circle cx="305" cy="32" r="4" fill="#047857"/><circle cx="305" cy="88" r="4" fill="#047857"/>'+
+  '<circle cx="150" cy="22" r="4" fill="#047857"/><circle cx="250" cy="22" r="4" fill="#047857"/>'+
+  '</svg>'+
+  '<div class="relative">'+
+  '<p class="text-[11px] uppercase tracking-[0.2em] text-emerald-700 font-bold mb-0.5">Welcome to</p>'+
+  '<p class="text-4xl md:text-6xl font-extrabold tracking-tight mb-2 text-emerald-900">🌾👨‍🌾 PATIDAR AI</p>'+
+  '<span class="inline-block bg-emerald-600 text-white font-bold text-sm px-5 py-1.5 rounded-full">'+(currentUser?'बात करो →':'🔒 Login करके पूछो →')+'</span>'+
+  '</div></div>';
 }
 function renderPatidarAI(){
  let h = '<h2 class="text-3xl font-bold mb-2">👨‍🌾 Patidar AI</h2>';
