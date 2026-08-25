@@ -17,6 +17,8 @@ const ADMIN_PHONE = "8103179376"; // Super Admin ka number - OTP login se auto-a
 const CONTACT_PHONE = "81031-79376";
 const ADMIN_CONTACTS = ["8103179376"];
 const REFERENCE_REGISTER_URL = "https://asia-south1-psim-2b211.cloudfunctions.net/referenceRegister";
+const PATIDAR_AI_URL = "https://asia-south1-psim-2b211.cloudfunctions.net/patidarAI";
+const GEOCODE_VILLAGE_URL = "https://asia-south1-psim-2b211.cloudfunctions.net/geocodeVillage";
 const DEFAULT_OBJECTIVE_TEXT = "क्या आपको पता है, पाटीदार समाज की अपनी एक App है — जिसमें हम सब आपस में जुड़ सकते हैं, अपने व्यापार को आगे बढ़ा सकते हैं और समाज के अलग-अलग लोगों को जान सकते हैं। सबसे बड़ी बात — हर पाटीदार को अपने ही पाटीदार भाई से व्यापार मिले, यही हमारा सबसे बड़ा उद्देश्य है।\n\nआपको कोई भी काम हो, छोटा हो या बड़ा — फ्रिज-कूलर ठीक करवाना हो या किसी डॉक्टर की जरूरत हो — आप सीधे इस App में search करके सीधे call कर सकते हैं। आखिर, अपने पाटीदार भाई पर भरोसा तो है ही! 🙏";
 const DEFAULT_INVITE_MSG = "🙏 क्या आपको पता है? पाटीदार समाज की अपनी App है जिसमें हम सब आपस में जुड़ सकते हैं और अपने व्यापार को बढ़ा सकते हैं। कोई भी काम हो — छोटा या बड़ा, फ्रिज-कूलर ठीक करवाना हो या डॉक्टर चाहिए — अपने पाटीदार भाई से सीधे जुड़ो। अभी Register करो 👇";
 function T(key, fallback){ return (siteMeta.texts && siteMeta.texts[key]) || fallback; }
@@ -43,6 +45,8 @@ let showDharamshalaForm=false, dharamshalaKind='village', showHospitalForm=false
 let regStep = 0;
 let regMode = 'otp'; // 'otp' | 'reference' — Register page pe chuna gaya tareeka
 let showRegModeChooser = true;
+let aiChatHistory = []; // [{role:'user'|'ai', text}] — session-only, kahin save nahi hota
+let aiThinking = false;
 let relSearchQ = '';
 let friendSearchQ = '';
 let whomQuery = '';
@@ -327,7 +331,7 @@ async function saveMeta(){ await db.collection('meta').doc('site').set(siteMeta)
 // बिना login दिखने वाले pages — Home/News/Pratibha/Events/Gallery + Rozgaar व OLX (सिर्फ browsing) खुले हैं
 // बाकी सब (Community, Business, Garba, Cricket, Blood, Property, Shaadi) के लिए पहले Community member बनना जरूरी है
 const OPEN_PAGES = ['home','news','register','events','gallery','pratibha','rozgaar','olditems','suggestions','obituaries'];
-const LOCKED_PAGES = ['community','business','garba','cricket','blood','property','shaadi','dharamshala','hospitals','students','meregaanv'];
+const LOCKED_PAGES = ['community','business','garba','cricket','blood','property','shaadi','dharamshala','hospitals','students','meregaanv','patidarai'];
 function goPage(p){
  if(!currentUser && LOCKED_PAGES.includes(p)){
   showRegisterPrompt('यह सुविधा सिर्फ रजिस्टर्ड सदस्यों के लिए है — Community से जुड़ने के लिए Register करो।');
@@ -1265,7 +1269,8 @@ function renderHome(){
   ['hospitals','sky','🏥','पाटीदार अस्पताल<br>Hospitals', hospitalsData.filter(h=>h.status==='approved').length+' Listed'],
   ['students','fuchsia','🎓','STUDENT<br>इंदौर', studentNeedsData.filter(s=>s.status==='approved').length+' Listings'],
   ['obituaries','gray','🕯️','शोक समाचार<br>Obituaries', obituariesData.length+' Notices'],
-  ['meregaanv','emerald','🏡','मेरे गाँव<br>ले चलो', uniqueVillageCount()+' Villages']
+  ['meregaanv','emerald','🏡','मेरे गाँव<br>ले चलो', uniqueVillageCount()+' Villages'],
+  ['patidarai','violet','🤖','Patidar AI<br>पूछो', 'सवाल पूछो']
  ];
  h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">'+portals.slice(0,4).map(portalTile).join('')+'</div>';
 
@@ -1275,7 +1280,7 @@ function renderHome(){
 
  h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">'+portals.slice(8,12).map(portalTile).join('')+'</div>';
 
- h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">'+portals.slice(12,17).map(portalTile).join('')+'</div>';
+ h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">'+portals.slice(12,18).map(portalTile).join('')+'</div>';
 
  h += '<div class="bg-white rounded-xl shadow-lg p-6 mb-8"><h3 class="text-2xl font-bold mb-1 text-center">🎲 जानो अपने साथियों को / Know Your Community</h3><p class="text-center text-gray-500 text-sm mb-4">Random member profiles देखो</p><div id="randProfileBox"></div></div>';
 
@@ -2329,6 +2334,9 @@ function renderMereGaanvPage(){
  h += '<div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6 mb-6">';
  h += '<h3 class="text-3xl font-bold mb-2">🏡 '+bilingualHTML(selectedGaanv, hi)+'</h3>';
  h += '<p class="text-emerald-100">👥 '+members.length+' सदस्य | 🏪 '+businesses.length+' व्यापार</p>';
+ h += (info && info.lat) ?
+  '<p class="text-emerald-100 text-xs mt-2">📍 Location set है — Patidar AI से distance जैसे सवाल पूछ सकते हो</p>' :
+  '<button onclick="geocodeThisVillage()" class="mt-2 bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-3 py-1.5 rounded-full">📍 Location सेट करो</button>';
  h += '</div>';
 
  h += '<div class="bg-white rounded-lg shadow p-6 mb-6"><div class="flex justify-between items-center mb-2"><h3 class="text-lg font-bold">📝 गाँव के बारे में</h3><button onclick="showVillageDescForm=!showVillageDescForm;renderApp()" class="text-xs bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full font-bold">✏️ '+(info?'Edit करो':'Add करो')+'</button></div>';
@@ -2349,6 +2357,90 @@ function renderMereGaanvPage(){
  else h += '<div class="flex gap-4 overflow-x-auto pb-2 noscroll">'+members.map(memberCard).join('')+'</div>';
 
  return h;
+}
+// गाँव का lat/lng सेट करना — बिना coordinates के "दो गाँव के बीच distance" जैसे सवाल Patidar AI जवाब नहीं दे सकता
+async function geocodeThisVillage(){
+ const me = myMember();
+ if(!me || me.status!=='approved'){ showRegisterPrompt('Location set करने के लिए पहले Community member बनो।'); return; }
+ const ref = publicMembers().find(m=>fmtName(m.home_village)===selectedGaanv);
+ const district = ref ? (ref.home_district||'') : '';
+ busy(true);
+ try{
+  const resp = await fetch(GEOCODE_VILLAGE_URL+'?village='+encodeURIComponent(selectedGaanv)+'&district='+encodeURIComponent(district));
+  const out = await resp.json().catch(()=>({}));
+  busy(false);
+  if(!out.lat){ alert('❌ Location नहीं मिली — कुछ देर बाद फिर try करो।'); return; }
+  const existing = villageInfoFor(selectedGaanv);
+  if(existing) await db.collection('village_info').doc(existing.id).update({lat:out.lat, lng:out.lng});
+  else await db.collection('village_info').add({village:selectedGaanv, description:'', lat:out.lat, lng:out.lng, addedBy:me.phone, createdAt:today()});
+  alert('✅ Location set हो गई!');
+  renderApp();
+ } catch(e){
+  busy(false);
+  alert('❌ Network error: '+e.message);
+ }
+}
+
+// ================= 🤖 PATIDAR AI (app के data पर आधारित सवाल-जवाब) =================
+function renderPatidarAI(){
+ let h = '<h2 class="text-3xl font-bold mb-2">🤖 Patidar AI</h2>';
+ h += '<p class="text-gray-500 mb-1">Villages, businesses, events, news — community की जानकारी के बारे में कुछ भी पूछो</p>';
+ h += '<p class="text-xs text-gray-400 mb-4">⚠️ यह सिर्फ app में मौजूद data के आधार पर जवाब देता है, किसी member की personal जानकारी (number/address) नहीं देगा — उसके लिए Community सेक्शन में search करो।</p>';
+ h += '<div class="bg-white rounded-xl shadow-lg p-4 md:p-6">';
+ h += '<div id="aiChatBox" class="space-y-3 mb-4 overflow-y-auto" style="max-height:50vh;">';
+ if(!aiChatHistory.length){
+  h += '<div class="text-center text-gray-400 py-8"><p class="text-4xl mb-2">🤖</p><p class="text-sm">नमस्ते! कुछ भी पूछो, जैसे नीचे दिए उदाहरण</p></div>';
+ } else {
+  h += aiChatHistory.map(aiChatBubble).join('');
+  if(aiThinking) h += aiThinkingBubble();
+ }
+ h += '</div>';
+ if(!aiChatHistory.length){
+  const samples = ['सबसे ज़्यादा members किस गाँव में हैं?','Karwad में कौन-कौन से business हैं?','आने वाले events कौन से हैं?'];
+  h += '<div class="flex flex-wrap gap-2 mb-3">'+samples.map(s=>'<button onclick="askPatidarAISample(\''+esc(s).replace(/'/g,"\\'")+'\')" class="text-xs bg-violet-50 text-violet-700 border border-violet-300 rounded-full px-3 py-1.5 hover:bg-violet-100">'+esc(s)+'</button>').join('')+'</div>';
+ }
+ h += '<div class="flex gap-2">'+
+  '<input id="ai_question" onkeydown="if(event.key===\'Enter\'){event.preventDefault();askPatidarAI();}" placeholder="अपना सवाल लिखो..." class="flex-1 px-4 py-3 border-2 border-violet-300 rounded-lg"'+(aiThinking?' disabled':'')+'>'+
+  '<button onclick="askPatidarAI()"'+(aiThinking?' disabled':'')+' class="bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white px-5 py-3 rounded-lg font-bold">'+(aiThinking?'⏳':'भेजो →')+'</button>'+
+  '</div>';
+ h += '</div>';
+ return h;
+}
+function aiChatBubble(m){
+ const mine = m.role==='user';
+ return '<div class="flex '+(mine?'justify-end':'justify-start')+'">'+
+  '<div class="max-w-[85%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-line '+(mine?'bg-violet-600 text-white rounded-br-sm':'bg-gray-100 text-gray-800 rounded-bl-sm')+'">'+esc(m.text)+'</div></div>';
+}
+function aiThinkingBubble(){
+ return '<div class="flex justify-start"><div class="max-w-[85%] rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm bg-gray-100 text-gray-400">सोच रहा है...</div></div>';
+}
+function askPatidarAISample(q){ const inp=document.getElementById('ai_question'); if(inp){ inp.value=q; askPatidarAI(); } }
+function scrollAiChatToBottom(){ setTimeout(()=>{ const box=document.getElementById('aiChatBox'); if(box) box.scrollTop = box.scrollHeight; }, 30); }
+async function askPatidarAI(){
+ if(!currentUser){ showRegisterPrompt('Patidar AI इस्तेमाल करने के लिए पहले login करो।'); return; }
+ const inp = document.getElementById('ai_question');
+ const q = (inp && inp.value || '').trim();
+ if(!q || aiThinking) return;
+ aiChatHistory.push({role:'user', text:q});
+ aiThinking = true;
+ renderApp(); scrollAiChatToBottom();
+ try{
+  const resp = await fetch(PATIDAR_AI_URL, {
+   method:'POST', headers:{'Content-Type':'application/json'},
+   body: JSON.stringify({ phone: currentUser, question: q, history: aiChatHistory.slice(-9,-1) })
+  });
+  const out = await resp.json().catch(()=>({}));
+  aiThinking = false;
+  if(!resp.ok){
+   aiChatHistory.push({role:'ai', text: out.error==='limit_reached' ? '⚠️ आज की सीमा पूरी हो गई — कल फिर पूछो।' : '⚠️ कुछ गड़बड़ हुई, दोबारा try करो।'});
+  } else {
+   aiChatHistory.push({role:'ai', text: out.answer || '...'});
+  }
+ } catch(e){
+  aiThinking = false;
+  aiChatHistory.push({role:'ai', text: '⚠️ Network error — दोबारा try करो।'});
+ }
+ renderApp(); scrollAiChatToBottom();
 }
 
 // ================= PROPERTY (मकान-किरायेदार) =================
@@ -3889,6 +3981,7 @@ function renderApp(){
  else if(currentPage==='students') html = renderStudentsPage();
  else if(currentPage==='obituaries') html = renderObituariesPage();
  else if(currentPage==='meregaanv') html = renderMereGaanvPage();
+ else if(currentPage==='patidarai') html = renderPatidarAI();
  else if(currentPage==='news') html = renderNewsPage();
  else if(currentPage==='pratibha') html = renderPratibhaPage();
  else if(currentPage==='events') html = renderEventsPage();

@@ -11,6 +11,7 @@ const WHATSAPP_TOKEN = defineSecret('WHATSAPP_TOKEN');
 const WHATSAPP_PHONE_NUMBER_ID = defineSecret('WHATSAPP_PHONE_NUMBER_ID');
 const WHATSAPP_VERIFY_TOKEN = defineSecret('WHATSAPP_VERIFY_TOKEN');
 const WHATSAPP_APP_SECRET = defineSecret('WHATSAPP_APP_SECRET');
+const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY');
 
 const SITE_URL = 'https://psimindore.com';
 
@@ -290,6 +291,224 @@ exports.referenceRegister = onRequest({ region: 'asia-south1', cors: true }, asy
     return res.status(200).json({ approved, token });
   } catch (e) {
     logger.error('referenceRegister error', e);
+    return res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// ============================================================================
+// गाँव के coordinates ढूंढना (OpenStreetMap Nominatim — free, no API key) —
+// "मेरे गाँव ले चलो" पेज पर member click करता है, हम yahan se proxy karte hain
+// kyunki Nominatim ko ek pehchan-wala User-Agent chahiye (browser se seedha nahi chalta)
+// ============================================================================
+exports.geocodeVillage = onRequest({ region: 'asia-south1', cors: true }, async (req, res) => {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'method_not_allowed' });
+  try {
+    const village = esc(req.query.village).slice(0, 100);
+    const district = esc(req.query.district).slice(0, 100);
+    if (!village) return res.status(400).json({ error: 'missing_village' });
+    const q = [village, district, 'Madhya Pradesh', 'India'].filter(Boolean).join(', ');
+    const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q);
+    const resp = await fetch(url, { headers: { 'User-Agent': 'PSIM-PatidarSamajIndore/1.0 (https://psimindore.com)' } });
+    if (!resp.ok) return res.status(200).json({ lat: null, lng: null });
+    const data = await resp.json();
+    if (!data || !data.length) return res.status(200).json({ lat: null, lng: null });
+    return res.status(200).json({ lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) });
+  } catch (e) {
+    logger.error('geocodeVillage error', e);
+    return res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// ============================================================================
+// 🤖 Patidar AI — app ke apne data (villages, businesses, events, news, aggregate
+// community numbers) ke aadhar par sawaal-jawab. Kisi individual member ki personal
+// detail (phone/address) kabhi nahi deta — sirf business listings (jo pehle se public
+// hain) aur aggregate jaankari. Anthropic Messages API + tool-use pattern use karta hai:
+// LLM decide karta hai kaunsa tool chahiye, hum Firestore se woh data nikaal ke wapas
+// dete hain, LLM final jawab banata hai — isse jawab hamesha asli data se grounded rehta hai.
+// ============================================================================
+const AI_MODEL = 'claude-haiku-4-5-20251001';
+const AI_DAILY_LIMIT = 30; // per phone, per din — LLM call ka real cost hota hai isliye free Firestore write jaisa unlimited nahi
+
+const AI_TOOLS = [
+  {
+    name: 'search_businesses',
+    description: 'PSIM business directory me kisi kaam/business/profession ke liye search karo (jaise "electrician", "doctor Indore"). Business ka naam, type, jagah, phone deta hai.',
+    input_schema: { type: 'object', properties: { query: { type: 'string', description: 'kya dhundhna hai' } }, required: ['query'] }
+  },
+  {
+    name: 'village_info',
+    description: 'Kisi ek gaanv ke baare me jaankari — description, kitne members, kitne business, aur location set hai ya nahi.',
+    input_schema: { type: 'object', properties: { village: { type: 'string' } }, required: ['village'] }
+  },
+  {
+    name: 'village_distance',
+    description: 'Do gaanv ke beech seedhi-lakeer (aerial/as-the-crow-flies) approx distance km me. Sirf tab kaam karta hai jab dono gaanv ka location "set" ho — nahi to bata do ki abhi available nahi hai, khud andaza mat lagao.',
+    input_schema: { type: 'object', properties: { village_a: { type: 'string' }, village_b: { type: 'string' } }, required: ['village_a', 'village_b'] }
+  },
+  {
+    name: 'list_villages',
+    description: 'Community ke sabhi gaanv, member-count ke saath, sabse zyada members wale gaanv pehle.',
+    input_schema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'community_stats',
+    description: 'Poori community ke aggregate numbers — total approved members, total businesses, total villages, district-wise breakdown. Kisi individual member ki details nahi.',
+    input_schema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'upcoming_events',
+    description: 'Community ke aane wale events — naam, date, jagah.',
+    input_schema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'latest_news',
+    description: 'Community ki latest news headlines.',
+    input_schema: { type: 'object', properties: {} }
+  }
+];
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+async function fetchApprovedMembers() {
+  const snap = await db.collection('members').where('status', '==', 'approved').get();
+  return snap.docs.map(d => d.data());
+}
+async function fetchVillageInfoMap() {
+  const snap = await db.collection('village_info').get();
+  const map = {};
+  snap.forEach(d => { const v = d.data(); if (v.village) map[fmtName(v.village)] = v; });
+  return map;
+}
+
+// Tool जो सीधे individual member records (naam/phone/address) return karta — jaanbhoojkar
+// yahan नहीं है, taaki AI chat kabhi PII-scraping ka zariya na bane. Sirf aggregate/business data.
+async function runAiTool(name, input, ctx) {
+  if (name === 'search_businesses') {
+    const results = await searchBusinesses((input.query || '').toString());
+    return results.length ? results : { message: 'kuch nahi mila' };
+  }
+  if (name === 'village_info') {
+    const vname = fmtName((input.village || '').toString());
+    const info = ctx.villageInfoMap[vname];
+    const members = ctx.members.filter(m => fmtName(m.home_village) === vname);
+    return {
+      village: vname,
+      description: (info && info.description) || null,
+      member_count: members.length,
+      business_count: members.filter(m => m.business_name).length,
+      location_set: !!(info && info.lat)
+    };
+  }
+  if (name === 'village_distance') {
+    const a = ctx.villageInfoMap[fmtName((input.village_a || '').toString())];
+    const b = ctx.villageInfoMap[fmtName((input.village_b || '').toString())];
+    if (!a || !a.lat || !b || !b.lat) return { error: 'location_not_set', message: 'Ek ya dono gaanv ka location abhi set nahi hai.' };
+    return { distance_km: Math.round(haversineKm(a.lat, a.lng, b.lat, b.lng) * 10) / 10, note: 'straight-line (hawai) approx distance, road distance nahi' };
+  }
+  if (name === 'list_villages') {
+    const counts = {};
+    ctx.members.forEach(m => { const v = fmtName(m.home_village); if (v) counts[v] = (counts[v] || 0) + 1; });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 40).map(([v, c]) => ({ village: v, member_count: c }));
+  }
+  if (name === 'community_stats') {
+    const districts = {};
+    ctx.members.forEach(m => { const d = m.home_district || 'Unknown'; districts[d] = (districts[d] || 0) + 1; });
+    return {
+      total_members: ctx.members.length,
+      total_businesses: ctx.members.filter(m => m.business_name).length,
+      total_villages: new Set(ctx.members.map(m => fmtName(m.home_village)).filter(Boolean)).size,
+      top_districts: Object.entries(districts).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([d, c]) => ({ district: d, count: c }))
+    };
+  }
+  if (name === 'upcoming_events') {
+    const snap = await db.collection('events').where('date', '>=', today()).orderBy('date').limit(10).get();
+    return snap.docs.map(d => { const e = d.data(); return { title: e.title || '', date: e.date || '', location: e.location || '' }; });
+  }
+  if (name === 'latest_news') {
+    const snap = await db.collection('news').orderBy('date', 'desc').limit(15).get();
+    return snap.docs.map(d => d.data()).filter(n => n.status !== 'pending' && n.title).slice(0, 10).map(n => ({ title: n.title, date: n.date || '' }));
+  }
+  return { error: 'unknown_tool' };
+}
+
+exports.patidarAI = onRequest({ region: 'asia-south1', cors: true, secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 60 }, async (req, res) => {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
+  try {
+    const body = req.body || {};
+    const phone = onlyDigits(body.phone).slice(0, 10);
+    const question = esc(body.question).slice(0, 500);
+    if (phone.length !== 10) return res.status(400).json({ error: 'invalid_phone' });
+    if (!question) return res.status(400).json({ error: 'missing_question' });
+
+    // simple daily quota per phone — LLM call ka real ($) cost hota hai, isliye free
+    // Firestore write jaisa unlimited nahi rakh sakte (abuse/cost-blowout se bachne ke liye)
+    const usageId = phone + '_' + today();
+    const usageRef = db.collection('ai_usage').doc(usageId);
+    const usageSnap = await usageRef.get();
+    const usedToday = usageSnap.exists ? (usageSnap.data().count || 0) : 0;
+    if (usedToday >= AI_DAILY_LIMIT) return res.status(429).json({ error: 'limit_reached' });
+    await usageRef.set({ count: usedToday + 1, phone, date: today() }, { merge: true });
+
+    const [members, villageInfoMap] = await Promise.all([fetchApprovedMembers(), fetchVillageInfoMap()]);
+    const ctx = { members, villageInfoMap };
+
+    const history = Array.isArray(body.history) ? body.history.slice(-8) : [];
+    const messages = history.map(h => ({
+      role: h.role === 'ai' ? 'assistant' : 'user',
+      content: (h.text || '').toString().slice(0, 1000)
+    })).filter(m => m.content);
+    messages.push({ role: 'user', content: question });
+
+    const systemPrompt = 'आप "Patidar AI" हैं — Patidar Samaj Indore Mahanagar (PSIM) app के अंदर community की जानकारी देने वाले सहायक। ' +
+      'सिर्फ tools के जरिए मिले data के आधार पर जवाब दो, कभी अंदाज़ा मत लगाओ या बनाओ मत। Distance वाले सवाल के लिए village_distance tool जरूर use करो, खुद calculate मत करो। ' +
+      'अगर कोई जानकारी data में नहीं है (जैसे किसी गाँव का location set नहीं है) तो साफ़-साफ़ बता दो। ' +
+      'किसी individual member का phone number, address, ya personal detail कभी मत दो — सिर्फ business listings (जो पहले से public हैं) और aggregate/community-level जानकारी दो। ' +
+      'Reply Hindi ya Hinglish me, chhota aur seedha jawab do.';
+
+    let finalText = '';
+    for (let round = 0; round < 4; round++) {
+      const apiResp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': ANTHROPIC_API_KEY.value(),
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ model: AI_MODEL, max_tokens: 700, system: systemPrompt, tools: AI_TOOLS, messages })
+      });
+      if (!apiResp.ok) {
+        logger.error('anthropic api error', apiResp.status, await apiResp.text());
+        return res.status(502).json({ error: 'ai_error' });
+      }
+      const data = await apiResp.json();
+      messages.push({ role: 'assistant', content: data.content });
+
+      if (data.stop_reason !== 'tool_use') {
+        finalText = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+        break;
+      }
+      const toolUses = (data.content || []).filter(b => b.type === 'tool_use');
+      const toolResults = [];
+      for (const tu of toolUses) {
+        let result;
+        try { result = await runAiTool(tu.name, tu.input || {}, ctx); }
+        catch (e) { result = { error: 'tool_failed' }; }
+        toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(result) });
+      }
+      messages.push({ role: 'user', content: toolResults });
+    }
+
+    if (!finalText) finalText = 'माफ़ कीजिए, अभी जवाब नहीं बना पाया — दोबारा try करो।';
+    return res.status(200).json({ answer: finalText });
+  } catch (e) {
+    logger.error('patidarAI error', e);
     return res.status(500).json({ error: 'server_error' });
   }
 });
