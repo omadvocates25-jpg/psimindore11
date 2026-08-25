@@ -2480,7 +2480,10 @@ function patidarAIHomeHeroHTML(){
   '</div></div>';
 }
 function renderPatidarAI(){
- let h = '<h2 class="text-3xl font-bold mb-2">👨‍🌾 Patidar AI</h2>';
+ let h = '<div class="flex items-start justify-between gap-3 mb-2 flex-wrap">'+
+  '<h2 class="text-3xl font-bold">👨‍🌾 Patidar AI</h2>'+
+  '<button onclick="goPage(\'business\')" class="shrink-0 text-xs bg-white border-2 border-violet-300 text-violet-700 rounded-full px-3 py-1.5 font-bold hover:bg-violet-50">🛍️ बाज़ार घूमो →</button>'+
+  '</div>';
  h += '<p class="text-gray-500 mb-1">मैं पाटीदार समाज का AI हूँ — सिर्फ पाटीदार समाज की समझ रखता हूँ, बाकी की नहीं। बाकी के लिए AI मुबारक 😄</p>';
  h += '<p class="text-gray-500 mb-1">Business/Profession, 🩸 Blood Donor, 📰 समाज की News, 📅 Events, या दो गाँव के बीच 📍 Distance — कुछ भी पूछो</p>';
  h += '<p class="text-xs text-gray-400 mb-4">⚠️ यह सिर्फ app में मौजूद data के आधार पर जवाब देता है, किसी member की personal profile नहीं देगा।</p>';
