@@ -2557,8 +2557,8 @@ function patidarAIReply(qRaw, rounds){
  if(AI_NEAR_WORDS.some(w => ql.includes(w))) return handleAiNearest(q, ql);
  // "nearest/paas" na bola ho, sirf "hospital/dharamshala hai kya" jaisa general sawaal poocha ho — तब भी
  // seedha uska data dikhana chahiye, generic business search में गुम नहीं होना चाहिए
- if(AI_HOSPITAL_WORDS.some(w => ql.includes(w))) return handleAiHospitalList();
- if(AI_DHARAMSHALA_WORDS.some(w => ql.includes(w))) return handleAiDharamshalaList();
+ if(AI_HOSPITAL_WORDS.some(w => ql.includes(w))) return handleAiHospitalList(q);
+ if(AI_DHARAMSHALA_WORDS.some(w => ql.includes(w))) return handleAiDharamshalaList(q);
  if(AI_BLOOD_WORDS.some(w => ql.includes(w))) return handleAiBlood(q);
  if(AI_NEWS_WORDS.some(w => ql.includes(w))) return handleAiNews();
  if(AI_EVENT_WORDS.some(w => ql.includes(w))) return handleAiEvents();
@@ -2603,9 +2603,10 @@ function aiExpandSynonyms(q){
  Object.keys(AI_SYNONYMS).forEach(k => { if(q.includes(k)) extra += ' '+AI_SYNONYMS[k]; });
  return q + extra;
 }
-// Business/Blood page पर वैसे भी पूरी list already सबको दिखती है (signed-in members को) — यहाँ cap
-// सिर्फ chat message बहुत बड़ी न हो जाए इसके लिए है, privacy control नहीं। इसलिए काफ़ी ऊँचा रखा है।
-const AI_LIST_CAP = 25;
+// Jaan-boojhkar chhota रखा है — Business/Blood/Hospital/धर्मशाला page पर वैसे भी पूरी list already
+// सबको दिखती है (signed-in members को), पर AI chat में एक ही सवाल में सारा data "ek shot mai" nikalna
+// nahi chahiye — isliye top matches दिखाकर आगे narrowing सवाल पूछता है (देखो aiAskNarrower)।
+const AI_LIST_CAP = 3;
 function aiSearchBusinesses(query){
  const q = aiExpandSynonyms(query.toLowerCase());
  const qWords = q.split(/\s+/).filter(w => w.length>1);
@@ -2630,23 +2631,41 @@ function aiFormatBusinessResults(results, query){
   aiPick(['👨‍🌾 ये अपने पाटीदार भाई-बहनों के व्यापार मिले:', '🙏 देखो, ये अपने समाज के व्यापार मिले:', '👨‍🌾 ये रहे अपने पाटीदार बंधुओं के व्यापार:']);
  const shown = results.slice(0, AI_LIST_CAP);
  const lines = shown.map((b,i) => (i+1)+'. '+b.name+(b.promoted?' ⭐':'')+' — '+b.type+(b.place?' | '+b.place:'')+'\n   📞 '+b.phone);
- const more = results.length > AI_LIST_CAP ? ('\n\n(+'+(results.length-AI_LIST_CAP)+' और भी हैं — पूरी list के लिए BUSINESS page पर जाओ)') : '';
- return intro+'\n\n'+lines.join('\n\n')+'\n\nसभी अपने ही समाज के भरोसेमंद लोग हैं — बेझिझक call/WhatsApp करो।'+more;
+ const tail = results.length > AI_LIST_CAP ?
+  aiNarrowTail(results.length-AI_LIST_CAP, 'किस area का चाहिए, या पूरा नाम/काम बता दो', 'BUSINESS', query) :
+  '';
+ return intro+'\n\n'+lines.join('\n\n')+'\n\nसभी अपने ही समाज के भरोसेमंद लोग हैं — बेझिझक call/WhatsApp करो।'+tail;
+}
+// List AI_LIST_CAP se zyada ho to poori list seedha na de do — top match dikhाकर ek specific narrowing
+// sawaal poochta hai (area/type/naam), aiPending set karke, taaki agla message उसी context ke saath combine
+// ho jaaye (jaise "nearest"/"distance" flow me pehle se hai) — ek hi sawaal me sara data na nikal jaaye.
+function aiNarrowTail(remaining, askText, pageLabel, originalQuery){
+ aiPending = { originalQuery: originalQuery };
+ return '\n\n(+'+remaining+' और भी हैं — '+askText+'? या पूरी list के लिए '+pageLabel+' page पर जाओ)';
 }
 function aiGreetingReply(){
  const opener = aiPick(['नमस्ते 🙏', 'राम राम 🙏', 'जय पाटीदार समाज 🙏']);
  return opener+' मैं पाटीदार समाज का AI हूँ — सिर्फ पाटीदार समाज की समझ रखता हूँ, बाकी की नहीं 😄 मुझसे पूछो: कोई भी Business/Profession (डॉक्टर, वकील, इलेक्ट्रीशियन...), 🏥 सबसे पास का Hospital/धर्मशाला/Business, 🩸 Blood donor, 📰 समाज की News, 📅 Events, या दो गाँव के बीच 📍 Distance।';
 }
 function handleAiBlood(q){
+ const ql = q.toLowerCase();
  const m = q.toUpperCase().match(/\b(AB|A|B|O)[+-]/);
  const group = m ? m[0] : null;
  let donors = publicMembers().filter(mm => (mm.blood_donor||'').indexOf('हाँ')===0 && mm.blood_group);
  if(group) donors = donors.filter(d => d.blood_group===group);
  if(!donors.length) return group ? ('माफ़ कीजिए, अभी '+group+' के कोई registered donor नहीं हैं — BLOOD page पर जाकर 🆘 SOS डालो, ज़्यादा पहुँच मिलेगी।') : 'कौनसा blood group चाहिए? जैसे O+, B+, AB- लिखकर पूछो।';
+ // Village narrowing — jab AI pehle "kaunse village ka?" pooch chuka ho, uska jawab combined query me aata hai
+ const villageName = villageList().map(v=>v.name).find(n => ql.includes(n.toLowerCase()));
+ if(villageName){
+  const narrowed = donors.filter(d => fmtName(d.home_village)===villageName);
+  if(narrowed.length) donors = narrowed;
+ }
  const shown = donors.slice(0, AI_LIST_CAP);
  const list = shown.map(d => '🩸 '+d.name+' '+d.surname+' — '+d.blood_group+(d.home_village?(' | '+d.home_village):'')+'\n   📞 '+d.phone);
- const more = donors.length > AI_LIST_CAP ? ('\n\n(+'+(donors.length-AI_LIST_CAP)+' और भी हैं — पूरी list के लिए BLOOD page पर जाओ)') : '';
- return 'ये blood donors मिले:\n\n'+list.join('\n\n')+'\n\nसीधे call/WhatsApp करो, या emergency में BLOOD page पर SOS डालो।'+more;
+ const tail = donors.length > AI_LIST_CAP ?
+  aiNarrowTail(donors.length-AI_LIST_CAP, 'कौनसे village/इलाके का donor चाहिए', 'BLOOD', q) :
+  '';
+ return 'ये blood donors मिले:\n\n'+list.join('\n\n')+'\n\nसीधे call/WhatsApp करो, या emergency में BLOOD page पर SOS डालो।'+tail;
 }
 function handleAiNews(){
  const list = newsData.filter(n => n.status!=='pending').slice(0,5);
@@ -2659,22 +2678,42 @@ function handleAiEvents(){
  return '📅 आने वाले Events:\n\n'+list.map(e => '• '+e.title+' — '+e.date+(e.location?(' | '+e.location):'')).join('\n')+'\n\nपूरी details EVENTS page पर मिलेंगी।';
 }
 // "nearest/paas" bole bina bhi sirf "hospital hai kya" jaisa general sawaal pucha ho — तब भी seedha data dikhao,
-// generic business search में गुम नहीं होना चाहिए। Area-filter yahan jaanboojhkar nahi — precise filtering "nearest" flow mein hai।
-function handleAiHospitalList(){
- const list = approvedHospitals();
+// generic business search में गुम नहीं होना चाहिए। Agar list AI_LIST_CAP se zyada ho to area se narrow karne
+// ki koshish karta hai (jaise "Indore" bola ho), फिर भी zyada bache to narrowing sawaal poochta hai।
+function aiFilterByWords(list, ql, getText){
+ const words = [...new Set(ql.split(/[\s,]+/).filter(w => w.length>2))];
+ if(!words.length || list.length<=1) return list;
+ // Sirf wahi words count karo jo list ko असल में differentiate karte hain — generic trigger words
+ // (jo kisi bhi item me nahi hote, ya sab me hote hain, jaise "hospital"/"indore") narrowing me kaam nahi aate
+ const distinguishing = words.filter(w => {
+  const n = list.filter(item => (getText(item)||'').toLowerCase().includes(w)).length;
+  return n>0 && n<list.length;
+ });
+ if(!distinguishing.length) return list;
+ const narrowed = list.filter(item => distinguishing.some(w => (getText(item)||'').toLowerCase().includes(w)));
+ return narrowed.length ? narrowed : list;
+}
+function handleAiHospitalList(q){
+ const ql = (q||'').toLowerCase();
+ let list = aiFilterByWords(approvedHospitals(), ql, h => h.area);
  if(!list.length) return 'माफ़ कीजिए, अभी कोई Hospital listed नहीं है — Hospital page पर जाकर add कर सकते हो।';
  const shown = list.slice(0, AI_LIST_CAP);
  const lines = shown.map((h,i) => (i+1)+'. '+(h.name_en||h.name_hi)+(h.area?' | '+h.area:'')+'\n   📞 '+h.phone);
- const more = list.length > AI_LIST_CAP ? ('\n\n(+'+(list.length-AI_LIST_CAP)+' और भी हैं — Hospital page पर जाओ)') : '';
- return '🏥 ये Hospitals मिले:\n\n'+lines.join('\n\n')+more;
+ const tail = list.length > AI_LIST_CAP ?
+  aiNarrowTail(list.length-AI_LIST_CAP, 'किस area/इलाके का चाहिए बताओ', 'Hospital', q) :
+  '';
+ return '🏥 ये Hospitals मिले:\n\n'+lines.join('\n\n')+tail;
 }
-function handleAiDharamshalaList(){
- const list = approvedDharamshala();
+function handleAiDharamshalaList(q){
+ const ql = (q||'').toLowerCase();
+ let list = aiFilterByWords(approvedDharamshala(), ql, d => (d.village||'')+' '+(d.tehsil||''));
  if(!list.length) return 'माफ़ कीजिए, अभी कोई धर्मशाला listed नहीं है — धर्मशाला page पर जाकर add कर सकते हो।';
  const shown = list.slice(0, AI_LIST_CAP);
  const lines = shown.map((d,i) => (i+1)+'. '+(d.name_en||d.name_hi)+(d.village?' | '+d.village+(d.tehsil?', '+d.tehsil:''):'')+'\n   📞 '+d.phone);
- const more = list.length > AI_LIST_CAP ? ('\n\n(+'+(list.length-AI_LIST_CAP)+' और भी हैं — धर्मशाला page पर जाओ)') : '';
- return '🛕 ये धर्मशाला मिलीं:\n\n'+lines.join('\n\n')+more;
+ const tail = list.length > AI_LIST_CAP ?
+  aiNarrowTail(list.length-AI_LIST_CAP, 'किस गाँव/शहर की चाहिए बताओ', 'धर्मशाला', q) :
+  '';
+ return '🛕 ये धर्मशाला मिलीं:\n\n'+lines.join('\n\n')+tail;
 }
 function handleAiDistance(q, ql){
  const names = villageList().map(v => v.name);
