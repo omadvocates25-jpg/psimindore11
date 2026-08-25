@@ -2542,15 +2542,23 @@ function patidarAIReply(qRaw, rounds){
   return '📍 कौनसा area चाहिए? और 🍽️ नाश्ता चाहिए या पूरा खाना?';
  }
  const results = aiSearchBusinesses(q);
- if(results.length) return aiFormatBusinessResults(results);
+ if(results.length) return aiFormatBusinessResults(results, q);
  return 'माफ़ कीजिए, समझ नहीं आया 🙏 आप पूछ सकते हो: किसी काम/business वाले के बारे में (जैसे "इलेक्ट्रीशियन Vijay Nagar"), सबसे पास का Hospital/धर्मशाला/Business, 🩸 Blood donor, 📰 News, 📅 Events, या दो गाँव के बीच Distance।';
 }
-function aiHasAreaHint(qlText){
- let hit = false;
- allBusinesses().forEach(b => { if(!hit && b.place && b.place.length>2 && qlText.includes(b.place.toLowerCase())) hit = true; });
- if(!hit) villageList().forEach(v => { if(!hit && v.name.length>2 && qlText.includes(v.name.toLowerCase())) hit = true; });
- return hit;
+// query mein koi jaana-pehchana place (business ka area ya koi gaanv) mila to uska naam wapas karta hai — isse jawab
+// "generic list" na lagkar us jagah ke liye personalized lage (jaise koi insaan seedha jawab de raha ho)
+function aiFindPlaceInQuery(qlText){
+ let found = null;
+ allBusinesses().forEach(b => {
+  if(found || !b.place) return;
+  b.place.split(',').map(s => s.trim()).forEach(seg => {
+   if(!found && seg.length>2 && qlText.includes(seg.toLowerCase())) found = seg;
+  });
+ });
+ if(!found) villageList().forEach(v => { if(!found && v.name.length>2 && qlText.includes(v.name.toLowerCase())) found = v.name; });
+ return found;
 }
+function aiHasAreaHint(qlText){ return !!aiFindPlaceInQuery(qlText); }
 function aiExpandSynonyms(q){
  let extra = '';
  Object.keys(AI_SYNONYMS).forEach(k => { if(q.includes(k)) extra += ' '+AI_SYNONYMS[k]; });
@@ -2571,9 +2579,11 @@ function aiSearchBusinesses(query){
  const rest = scored.filter(x => !x.b.promoted).map(x => x.b);
  return promoted.concat(rest).slice(0, 6);
 }
-function aiFormatBusinessResults(results){
+function aiFormatBusinessResults(results, query){
+ const place = aiFindPlaceInQuery((query||'').toLowerCase());
+ const intro = place ? ('👨‍🌾 '+place+' में ये अपने पाटीदार भाई-बहनों के व्यापार मिले:') : '👨‍🌾 ये अपने पाटीदार भाई-बहनों के व्यापार मिले:';
  const lines = results.map((b,i) => (i+1)+'. '+b.name+(b.promoted?' ⭐':'')+' — '+b.type+(b.place?' | '+b.place:'')+'\n   📞 '+b.phone);
- return '🔍 ये मिले:\n\n'+lines.join('\n\n')+'\n\nपूरी list के लिए BUSINESS page पर जाओ।';
+ return intro+'\n\n'+lines.join('\n\n')+'\n\nसभी अपने ही समाज के भरोसेमंद लोग हैं — बेझिझक call/WhatsApp करो। पूरी list के लिए BUSINESS page पर जाओ।';
 }
 function handleAiBlood(q){
  const m = q.toUpperCase().match(/\b(AB|A|B|O)[+-]/);
@@ -2652,7 +2662,7 @@ function handleAiNearest(q, ql){
  if(!withDist.length) return '❌ '+radiusKm+' km के अंदर कोई '+label+' नहीं मिला (या location set नहीं है)।';
 
  const lines = withDist.map((c,i) => (i+1)+'. '+c.name+' — '+(Math.round(c.km*10)/10)+' km'+(c.phone?'\n   📞 '+c.phone:''));
- return '📍 '+refName+' के पास मिले:\n\n'+lines.join('\n\n');
+ return '👨‍🌾 '+refName+' के सबसे पास ये अपने पाटीदार भाई-बहन मिले:\n\n'+lines.join('\n\n')+'\n\nदूरी हवाई (सीधी रेखा) है — सड़क की असल दूरी इससे ज़्यादा हो सकती है।';
 }
 // हर searchable portal पर छोटा सा quick-link — "सबसे पास कौन सा..." जैसे सवाल सीधे Patidar AI से पूछ सको
 function patidarAIQuickLinkHTML(){
