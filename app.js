@@ -2410,28 +2410,14 @@ const AI_SYNONYMS = {
  'beauty':'beauty salon','parlour':'beauty salon','auto':'automobile garage','garage':'automobile garage','mechanic':'automobile garage'
 };
 // Home page पर सबसे ऊपर, सबको दिखता है (guests भी) — biggest attraction है, isliye chhupana nahi।
-// पूछने के लिए login जरूरी है — guest try करे तो normal register-prompt अपने आप आ जाता है (goPage locked-page check से)।
+// Chhota/compact rakha hai jaanbhoojkar — scroll na karna pade, sirf ek nazar mein attract kare aur click karaye।
+// पूछने के लिए login जरूरी है — guest click kare to normal register-prompt अपने आप आ जाता है (goPage locked-page check से)।
 function patidarAIHomeHeroHTML(){
- return '<div class="bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-700 rounded-2xl shadow-2xl p-8 md:p-14 mb-6 text-center text-white">'+
-  '<p class="text-6xl mb-3">🤖</p>'+
-  '<h2 class="text-3xl md:text-5xl font-extrabold mb-2 tracking-tight">WELCOME TO PATIDAR AI</h2>'+
-  '<p class="text-violet-100 text-sm md:text-base mb-6 max-w-xl mx-auto">Business/Profession, 🩸 Blood Donor, 📰 News, 📅 Events, या 📍 दो गाँव के बीच Distance — कुछ भी पूछो, तुरंत जवाब पाओ</p>'+
-  '<div class="flex flex-col sm:flex-row gap-2 max-w-lg mx-auto">'+
-  '<input id="home_ai_q" onkeydown="if(event.key===\'Enter\'){event.preventDefault();askFromHome();}" placeholder="जैसे: O+ blood donor चाहिए..." class="flex-1 px-4 py-3 rounded-lg text-gray-900 text-sm md:text-base">'+
-  '<button onclick="askFromHome()" class="bg-white text-violet-700 font-bold px-6 py-3 rounded-lg hover:bg-violet-50 whitespace-nowrap">पूछो →</button>'+
-  '</div>'+
-  (currentUser ? '' : '<p class="text-violet-200 text-xs mt-3">🔒 पूछने के लिए पहले Register/Login करना होगा</p>')+
+ return '<div onclick="goPage(\'patidarai\')" class="bg-gradient-to-r from-violet-600 to-indigo-700 rounded-2xl shadow-xl px-6 py-5 mb-6 text-center text-white cursor-pointer hover:shadow-2xl transform hover:scale-[1.01] transition-all">'+
+  '<p class="text-[11px] uppercase tracking-[0.2em] text-violet-200 mb-0.5">Welcome to</p>'+
+  '<p class="text-4xl md:text-6xl font-extrabold tracking-tight mb-2">🤖 PATIDAR AI</p>'+
+  '<span class="inline-block bg-white text-violet-700 font-bold text-sm px-5 py-1.5 rounded-full">'+(currentUser?'बात करो →':'🔒 Login करके पूछो →')+'</span>'+
   '</div>';
-}
-function askFromHome(){
- const inp = document.getElementById('home_ai_q');
- const q = (inp && inp.value || '').trim();
- goPage('patidarai'); // guest ho to yahin register-prompt दिखाकर रुक जाएगा (goPage ka apna locked-page check)
- if(!q || !currentUser) return;
- setTimeout(() => {
-  const inp2 = document.getElementById('ai_question');
-  if(inp2){ inp2.value = q; askPatidarAI(); }
- }, 100);
 }
 function renderPatidarAI(){
  let h = '<h2 class="text-3xl font-bold mb-2">🤖 Patidar AI</h2>';
