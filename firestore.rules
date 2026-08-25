@@ -38,8 +38,9 @@ service cloud.firestore {
     // ---- members (Community directory) ----
     match /members/{docId} {
       allow read: if true; // guest browsing ke liye khula (privacy-filtering client-side hoti hai)
-      allow create: if isOwnPhone(request.resource.data.phone)
-                    && request.resource.data.status == 'pending'; // koi khud ko approved nahi bana sakta
+      allow create: if isAdmin() // Admin seedha member add/approve kar sake (jaise fake demo data, ya phone-less onboarding)
+                    || (isOwnPhone(request.resource.data.phone)
+                        && request.resource.data.status == 'pending'); // koi khud ko approved nahi bana sakta
       allow update: if isAdmin()
                     || (isOwnPhone(resource.data.phone)
                         && request.resource.data.phone == resource.data.phone // phone badal nahi sakte
@@ -75,7 +76,8 @@ service cloud.firestore {
     // ---- Open-to-guest content (public read; members submit, admin approves) ----
     match /news/{docId} {
       allow read: if true;
-      allow create: if isSignedIn() && request.resource.data.status == 'pending';
+      allow create: if isAdmin() // Admin seedha approved news daal sake (jaise fake demo data)
+                    || (isSignedIn() && request.resource.data.status == 'pending');
       allow update, delete: if isAdmin();
     }
     match /pratibha/{docId} {
@@ -100,7 +102,8 @@ service cloud.firestore {
     // ---- Members-only pages (locked in the app) ----
     match /property/{docId} {
       allow read: if isSignedIn();
-      allow create: if isOwnPhone(request.resource.data.phone) && request.resource.data.status == 'pending';
+      allow create: if isAdmin() // Admin seedha listing add kar sake (jaise fake demo data)
+                    || (isOwnPhone(request.resource.data.phone) && request.resource.data.status == 'pending');
       allow update: if isAdmin() || isOwnPhone(resource.data.phone); // apni listing on/off
       allow delete: if isAdmin();
     }

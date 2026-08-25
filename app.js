@@ -3255,6 +3255,112 @@ function renderGalleryPage(){
  photosData.map(p => '<div class="bg-white border-2 border-purple-300 rounded-lg overflow-hidden shadow-md"><img src="'+p.url+'" class="w-full h-56 object-cover"><div class="p-4"><p class="font-bold text-purple-700">'+esc(p.title||'')+'</p><p class="text-sm text-gray-600">'+esc(p.caption||'')+'</p></div></div>').join('')+'</div>';
 }
 
+// ================= 🎭 FAKE DEMO DATA (admin-only — app दिखाने के लिए, बाद में delete करने लायक) =================
+// हर fake document पर isFake:true flag रहता है (delete करने के लिए) और हर नाम/title के आगे "(Fake)" लिखा रहता है
+// (असली data से कभी confuse न हो) — इसीलिए normal search/AI logic को कहीं छूने की जरूरत नहीं पड़ी।
+const FAKE_MALE_NAMES = ['Ramesh','Suresh','Mahesh','Naveen','Deepak','Rajesh','Sanjay','Vijay','Ashok','Pankaj','Manoj','Dinesh','Anil','Sunil','Prakash','Ratan','Mukesh','Rakesh','Yogesh','Bharat','Kishore','Narendra','Jitendra','Hitesh','Nitin','Sandeep','Vinod','Girish','Amit','Rohit'];
+const FAKE_FEMALE_NAMES = ['Kavita','Sunita','Rekha','Geeta','Meena','Pooja','Priya','Anjali','Nisha','Sarita','Kiran','Manisha','Usha','Radha','Seema','Kalpana','Neelam','Jyoti','Shobha','Vandana'];
+const FAKE_SURNAMES = ['Patel','Patidar'];
+const FAKE_VILLAGES = ['Karwad','Sanwer','Depalpur','Betma','Gautampura','Rau','Manpur','Hatod','Mhow','Simrol'];
+function fakePh(base,i){ return String(base+i); }
+function fakePick(arr,i){ return arr[i%arr.length]; }
+async function seedFakeDemoData(){
+ if(!isSuperAdmin()){ alert('❌ सिर्फ Admin कर सकता है'); return; }
+ if(!confirm('⚠️ यह ~150 FAKE demo documents बनाएगा (members, business, शादी, property, news, events) — हर नाम के आगे "(Fake)" लिखा रहेगा। सिर्फ demo दिखाने के लिए, बाद में delete कर सकते हो। आगे बढ़ें?')) return;
+ busy(true);
+ try{
+  const batch = db.batch();
+  const bizTypes = BUSINESS_TYPES.filter(t => t!=='Other');
+  for(let i=1;i<=30;i++){ // 30 personal profiles (कोई business नहीं)
+   const male = i%3!==0;
+   const ref = db.collection('members').doc();
+   batch.set(ref, {
+    name: male?fakePick(FAKE_MALE_NAMES,i):fakePick(FAKE_FEMALE_NAMES,i), surname: fakePick(FAKE_SURNAMES,i)+' (Fake)',
+    phone: fakePh(9000000000,i), gender: male?'Male / पुरुष':'Female / महिला',
+    home_village: fakePick(FAKE_VILLAGES,i), home_district:'Indore', present_city:'Indore',
+    blood_group: fakePick(BLOOD_GROUPS,i), blood_donor: (i%2===0)?'हाँ / Yes':'नहीं / No',
+    status:'approved', createdAt: today(), phoneVerified:true, isFake:true
+   });
+  }
+  for(let i=1;i<=30;i++){ // 30 business profiles
+   const male = i%3!==0;
+   const btype = fakePick(bizTypes,i);
+   const ref = db.collection('members').doc();
+   batch.set(ref, {
+    name: male?fakePick(FAKE_MALE_NAMES,i+7):fakePick(FAKE_FEMALE_NAMES,i+7), surname: fakePick(FAKE_SURNAMES,i+1)+' (Fake)',
+    phone: fakePh(9000000100,i), gender: male?'Male / पुरुष':'Female / महिला',
+    home_village: fakePick(FAKE_VILLAGES,i+2), home_district:'Indore', present_city:'Indore',
+    business_name: btype+' '+fakePick(FAKE_SURNAMES,i)+' (Fake)', business_type: btype,
+    business_place: fakePick(FAKE_VILLAGES,i+2)+', Indore', business_phone: fakePh(9000000100,i),
+    business_details: 'Demo के लिए बनाया गया fake business listing।',
+    status:'approved', createdAt: today(), phoneVerified:true, isFake:true
+   });
+  }
+  for(let i=1;i<=20;i++){ // 20 महिला profiles Secret privacy पर — publicMembers()/Patidar AI से अपने-आप बाहर रहेंगी
+   const ref = db.collection('members').doc();
+   batch.set(ref, {
+    name: fakePick(FAKE_FEMALE_NAMES,i+3), surname: fakePick(FAKE_SURNAMES,i)+' (Fake)', phone: fakePh(9000000400,i),
+    gender:'Female / महिला', privacy:'Secret / सिर्फ PSIM Team को',
+    home_village: fakePick(FAKE_VILLAGES,i), home_district:'Indore', present_city:'Indore',
+    blood_group: fakePick(BLOOD_GROUPS,i),
+    status:'approved', createdAt: today(), phoneVerified:true, isFake:true
+   });
+  }
+  const EDUCATIONS = ['B.Com','B.E./B.Tech','MBA','B.A.','M.Com','CA','Doctor (MBBS)'];
+  for(let i=1;i<=30;i++){ // 30 शादी profiles
+   const male = i%2===0;
+   const ref = db.collection('shaadi').doc();
+   batch.set(ref, {
+    name: (male?fakePick(FAKE_MALE_NAMES,i+11):fakePick(FAKE_FEMALE_NAMES,i+11))+' '+fakePick(FAKE_SURNAMES,i)+' (Fake)',
+    gender: male?'Male / पुरुष':'Female / महिला', age: String(22+(i%15)), education: fakePick(EDUCATIONS,i),
+    village: fakePick(FAKE_VILLAGES,i), district:'Indore', contact: fakePh(9000000200,i),
+    details:'Demo के लिए बनाई गई fake profile।', paid:true, status:'approved', createdAt: today(), isFake:true
+   });
+  }
+  for(let i=1;i<=30;i++){ // 30 Property listings
+   const kind = i%4===0?'dukan':'makan';
+   const ref = db.collection('property').doc();
+   batch.set(ref, {
+    kind, type: i%3===0?'wanted':'rent',
+    name: fakePick(FAKE_MALE_NAMES,i)+' '+fakePick(FAKE_SURNAMES,i)+' (Fake)', phone: fakePh(9000000300,i),
+    area: fakePick(FAKE_VILLAGES,i)+', Indore', rent: String(3000+(i*250)),
+    bhk: kind==='makan'?fakePick(['1 BHK','2 BHK','3 BHK'],i):'',
+    description:'Demo के लिए बनाई गई fake listing।', pics:[], pic:'', code:'FAKE'+i,
+    status:'approved', active:true, createdAt: today(), isFake:true
+   });
+  }
+  ['समाज की वार्षिक बैठक संपन्न','नए सदस्यों का स्वागत समारोह','पाटीदार युवा सम्मेलन की घोषणा','समाज भवन निर्माण हेतु सहयोग अपील','होली मिलन कार्यक्रम की तैयारी'].forEach(t => {
+   const ref = db.collection('news').doc();
+   batch.set(ref, { title:t+' (Fake)', content:'यह एक demo/fake समाचार है, सिर्फ app दिखाने के लिए बनाया गया है।', pic:'', date:today(), status:'approved', createdAt:today(), isFake:true });
+  });
+  ['होली मिलन समारोह','वार्षिक सम्मेलन','युवा खेल महोत्सव','सामूहिक विवाह सम्मेलन','रक्तदान शिविर'].forEach((t,idx) => {
+   const ref = db.collection('events').doc();
+   batch.set(ref, { title:t+' (Fake)', date:new Date(Date.now()+(idx+5)*86400000).toISOString().slice(0,10), time:'18:00', location:'Indore', description:'यह एक demo/fake event है, सिर्फ app दिखाने के लिए बनाया गया है।', pic:'', isFake:true });
+  });
+  await batch.commit();
+  busy(false);
+  alert('✅ Fake demo data बन गया! हर नाम के आगे "(Fake)" लिखा है। हटाने के लिए "🗑️ सारा Fake Data Delete करो" इस्तेमाल करो।');
+  renderApp();
+ } catch(e){ busy(false); alert('❌ Error: '+e.message); }
+}
+async function deleteFakeDemoData(){
+ if(!isSuperAdmin()){ alert('❌ सिर्फ Admin कर सकता है'); return; }
+ if(!confirm('⚠️ सारा FAKE demo data permanently delete हो जाएगा (असली data को हाथ नहीं लगेगा)। पक्का?')) return;
+ busy(true);
+ try{
+  for(const col of ['members','shaadi','property','news','events']){
+   const snap = await db.collection(col).where('isFake','==',true).get();
+   if(snap.empty) continue;
+   const batch = db.batch();
+   snap.forEach(d => batch.delete(d.ref));
+   await batch.commit();
+  }
+  busy(false);
+  alert('✅ सारा fake demo data delete हो गया।');
+  renderApp();
+ } catch(e){ busy(false); alert('❌ Error: '+e.message); }
+}
+
 // ================= ADMIN HELPERS =================
 function switchTab(t){ adminTab=t; editingId=null; adminEditTarget=null; renderApp(); }
 function _localCol(col){
@@ -4082,6 +4188,13 @@ function renderAdmin(){
   '<div class="mt-3 space-y-2">'+committeeData.map(c=>'<div class="flex justify-between items-center bg-blue-50 rounded-lg px-3 py-2"><span class="font-bold text-sm">'+esc(c.name)+' ('+esc(c.post)+')</span><div class="flex gap-2"><button onclick="startAdminEdit(\'committee\',\''+c.id+'\')" class="bg-blue-500 text-white px-3 py-1 rounded font-bold text-sm">✏️</button><button onclick="delDoc(\'committee\',\''+c.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div></div>').join('')+'</div></div>';
 
   h += '</div><button onclick="saveSiteMeta()" class="mt-5 bg-blue-600 text-white px-8 py-3 rounded font-bold">✅ SAVE SETTINGS</button></div>';
+
+  h += '<div class="bg-purple-50 border-2 border-purple-400 rounded-lg p-6"><h3 class="text-xl font-bold mb-2">🎭 Fake Demo Data</h3>'+
+   '<p class="text-sm text-gray-600 mb-4">App दिखाने के लिए ~150 fake documents बनाओ (30 personal profiles, 30 businesses, 20 secret-privacy महिला profiles, 30 शादी profiles, 30 Property listings, कुछ News/Events) — हर नाम के आगे "(Fake)" लिखा होगा ताकि कोई असली न समझे। जब असली data आने लगे, नीचे वाले button से सारा fake data एक साथ delete कर सकते हो।</p>'+
+   '<div class="flex flex-wrap gap-3">'+
+   '<button onclick="seedFakeDemoData()" class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-bold">🎭 Fake Demo Data बनाओ</button>'+
+   '<button onclick="deleteFakeDemoData()" class="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-bold">🗑️ सारा Fake Data Delete करो</button>'+
+   '</div></div>';
  }
  return h;
 }
