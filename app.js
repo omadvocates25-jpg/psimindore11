@@ -68,7 +68,17 @@ let whomQuery = '';
 let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], garbaCoords=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[], teamJoinData=[], labhData=[], villageLeadsData=[], dharamshalaData=[], hospitalsData=[], studentNeedsData=[], studentsData=[], bloodSosData=[], obituariesData=[], villageInfoData=[], referralPreapprovalsData=[];
 let siteMeta = { ticker:'', aboutUs:'', fb:'', insta:'', youtube:'', committee:'', expiryDays:30, propertyValidityDays:365, propertyFeeRent:'500', propertyFeeWanted:'11', razorpayPropRent:'', razorpayPropWanted:'', shaadiFee:'500', shaadiValidityDays:180, razorpayShaadi:'', jobsFeeSeeker:'11', razorpayJobsSeeker:'', bizPromoFee:'300', bizPromoValidityDays:365, razorpayBizPromo:'', olxExtraItemFee:'100', razorpayOlxExtra:'', olxPromoFee:'100', razorpayOlxPromo:'', blocked:[], garbaFormOpen:true, ads:[{},{},{},{},{}], subAdmins:[], texts:{} };
 
-function isSuperAdmin(){ return currentUser === ADMIN_PHONE || localStorage.getItem('psim_admin_ok') === 'true'; }
+function isRealSuperAdmin(){ return currentUser === ADMIN_PHONE || localStorage.getItem('psim_admin_ok') === 'true'; }
+let viewAsNormal = false; // Admin khud bhi ek registered member hai, isliye hamesha sab kuch dikh jaata hai —
+// yeh toggle temporarily unhe normal-member ki tarah dikhata hai (admin tabs/buttons chhup jaate hain),
+// par shaadi daily-limit aur apni promoted-look jaisi paid facilities poori milti hain, taaki wahi
+// experience test kar sakein jo ek paid member ko milta hai।
+function toggleViewAsNormal(){
+ viewAsNormal = !viewAsNormal;
+ if(viewAsNormal && currentPage==='admin') goPage('home'); else renderApp();
+ updateUI();
+}
+function isSuperAdmin(){ return isRealSuperAdmin() && !viewAsNormal; }
 function subAdminInfo(){ if(!currentUser) return null; return (siteMeta.subAdmins||[]).find(s => fmtPhone(s.phone) === currentUser) || null; }
 function isAdmin(){ return isSuperAdmin() || !!subAdminInfo(); }
 function allowedTabs(){ if(isSuperAdmin()) return null; const s=subAdminInfo(); return s ? (s.tabs||[]) : []; }
@@ -1693,7 +1703,8 @@ function allBusinesses(){
   name:m.business_name, type:(m.business_type==='Other'&&m.business_type_other)?m.business_type_other:(m.business_type||'Business'),
   owner:m.name+' '+m.surname, phone:m.business_phone||m.phone, place:m.business_place||m.present_city||'',
   gmap:m.business_gmap||'', pic:m.business_pic1||'', description:m.business_details||'',
-  village:m.home_village||'', city:m.present_city||'', ownerPhone:m.phone||'', promoted:isBizPromoActive(m),
+  village:m.home_village||'', city:m.present_city||'', ownerPhone:m.phone||'',
+  promoted: isBizPromoActive(m) || (viewAsNormal && m.phone===currentUser),
   lat:m.business_lat||null, lng:m.business_lng||null
  }));
  real.sort((a,b) => (b.promoted?1:0)-(a.promoted?1:0));
@@ -3241,7 +3252,7 @@ function saveShaadiViewState(st){ localStorage.setItem('psShaadiViews', JSON.str
 function revealShaadi(id){
  const st = shaadiViewState();
  if(st.ids.includes(id)){ renderApp(); return; }
- if(st.ids.length >= 10){ alert('⏰ आज की 10 profiles की limit पूरी हो गई!\nकल फिर 10 नई देख पाओगे।'); return; }
+ if(st.ids.length >= 10 && !isRealSuperAdmin()){ alert('⏰ आज की 10 profiles की limit पूरी हो गई!\nकल फिर 10 नई देख पाओगे।'); return; }
  st.ids.push(id); saveShaadiViewState(st); renderApp();
 }
 function shaadiCard(s, revealed){
@@ -4601,9 +4612,13 @@ function updateUI(){
  const loggedIn = !!currentUser;
  document.getElementById('logoutBtn').classList.toggle('hidden', !loggedIn && !localStorage.getItem('psim_admin_ok'));
  document.getElementById('adminBtn').classList.toggle('hidden', !isAdmin() && loggedIn);
+ const viewAsBtn = document.getElementById('viewAsBtn');
+ viewAsBtn.classList.toggle('hidden', !isRealSuperAdmin() || !loggedIn);
+ viewAsBtn.classList.toggle('bg-amber-500', viewAsNormal);
+ viewAsBtn.title = viewAsNormal ? 'वापस Admin View पर जाओ' : 'Normal User की तरह देखो';
  const me = loggedIn ? myMember() : null;
  const nameStr = loggedIn ? (me ? (me.name+' '+me.surname) : currentUser) : '';
- document.getElementById('userName').textContent = loggedIn ? '👤 '+nameStr+(isSuperAdmin()?' (Admin)':(subAdminInfo()?' (Sub-Admin)':'')) : '';
+ document.getElementById('userName').textContent = loggedIn ? '👤 '+nameStr+(viewAsNormal?' (👁️ Preview)':isSuperAdmin()?' (Admin)':(subAdminInfo()?' (Sub-Admin)':'')) : '';
  const tb = document.getElementById('tickerBar');
  if(siteMeta.ticker){ tb.classList.remove('hidden'); document.getElementById('tickerText').textContent = '🔔 '+siteMeta.ticker+'  •  🔔 '+siteMeta.ticker; }
  else tb.classList.add('hidden');
