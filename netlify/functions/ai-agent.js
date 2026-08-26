@@ -196,7 +196,7 @@ exports.handler = async (event) => {
           body: JSON.stringify({
             model: HAIKU_MODEL,
             max_tokens: 700,
-            system: SYSTEM_PROMPT,
+            system: fullSystemPrompt,
             tools: toAnthropicTools(TOOLS),
             messages: toAnthropicMessages(messages)
           }),
