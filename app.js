@@ -3639,10 +3639,10 @@ async function seedFakeDemoData(){
     status:'approved', createdAt: today(), phoneVerified:true, isFake:true
    });
   }
-  for(let i=1;i<=30;i++){ // 30 business profiles — हर 5वां Promoted (paid) दिखाया गया है ताकि golden look demo में दिखे
+  for(let i=1;i<=30;i++){ // 30 business profiles — 80% Promoted (paid/golden) दिखाया गया है demo के लिए
    const male = i%3!==0;
    const btype = fakePick(bizTypes,i);
-   const promoted = i%5===0;
+   const promoted = i%5!==0;
    const ref = db.collection('members').doc();
    batch.set(ref, {
     name: male?fakePick(FAKE_MALE_NAMES,i+7):fakePick(FAKE_FEMALE_NAMES,i+7), surname: fakePick(FAKE_SURNAMES,i+1)+' (Fake)',
