@@ -1718,14 +1718,15 @@ function labhBadgeHTML(b){
 }
 function bizDetailHTML(b){
  const isPromo = !!b.promoted;
- return '<div class="relative">'+
-  (b.pic?'<img src="'+b.pic+'" class="w-full h-56 object-cover rounded-t-2xl">':'<div class="w-full h-28 '+(isPromo?'bg-gradient-to-br from-amber-200 to-yellow-400':'bg-yellow-100')+' flex items-center justify-center text-6xl rounded-t-2xl">🏪</div>')+
-  (isPromo?'<span class="absolute top-3 right-3 bg-gradient-to-r from-amber-500 to-yellow-500 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-lg border border-amber-200">🚀 PROMOTED</span>':'')+
+ return '<div class="relative overflow-hidden rounded-t-2xl">'+
+  (b.pic?'<img src="'+b.pic+'" class="w-full h-56 object-cover">':'<div class="w-full h-28 '+(isPromo?'bg-gradient-to-br from-amber-50 to-amber-200':'bg-blue-100')+' flex items-center justify-center text-6xl">🏪</div>')+
+  (isPromo?'<span class="absolute top-3.5 -right-10 w-36 text-center bg-gradient-to-r from-amber-500 to-yellow-600 text-white text-[10px] font-extrabold tracking-wider py-1 rotate-45 shadow-lg">PROMOTED</span>':'')+
   '</div>'+
-  '<div class="p-6 '+(isPromo?'bg-gradient-to-b from-amber-50 to-white border-4 border-amber-400 border-t-0 rounded-b-2xl -mt-1':'')+'">'+
+  '<div class="p-6 '+(isPromo?'bg-gradient-to-b from-amber-50 to-white':'')+'">'+
   (isPromo?'<p class="text-[11px] font-bold text-amber-600 tracking-wide mb-1">⭐ VERIFIED PRIORITY BUSINESS</p>':'')+
-  '<p class="text-2xl font-bold '+(isPromo?'text-amber-700':'text-yellow-700')+'">'+esc(b.name)+(isPromo?' 👑':'')+'</p>'+
-  '<p class="inline-block '+(isPromo?'bg-gradient-to-r from-amber-400 to-yellow-500 text-white':'bg-yellow-200 text-yellow-900')+' px-3 py-1 rounded-full text-xs font-bold mt-2">'+esc(b.type)+'</p>'+
+  '<p class="text-2xl font-bold '+(isPromo?'text-amber-700':'text-blue-700')+'">'+esc(b.name)+(isPromo?' 👑':'')+'</p>'+
+  '<p class="inline-block '+(isPromo?'bg-gradient-to-r from-amber-400 to-yellow-500 text-white':'bg-blue-100 text-blue-800')+' px-3 py-1 rounded-full text-xs font-bold mt-2">'+esc(b.type)+'</p>'+
+  (isPromo?'<div class="h-px my-3.5 bg-gradient-to-r from-transparent via-amber-300 to-transparent"></div>':'')+
   '<div class="mt-4 space-y-1 text-gray-700">'+
   '<p>👤 <b>'+esc(b.owner)+'</b></p>'+
   (b.place?'<p>📍 '+esc(b.place)+'</p>':'')+
