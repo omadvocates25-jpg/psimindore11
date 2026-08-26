@@ -1717,10 +1717,15 @@ function labhBadgeHTML(b){
  return h;
 }
 function bizDetailHTML(b){
- return (b.pic?'<img src="'+b.pic+'" class="w-full h-56 object-cover rounded-t-2xl">':'<div class="w-full h-28 bg-yellow-100 flex items-center justify-center text-6xl rounded-t-2xl">🏪</div>')+
-  '<div class="p-6">'+
-  '<p class="text-2xl font-bold text-yellow-700">'+esc(b.name)+'</p>'+
-  '<p class="inline-block bg-yellow-200 text-yellow-900 px-3 py-1 rounded-full text-xs font-bold mt-2">'+esc(b.type)+'</p>'+
+ const isPromo = !!b.promoted;
+ return '<div class="relative">'+
+  (b.pic?'<img src="'+b.pic+'" class="w-full h-56 object-cover rounded-t-2xl">':'<div class="w-full h-28 '+(isPromo?'bg-gradient-to-br from-amber-200 to-yellow-400':'bg-yellow-100')+' flex items-center justify-center text-6xl rounded-t-2xl">🏪</div>')+
+  (isPromo?'<span class="absolute top-3 right-3 bg-gradient-to-r from-amber-500 to-yellow-500 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-lg border border-amber-200">🚀 PROMOTED</span>':'')+
+  '</div>'+
+  '<div class="p-6 '+(isPromo?'bg-gradient-to-b from-amber-50 to-white border-4 border-amber-400 border-t-0 rounded-b-2xl -mt-1':'')+'">'+
+  (isPromo?'<p class="text-[11px] font-bold text-amber-600 tracking-wide mb-1">⭐ VERIFIED PRIORITY BUSINESS</p>':'')+
+  '<p class="text-2xl font-bold '+(isPromo?'text-amber-700':'text-yellow-700')+'">'+esc(b.name)+(isPromo?' 👑':'')+'</p>'+
+  '<p class="inline-block '+(isPromo?'bg-gradient-to-r from-amber-400 to-yellow-500 text-white':'bg-yellow-200 text-yellow-900')+' px-3 py-1 rounded-full text-xs font-bold mt-2">'+esc(b.type)+'</p>'+
   '<div class="mt-4 space-y-1 text-gray-700">'+
   '<p>👤 <b>'+esc(b.owner)+'</b></p>'+
   (b.place?'<p>📍 '+esc(b.place)+'</p>':'')+
