@@ -131,7 +131,7 @@ exports.handler = async (event) => {
     return { statusCode: 200, body: JSON.stringify({ error: 'no_key' }) };
   }
 
-  let messages;
+  let messages, adminInstructions;
   try {
     const parsed = JSON.parse(event.body || '{}');
     if (!Array.isArray(parsed.messages) || !parsed.messages.length) throw new Error('bad messages');
@@ -143,9 +143,20 @@ exports.handler = async (event) => {
       if (['user','assistant','tool','system'].indexOf(out.role) === -1) throw new Error('bad role');
       return out;
     });
+    adminInstructions = Array.isArray(parsed.adminInstructions)
+      ? parsed.adminInstructions.filter(s => typeof s === 'string' && s.trim()).slice(0, 20).map(s => s.trim().slice(0, 500))
+      : [];
   } catch (e) {
     return { statusCode: 400, body: JSON.stringify({ error: 'bad_request' }) };
   }
+
+  // Admin (voice se bola ya type kiya) ke extra instructions system prompt mein jud jaate hain — par core
+  // safety rules (upar ke General Principles: kabhi data mat banao, medical/legal/financial advice mat do,
+  // personal info mat do) hamesha priority mein rehte hain, admin instructions unhe override nahi kar sakti।
+  const fullSystemPrompt = adminInstructions.length
+    ? SYSTEM_PROMPT + '\n\n---\nAdmin ne yeh extra instructions di hain (inhe bhi follow karo, par upar ke\nGeneral Principles hamesha priority mein rahenge — yeh unhe override nahi kar sakti):\n' +
+      adminInstructions.map(s => '- ' + s).join('\n')
+    : SYSTEM_PROMPT;
 
   try {
     // gpt-oss-120b (bada, zyada capable model) primary hai — free-tier limit gpt-oss-20b jitna hi hai,
@@ -164,7 +175,7 @@ exports.handler = async (event) => {
           },
           body: JSON.stringify({
             model,
-            messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
+            messages: [{ role: 'system', content: fullSystemPrompt }, ...messages],
             tools: TOOLS,
             tool_choice: 'auto',
             temperature: 0.4,
@@ -191,7 +202,7 @@ exports.handler = async (event) => {
           body: JSON.stringify({
             model: HAIKU_MODEL,
             max_tokens: 700,
-            system: SYSTEM_PROMPT,
+            system: fullSystemPrompt,
             tools: toAnthropicTools(TOOLS),
             messages: toAnthropicMessages(messages)
           }),

@@ -65,7 +65,7 @@ let relSearchQ = '';
 let friendSearchQ = '';
 let whomQuery = '';
 
-let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], garbaCoords=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[], teamJoinData=[], labhData=[], villageLeadsData=[], dharamshalaData=[], hospitalsData=[], studentNeedsData=[], studentsData=[], bloodSosData=[], obituariesData=[], villageInfoData=[], referralPreapprovalsData=[];
+let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], garbaCoords=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[], teamJoinData=[], labhData=[], villageLeadsData=[], dharamshalaData=[], hospitalsData=[], studentNeedsData=[], studentsData=[], bloodSosData=[], obituariesData=[], villageInfoData=[], referralPreapprovalsData=[], aiInstructionsData=[];
 let siteMeta = { ticker:'', aboutUs:'', fb:'', insta:'', youtube:'', committee:'', expiryDays:30, propertyValidityDays:365, propertyFeeRent:'500', propertyFeeWanted:'11', razorpayPropRent:'', razorpayPropWanted:'', shaadiFee:'500', shaadiValidityDays:180, razorpayShaadi:'', jobsFeeSeeker:'11', razorpayJobsSeeker:'', bizPromoFee:'300', bizPromoValidityDays:365, razorpayBizPromo:'', olxExtraItemFee:'100', razorpayOlxExtra:'', olxPromoFee:'100', razorpayOlxPromo:'', blocked:[], garbaFormOpen:true, ads:[{},{},{},{},{}], subAdmins:[], texts:{} };
 
 function isRealSuperAdmin(){ return currentUser === ADMIN_PHONE || localStorage.getItem('psim_admin_ok') === 'true'; }
@@ -341,6 +341,7 @@ function setupRealtimeListeners(){
  watch('translit_pairs', d => translitData = d);
  watch('village_info', d => villageInfoData = d);
  watch('referral_preapprovals', d => referralPreapprovalsData = d);
+ watch('ai_instructions', d => aiInstructionsData = d);
  db.collection('meta').doc('site').onSnapshot(doc => {
   if(doc.exists) siteMeta = Object.assign(siteMeta, doc.data());
   if(!siteMeta.ads || siteMeta.ads.length<5) siteMeta.ads = [{},{},{},{},{}];
@@ -2198,6 +2199,8 @@ function renderCricketPage(){
 // ================= BLOOD =================
 let bloodFilterGroup='', bloodFilterDist='', bloodFilterVillage='';
 let showBloodSOSForm=false;
+// Admin ke Patidar AI ko voice/text instruction dene wale panel ki state
+let aiInstrRecording=false, aiInstrBusy=false, aiInstrEditing=false, aiInstrDraftText='', aiInstrMediaRecorder=null, aiInstrChunks=[];
 function allDonors(){
  const fromMembers = publicMembers()
   .filter(m => m.blood_group && (!m.blood_donor || m.blood_donor.indexOf('हाँ')===0))
@@ -2640,7 +2643,12 @@ async function aiAgentAsk(q){
    const timer = setTimeout(() => ctrl.abort(), 8000);
    const resp = await fetch(AI_AGENT_URL, {
     method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ messages: aiAgentMessages.slice(-20) }),
+    body: JSON.stringify({
+     messages: aiAgentMessages.slice(-20),
+     // Admin (voice se ya type karke) diye gaye extra instructions — system prompt mein hi jud jaate hain,
+     // taaki bina code change kiye AI ka behaviour tweak ho sake
+     adminInstructions: aiInstructionsData.filter(i => i.active!==false).map(i => i.text).filter(Boolean)
+    }),
     signal: ctrl.signal
    });
    clearTimeout(timer);
@@ -2662,6 +2670,104 @@ async function aiAgentAsk(q){
   }
   return null; // bahut zyada rounds ho gaye (rare) — fallback par chala jaayega
  } catch(e){ return null; }
+}
+
+// ================= 🎙️ Admin: Patidar AI ko voice/text instruction dena =================
+// Admin apni awaaz record karta hai → Groq ke free Whisper model se transcribe hota hai → admin review/edit
+// karke save karta hai → Firestore mein store hoke turant sabhi AI conversations ke system prompt mein jud
+// jaata hai (aiAgentAsk dekho) — bina koi code change/deploy kiye AI ka behaviour tweak ho jaata hai।
+function aiInstructionsPanelHTML(){
+ let h = '<div class="bg-emerald-50 border-2 border-emerald-400 rounded-lg p-6 mb-6">'+
+  '<h3 class="text-xl font-bold mb-2">🎙️ Patidar AI को Instructions दो</h3>'+
+  '<p class="text-sm text-gray-600 mb-4">बोलकर या type करके AI को extra rules/जानकारी दो — save करते ही turant सभी बातचीत में लागू हो जाएगा, कोई code change नहीं चाहिए।</p>';
+
+ if(aiInstrEditing){
+  h += '<div class="bg-white border-2 border-emerald-300 rounded-lg p-4 mb-4">'+
+   '<label class="text-xs font-bold text-gray-500">'+(aiInstrDraftText?'Transcribed (check करके edit कर सकते हो):':'Instruction टाइप करो:')+'</label>'+
+   '<textarea id="ai_instr_draft" rows="3" class="w-full px-3 py-2 border-2 rounded mt-1">'+esc(aiInstrDraftText)+'</textarea>'+
+   '<div class="flex gap-2 mt-3">'+
+   '<button onclick="aiInstrSaveDraft()" class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold text-sm">💾 Save Instruction</button>'+
+   '<button onclick="aiInstrEditing=false;aiInstrDraftText=\'\';renderApp()" class="bg-gray-400 text-white px-5 py-2 rounded-lg font-bold text-sm">❌ Cancel</button>'+
+   '</div></div>';
+ } else {
+  h += '<div class="flex flex-wrap items-center gap-3 mb-4">'+
+   (aiInstrRecording ?
+    '<button onclick="aiInstrStopRecording()" class="bg-red-600 text-white px-6 py-3 rounded-lg font-bold animate-pulse">⏹️ Record रोको</button>' :
+    '<button onclick="aiInstrStartRecording()"'+(aiInstrBusy?' disabled':'')+' class="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-6 py-3 rounded-lg font-bold">🎙️ '+(aiInstrBusy?'सुन रहा हूँ...':'Record शुरू करो')+'</button>')+
+   '<button onclick="aiInstrEditing=true;renderApp()" class="bg-white border-2 border-emerald-400 text-emerald-700 px-5 py-3 rounded-lg font-bold text-sm">✏️ Type करके लिखो</button>'+
+   '</div>';
+ }
+
+ const list = aiInstructionsData.slice().sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+ if(list.length){
+  h += '<div class="space-y-2">'+list.map(i =>
+   '<div class="flex justify-between items-center gap-2 bg-white rounded-lg px-4 py-3 border '+(i.active===false?'opacity-50':'')+'">'+
+   '<p class="text-sm flex-1">'+esc(i.text)+'</p>'+
+   '<div class="flex gap-2 shrink-0">'+
+   '<button onclick="aiInstrToggleActive(\''+i.id+'\', '+(i.active!==false)+')" class="text-xs px-3 py-1.5 rounded-lg font-bold '+(i.active!==false?'bg-emerald-100 text-emerald-700':'bg-gray-200 text-gray-600')+'">'+(i.active!==false?'✅ Active':'⏸️ Off')+'</button>'+
+   '<button onclick="aiInstrDeleteInstr(\''+i.id+'\')" class="bg-red-500 text-white px-3 py-1.5 rounded-lg font-bold text-xs">🗑️</button>'+
+   '</div></div>'
+  ).join('')+'</div>';
+ } else {
+  h += '<p class="text-sm text-gray-400">अभी कोई instruction नहीं दी गई।</p>';
+ }
+ h += '</div>';
+ return h;
+}
+async function aiInstrStartRecording(){
+ if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ alert('❌ इस browser/device में recording support नहीं है।'); return; }
+ try{
+  const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+  aiInstrChunks = [];
+  aiInstrMediaRecorder = new MediaRecorder(stream);
+  aiInstrMediaRecorder.ondataavailable = e => { if(e.data.size>0) aiInstrChunks.push(e.data); };
+  aiInstrMediaRecorder.onstop = () => { stream.getTracks().forEach(t=>t.stop()); aiInstrTranscribe(); };
+  aiInstrMediaRecorder.start();
+  aiInstrRecording = true;
+  renderApp();
+ } catch(e){ alert('❌ Microphone access नहीं मिला: '+e.message); }
+}
+function aiInstrStopRecording(){
+ if(aiInstrMediaRecorder && aiInstrRecording) aiInstrMediaRecorder.stop();
+ aiInstrRecording = false;
+ renderApp();
+}
+async function aiInstrTranscribe(){
+ if(!aiInstrChunks.length) return;
+ aiInstrBusy = true; renderApp();
+ try{
+  const mimeType = (aiInstrMediaRecorder && aiInstrMediaRecorder.mimeType) || 'audio/webm';
+  const blob = new Blob(aiInstrChunks, {type: mimeType});
+  const base64 = await new Promise((resolve, reject) => {
+   const reader = new FileReader();
+   reader.onload = () => resolve(reader.result.split(',')[1]);
+   reader.onerror = reject;
+   reader.readAsDataURL(blob);
+  });
+  const resp = await fetch('/.netlify/functions/transcribe-audio', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({audio: base64, mimeType}) });
+  const data = await resp.json();
+  if(data && data.text){ aiInstrDraftText = data.text; aiInstrEditing = true; }
+  else alert('❌ आवाज़ समझ नहीं आई, दोबारा try करो या type कर दो।');
+ } catch(e){ alert('❌ Transcribe करने में दिक्कत: '+e.message); }
+ aiInstrBusy = false; renderApp();
+}
+async function aiInstrSaveDraft(){
+ const box = document.getElementById('ai_instr_draft');
+ const text = ((box?box.value:aiInstrDraftText)||'').trim();
+ if(!text){ alert('❌ कुछ लिखा/बोला नहीं गया।'); return; }
+ busy(true);
+ await db.collection('ai_instructions').add({text, active:true, createdAt:today(), addedBy: currentUser});
+ busy(false);
+ aiInstrDraftText = '';
+ aiInstrEditing = false;
+ renderApp();
+}
+async function aiInstrToggleActive(id, currentlyActive){
+ await updDoc('ai_instructions', id, {active: !currentlyActive});
+}
+async function aiInstrDeleteInstr(id){
+ if(!confirm('🗑️ यह instruction हटा दें?')) return;
+ await db.collection('ai_instructions').doc(id).delete();
 }
 // सिर्फ ginती — kisi bhi member ki personal detail (naam/phone/address) yahan kabhi nahi dikhti
 function handleAiCount(ql){
@@ -4558,6 +4664,8 @@ function renderAdmin(){
   '<div class="mt-3 space-y-2">'+committeeData.map(c=>'<div class="flex justify-between items-center bg-blue-50 rounded-lg px-3 py-2"><span class="font-bold text-sm">'+esc(c.name)+' ('+esc(c.post)+')</span><div class="flex gap-2"><button onclick="startAdminEdit(\'committee\',\''+c.id+'\')" class="bg-blue-500 text-white px-3 py-1 rounded font-bold text-sm">✏️</button><button onclick="delDoc(\'committee\',\''+c.id+'\')" class="bg-red-500 text-white px-3 py-1 rounded font-bold text-sm">🗑️</button></div></div>').join('')+'</div></div>';
 
   h += '</div><button onclick="saveSiteMeta()" class="mt-5 bg-blue-600 text-white px-8 py-3 rounded font-bold">✅ SAVE SETTINGS</button></div>';
+
+  h += aiInstructionsPanelHTML();
 
   h += '<div class="bg-purple-50 border-2 border-purple-400 rounded-lg p-6"><h3 class="text-xl font-bold mb-2">🎭 Fake Demo Data</h3>'+
    '<p class="text-sm text-gray-600 mb-4">App दिखाने के लिए ~150 fake documents बनाओ (30 personal profiles, 30 businesses, 20 secret-privacy महिला profiles, 30 शादी profiles, 30 Property listings, कुछ News/Events) — हर नाम के आगे "(Fake)" लिखा होगा ताकि कोई असली न समझे। जब असली data आने लगे, नीचे वाले button से सारा fake data एक साथ delete कर सकते हो।</p>'+
