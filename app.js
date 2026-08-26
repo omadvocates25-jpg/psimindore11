@@ -68,7 +68,17 @@ let whomQuery = '';
 let membersData=[], eventsData=[], newsData=[], photosData=[], oldItems=[], pratibhaData=[], jobsData=[], shaadiData=[], relativesData=[], friendsData=[], committeeData=[], garbaRegs=[], garbaTeam=[], garbaCoords=[], cricketData=[], propertyData=[], bloodData=[], suggestionsData=[], teamJoinData=[], labhData=[], villageLeadsData=[], dharamshalaData=[], hospitalsData=[], studentNeedsData=[], studentsData=[], bloodSosData=[], obituariesData=[], villageInfoData=[], referralPreapprovalsData=[], aiInstructionsData=[];
 let siteMeta = { ticker:'', aboutUs:'', fb:'', insta:'', youtube:'', committee:'', expiryDays:30, propertyValidityDays:365, propertyFeeRent:'500', propertyFeeWanted:'11', razorpayPropRent:'', razorpayPropWanted:'', shaadiFee:'500', shaadiValidityDays:180, razorpayShaadi:'', jobsFeeSeeker:'11', razorpayJobsSeeker:'', bizPromoFee:'300', bizPromoValidityDays:365, razorpayBizPromo:'', olxExtraItemFee:'100', razorpayOlxExtra:'', olxPromoFee:'100', razorpayOlxPromo:'', blocked:[], garbaFormOpen:true, ads:[{},{},{},{},{}], subAdmins:[], texts:{} };
 
-function isSuperAdmin(){ return currentUser === ADMIN_PHONE || localStorage.getItem('psim_admin_ok') === 'true'; }
+function isRealSuperAdmin(){ return currentUser === ADMIN_PHONE || localStorage.getItem('psim_admin_ok') === 'true'; }
+let viewAsNormal = false; // Admin khud bhi ek registered member hai, isliye hamesha sab kuch dikh jaata hai —
+// yeh toggle temporarily unhe normal-member ki tarah dikhata hai (admin tabs/buttons chhup jaate hain),
+// par shaadi daily-limit aur apni promoted-look jaisi paid facilities poori milti hain, taaki wahi
+// experience test kar sakein jo ek paid member ko milta hai।
+function toggleViewAsNormal(){
+ viewAsNormal = !viewAsNormal;
+ if(viewAsNormal && currentPage==='admin') goPage('home'); else renderApp();
+ updateUI();
+}
+function isSuperAdmin(){ return isRealSuperAdmin() && !viewAsNormal; }
 function subAdminInfo(){ if(!currentUser) return null; return (siteMeta.subAdmins||[]).find(s => fmtPhone(s.phone) === currentUser) || null; }
 function isAdmin(){ return isSuperAdmin() || !!subAdminInfo(); }
 function allowedTabs(){ if(isSuperAdmin()) return null; const s=subAdminInfo(); return s ? (s.tabs||[]) : []; }
@@ -1694,7 +1704,8 @@ function allBusinesses(){
   name:m.business_name, type:(m.business_type==='Other'&&m.business_type_other)?m.business_type_other:(m.business_type||'Business'),
   owner:m.name+' '+m.surname, phone:m.business_phone||m.phone, place:m.business_place||m.present_city||'',
   gmap:m.business_gmap||'', pic:m.business_pic1||'', description:m.business_details||'',
-  village:m.home_village||'', city:m.present_city||'', ownerPhone:m.phone||'', promoted:isBizPromoActive(m),
+  village:m.home_village||'', city:m.present_city||'', ownerPhone:m.phone||'',
+  promoted: isBizPromoActive(m) || (viewAsNormal && m.phone===currentUser),
   lat:m.business_lat||null, lng:m.business_lng||null
  }));
  real.sort((a,b) => (b.promoted?1:0)-(a.promoted?1:0));
@@ -1718,10 +1729,16 @@ function labhBadgeHTML(b){
  return h;
 }
 function bizDetailHTML(b){
- return (b.pic?'<img src="'+b.pic+'" class="w-full h-56 object-cover rounded-t-2xl">':'<div class="w-full h-28 bg-yellow-100 flex items-center justify-center text-6xl rounded-t-2xl">🏪</div>')+
-  '<div class="p-6">'+
-  '<p class="text-2xl font-bold text-yellow-700">'+esc(b.name)+'</p>'+
-  '<p class="inline-block bg-yellow-200 text-yellow-900 px-3 py-1 rounded-full text-xs font-bold mt-2">'+esc(b.type)+'</p>'+
+ const isPromo = !!b.promoted;
+ return '<div class="relative overflow-hidden rounded-t-2xl">'+
+  (b.pic?'<img src="'+b.pic+'" class="w-full h-56 object-cover">':'<div class="w-full h-28 '+(isPromo?'bg-gradient-to-br from-amber-50 to-amber-200':'bg-blue-100')+' flex items-center justify-center text-6xl">🏪</div>')+
+  (isPromo?'<span class="absolute top-3.5 -right-10 w-36 text-center bg-gradient-to-r from-amber-500 to-yellow-600 text-white text-[10px] font-extrabold tracking-wider py-1 rotate-45 shadow-lg">PROMOTED</span>':'')+
+  '</div>'+
+  '<div class="p-6 '+(isPromo?'bg-gradient-to-b from-amber-50 to-white':'')+'">'+
+  (isPromo?'<p class="text-[11px] font-bold text-amber-600 tracking-wide mb-1">⭐ VERIFIED PRIORITY BUSINESS</p>':'')+
+  '<p class="text-2xl font-bold '+(isPromo?'text-amber-700':'text-blue-700')+'">'+esc(b.name)+(isPromo?' 👑':'')+'</p>'+
+  '<p class="inline-block '+(isPromo?'bg-gradient-to-r from-amber-400 to-yellow-500 text-white':'bg-blue-100 text-blue-800')+' px-3 py-1 rounded-full text-xs font-bold mt-2">'+esc(b.type)+'</p>'+
+  (isPromo?'<div class="h-px my-3.5 bg-gradient-to-r from-transparent via-amber-300 to-transparent"></div>':'')+
   '<div class="mt-4 space-y-1 text-gray-700">'+
   '<p>👤 <b>'+esc(b.owner)+'</b></p>'+
   (b.place?'<p>📍 '+esc(b.place)+'</p>':'')+
@@ -2467,7 +2484,9 @@ const AI_SYNONYMS = {
  'kirana':'kirana general store','grocery':'kirana general store',
  'jewel':'jewellery jeweller','sona':'jewellery jeweller','cloth':'textiles garments cloth',
  'transport':'transport logistics driver','construction':'construction builder',
- 'beauty':'beauty salon','parlour':'beauty salon','auto':'automobile garage','garage':'automobile garage','mechanic':'automobile garage'
+ 'beauty':'beauty salon','parlour':'beauty salon','auto':'automobile garage','garage':'automobile garage','mechanic':'automobile garage',
+ 'cement':'hardware building material construction','sand':'hardware building material construction','ret':'hardware building material construction',
+ 'bricks':'hardware building material construction','tiles':'hardware building material','paint':'hardware building material','sariya':'hardware building material construction'
 };
 // Home page पर सबसे ऊपर, सबको दिखता है (guests भी) — biggest attraction है, isliye chhupana nahi।
 // Chhota/compact rakha hai jaanbhoojkar — scroll na karna pade, sirf ek nazar mein attract kare aur click karaye।
@@ -2822,10 +2841,19 @@ function aiSearchBusinesses(query){
  const q = aiExpandSynonyms(query.toLowerCase());
  const qWords = q.split(/\s+/).filter(w => w.length>2 && !AI_STOPWORDS.has(w));
  const scored = allBusinesses().map(b => {
-  const hay = (b.type+' '+b.name+' '+(b.place||'')+' '+(b.village||'')+' '+(b.city||'')).toLowerCase();
+  // "Cement", "sand", "tiles" jaisi cheezein business ke TYPE mein kabhi nahi hoti (woh Hardware/Construction
+  // hi rahega), asli mein sirf description mein likhi milti hain — isliye description ko bhi search mein
+  // shaamil kiya hai, par kam weight ke saath (taaki type/name/place ka seedha match hamesha upar rahe aur
+  // description mein kahin bhi ek shabd mil jaane se galat business top pe na aa jaaye)।
+  const primary = (b.type+' '+b.name+' '+(b.place||'')+' '+(b.village||'')+' '+(b.city||'')).toLowerCase();
+  const full = primary+' '+(b.description||'').toLowerCase();
   let score = 0;
-  if(hay.includes(q)) score += 10;
-  qWords.forEach(w => { if(new RegExp('\\b'+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b').test(hay)) score += 1; });
+  if(primary.includes(q)) score += 10;
+  qWords.forEach(w => {
+   const re = new RegExp('\\b'+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b');
+   if(re.test(primary)) score += 1;
+   else if(re.test(full)) score += 0.5;
+  });
   return {b, score};
  }).filter(x => x.score>0).sort((a,b) => b.score-a.score);
  // Paid/promoted business hamesha pehle — baaki relevance ke hisaab se uske baad
@@ -3341,7 +3369,7 @@ function saveShaadiViewState(st){ localStorage.setItem('psShaadiViews', JSON.str
 function revealShaadi(id){
  const st = shaadiViewState();
  if(st.ids.includes(id)){ renderApp(); return; }
- if(st.ids.length >= 10){ alert('⏰ आज की 10 profiles की limit पूरी हो गई!\nकल फिर 10 नई देख पाओगे।'); return; }
+ if(st.ids.length >= 10 && !isRealSuperAdmin()){ alert('⏰ आज की 10 profiles की limit पूरी हो गई!\nकल फिर 10 नई देख पाओगे।'); return; }
  st.ids.push(id); saveShaadiViewState(st); renderApp();
 }
 function shaadiCard(s, revealed){
@@ -3728,9 +3756,10 @@ async function seedFakeDemoData(){
     status:'approved', createdAt: today(), phoneVerified:true, isFake:true
    });
   }
-  for(let i=1;i<=30;i++){ // 30 business profiles
+  for(let i=1;i<=30;i++){ // 30 business profiles — 80% Promoted (paid/golden) दिखाया गया है demo के लिए
    const male = i%3!==0;
    const btype = fakePick(bizTypes,i);
+   const promoted = i%5!==0;
    const ref = db.collection('members').doc();
    batch.set(ref, {
     name: male?fakePick(FAKE_MALE_NAMES,i+7):fakePick(FAKE_FEMALE_NAMES,i+7), surname: fakePick(FAKE_SURNAMES,i+1)+' (Fake)',
@@ -3739,7 +3768,8 @@ async function seedFakeDemoData(){
     business_name: btype+' '+fakePick(FAKE_SURNAMES,i)+' (Fake)', business_type: btype,
     business_place: fakePick(FAKE_VILLAGES,i+2)+', Indore', business_phone: fakePh(9000000100,i),
     business_details: 'Demo के लिए बनाया गया fake business listing।',
-    status:'approved', createdAt: today(), phoneVerified:true, isFake:true
+    status:'approved', createdAt: today(), phoneVerified:true, isFake:true,
+    biz_promo_status: promoted?'active':'', biz_promo_until: promoted?'2099-12-31':''
    });
   }
   for(let i=1;i<=20;i++){ // 20 महिला profiles Secret privacy पर — publicMembers()/Patidar AI से अपने-आप बाहर रहेंगी
@@ -4701,9 +4731,13 @@ function updateUI(){
  const loggedIn = !!currentUser;
  document.getElementById('logoutBtn').classList.toggle('hidden', !loggedIn && !localStorage.getItem('psim_admin_ok'));
  document.getElementById('adminBtn').classList.toggle('hidden', !isAdmin() && loggedIn);
+ const viewAsBtn = document.getElementById('viewAsBtn');
+ viewAsBtn.classList.toggle('hidden', !isRealSuperAdmin() || !loggedIn);
+ viewAsBtn.classList.toggle('bg-amber-500', viewAsNormal);
+ viewAsBtn.title = viewAsNormal ? 'वापस Admin View पर जाओ' : 'Normal User की तरह देखो';
  const me = loggedIn ? myMember() : null;
  const nameStr = loggedIn ? (me ? (me.name+' '+me.surname) : currentUser) : '';
- document.getElementById('userName').textContent = loggedIn ? '👤 '+nameStr+(isSuperAdmin()?' (Admin)':(subAdminInfo()?' (Sub-Admin)':'')) : '';
+ document.getElementById('userName').textContent = loggedIn ? '👤 '+nameStr+(viewAsNormal?' (👁️ Preview)':isSuperAdmin()?' (Admin)':(subAdminInfo()?' (Sub-Admin)':'')) : '';
  const tb = document.getElementById('tickerBar');
  if(siteMeta.ticker){ tb.classList.remove('hidden'); document.getElementById('tickerText').textContent = '🔔 '+siteMeta.ticker+'  •  🔔 '+siteMeta.ticker; }
  else tb.classList.add('hidden');
