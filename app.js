@@ -2845,7 +2845,10 @@ function aiSearchBusinesses(query){
   // hi rahega), asli mein sirf description mein likhi milti hain — isliye description ko bhi search mein
   // shaamil kiya hai, par kam weight ke saath (taaki type/name/place ka seedha match hamesha upar rahe aur
   // description mein kahin bhi ek shabd mil jaane se galat business top pe na aa jaaye)।
-  const primary = (b.type+' '+b.name+' '+(b.place||'')+' '+(b.village||'')+' '+(b.city||'')).toLowerCase();
+  // Phone number bhi primary mein shaamil hai — business apna number khud publicly list karta hai samaj ke
+  // liye, isliye "yeh number kiska hai" jaisa reverse-lookup bhi kaam karna chahiye, personal info restriction
+  // yahan lagu nahi hoti (dekho SYSTEM_PROMPT ka Principle 2)।
+  const primary = (b.type+' '+b.name+' '+(b.place||'')+' '+(b.village||'')+' '+(b.city||'')+' '+(b.phone||'')).toLowerCase();
   const full = primary+' '+(b.description||'').toLowerCase();
   let score = 0;
   if(primary.includes(q)) score += 10;
