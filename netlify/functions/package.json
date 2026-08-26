@@ -1,7 +1,0 @@
-{
-  "name": "psim-netlify-functions",
-  "private": true,
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.120.0"
-  }
-}

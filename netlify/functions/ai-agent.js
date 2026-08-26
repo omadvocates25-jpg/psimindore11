@@ -12,7 +12,6 @@
 // user ko poori tarah khaali jawab na mile। Yeh purely ek fallback hai: jab tak ANTHROPIC_API_KEY set nahi
 // hai ya Groq khud kaam kar raha hai, iska koi asar/extra cost nahi hai।
 
-const Anthropic = require('@anthropic-ai/sdk');
 const HAIKU_MODEL = 'claude-haiku-4-5';
 
 function toAnthropicTools(tools){
@@ -173,20 +172,36 @@ exports.handler = async (event) => {
 
     async function callHaikuFallback(){
       if (!anthropicKey) return null;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 10000);
       try {
-        const anthropic = new Anthropic({ apiKey: anthropicKey });
-        const resp = await anthropic.messages.create({
-          model: HAIKU_MODEL,
-          max_tokens: 700,
-          system: SYSTEM_PROMPT,
-          tools: toAnthropicTools(TOOLS),
-          messages: toAnthropicMessages(messages)
+        const resp = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': anthropicKey,
+            'anthropic-version': '2023-06-01'
+          },
+          body: JSON.stringify({
+            model: HAIKU_MODEL,
+            max_tokens: 700,
+            system: SYSTEM_PROMPT,
+            tools: toAnthropicTools(TOOLS),
+            messages: toAnthropicMessages(messages)
+          }),
+          signal: ctrl.signal
         });
-        return fromAnthropicMessage(resp);
+        if (!resp.ok) {
+          const errText = await resp.text().catch(() => '');
+          console.error('ai-agent: Claude Haiku fallback responded', resp.status, errText.slice(0, 300));
+          return null;
+        }
+        const data = await resp.json();
+        return fromAnthropicMessage(data);
       } catch (e) {
         console.error('ai-agent: Claude Haiku fallback failed', e && e.message);
         return null;
-      }
+      } finally { clearTimeout(timer); }
     }
 
     let resp = await callGroq('openai/gpt-oss-120b');
