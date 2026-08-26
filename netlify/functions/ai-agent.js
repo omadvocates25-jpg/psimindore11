@@ -6,6 +6,61 @@
 // calls aur tool results bhi shaamil ho sakte hain) leta hai, Groq ko system prompt + tools schema ke saath
 // bhejta hai, aur Groq ka raw response (content ya tool_calls) wapas de deta hai.
 // Groq key sirf yahan (server-side env var) rehti hai, browser mein kabhi nahi jaati.
+//
+// Agar Groq ke DONO models (120b aur 20b) fail ho jaayein — jo mushkil/confusing sawaal par transient
+// rate-limit/error se ho sakta hai — to ek chhota paid model (Claude Haiku) ek hi baar try hota hai, taaki
+// user ko poori tarah khaali jawab na mile। Yeh purely ek fallback hai: jab tak ANTHROPIC_API_KEY set nahi
+// hai ya Groq khud kaam kar raha hai, iska koi asar/extra cost nahi hai।
+
+const Anthropic = require('@anthropic-ai/sdk');
+const HAIKU_MODEL = 'claude-haiku-4-5';
+
+function toAnthropicTools(tools){
+  return tools.map(t => ({
+    name: t.function.name,
+    description: t.function.description,
+    input_schema: t.function.parameters || { type: 'object', properties: {} }
+  }));
+}
+
+function toAnthropicMessages(msgs){
+  const out = [];
+  for (const m of msgs) {
+    if (m.role === 'system') continue; // system prompt yahan alag se jaata hai, yeh case practically nahi aata
+    if (m.role === 'tool') {
+      out.push({ role: 'user', content: [{ type: 'tool_result', tool_use_id: m.tool_call_id, content: m.content || '' }] });
+    } else if (m.role === 'assistant' && Array.isArray(m.tool_calls) && m.tool_calls.length) {
+      const content = [];
+      if (m.content) content.push({ type: 'text', text: m.content });
+      m.tool_calls.forEach(tc => {
+        let input = {};
+        try { input = tc.function && tc.function.arguments ? JSON.parse(tc.function.arguments) : {}; } catch (e) {}
+        content.push({ type: 'tool_use', id: tc.id, name: tc.function && tc.function.name, input });
+      });
+      out.push({ role: 'assistant', content });
+    } else {
+      out.push({ role: m.role, content: m.content || '' });
+    }
+  }
+  // Anthropic ko pehla message hamesha 'user' chahiye — 20-message slice kabhi beech se shuru ho sakta hai।
+  if (!out.length || out[0].role !== 'user') out.unshift({ role: 'user', content: '(conversation continues)' });
+  return out;
+}
+
+function fromAnthropicMessage(resp){
+  const out = { role: 'assistant' };
+  const textParts = [];
+  const toolCalls = [];
+  (resp.content || []).forEach(block => {
+    if (block.type === 'text') textParts.push(block.text);
+    else if (block.type === 'tool_use') {
+      toolCalls.push({ id: block.id, type: 'function', function: { name: block.name, arguments: JSON.stringify(block.input || {}) } });
+    }
+  });
+  if (textParts.length) out.content = textParts.join('\n');
+  if (toolCalls.length) out.tool_calls = toolCalls;
+  return out;
+}
 
 const SYSTEM_PROMPT = `Tum "Patidar AI" ho — Patidar Samaj Indore Mahanagar community app ka assistant.
 
@@ -65,6 +120,7 @@ exports.handler = async (event) => {
   }
 
   const apiKey = process.env.GROQ_API_KEY;
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     console.error('ai-agent: GROQ_API_KEY not set');
     return { statusCode: 200, body: JSON.stringify({ error: 'no_key' }) };
@@ -115,6 +171,24 @@ exports.handler = async (event) => {
       } finally { clearTimeout(timer); }
     }
 
+    async function callHaikuFallback(){
+      if (!anthropicKey) return null;
+      try {
+        const anthropic = new Anthropic({ apiKey: anthropicKey });
+        const resp = await anthropic.messages.create({
+          model: HAIKU_MODEL,
+          max_tokens: 700,
+          system: SYSTEM_PROMPT,
+          tools: toAnthropicTools(TOOLS),
+          messages: toAnthropicMessages(messages)
+        });
+        return fromAnthropicMessage(resp);
+      } catch (e) {
+        console.error('ai-agent: Claude Haiku fallback failed', e && e.message);
+        return null;
+      }
+    }
+
     let resp = await callGroq('openai/gpt-oss-120b');
     if (!resp.ok) {
       console.error('ai-agent: gpt-oss-120b responded', resp.status, '— retrying with gpt-oss-20b');
@@ -122,6 +196,9 @@ exports.handler = async (event) => {
     }
 
     if (!resp.ok) {
+      console.error('ai-agent: both Groq models failed, trying Claude Haiku fallback');
+      const fallbackMsg = await callHaikuFallback();
+      if (fallbackMsg) return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: fallbackMsg }) };
       const errText = await resp.text().catch(() => '');
       console.error('ai-agent: Groq responded', resp.status, errText.slice(0, 300));
       return { statusCode: 200, body: JSON.stringify({ error: 'groq_error' }) };
@@ -129,6 +206,9 @@ exports.handler = async (event) => {
     const data = await resp.json();
     const msg = data && data.choices && data.choices[0] && data.choices[0].message;
     if (!msg) {
+      console.error('ai-agent: no message in Groq response, trying Claude Haiku fallback');
+      const fallbackMsg = await callHaikuFallback();
+      if (fallbackMsg) return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: fallbackMsg }) };
       console.error('ai-agent: no message in response', JSON.stringify(data).slice(0, 300));
       return { statusCode: 200, body: JSON.stringify({ error: 'no_message' }) };
     }
