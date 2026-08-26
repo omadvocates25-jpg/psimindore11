@@ -2481,7 +2481,9 @@ const AI_SYNONYMS = {
  'kirana':'kirana general store','grocery':'kirana general store',
  'jewel':'jewellery jeweller','sona':'jewellery jeweller','cloth':'textiles garments cloth',
  'transport':'transport logistics driver','construction':'construction builder',
- 'beauty':'beauty salon','parlour':'beauty salon','auto':'automobile garage','garage':'automobile garage','mechanic':'automobile garage'
+ 'beauty':'beauty salon','parlour':'beauty salon','auto':'automobile garage','garage':'automobile garage','mechanic':'automobile garage',
+ 'cement':'hardware building material construction','sand':'hardware building material construction','ret':'hardware building material construction',
+ 'bricks':'hardware building material construction','tiles':'hardware building material','paint':'hardware building material','sariya':'hardware building material construction'
 };
 // Home page पर सबसे ऊपर, सबको दिखता है (guests भी) — biggest attraction है, isliye chhupana nahi।
 // Chhota/compact rakha hai jaanbhoojkar — scroll na karna pade, sirf ek nazar mein attract kare aur click karaye।
@@ -2733,10 +2735,19 @@ function aiSearchBusinesses(query){
  const q = aiExpandSynonyms(query.toLowerCase());
  const qWords = q.split(/\s+/).filter(w => w.length>2 && !AI_STOPWORDS.has(w));
  const scored = allBusinesses().map(b => {
-  const hay = (b.type+' '+b.name+' '+(b.place||'')+' '+(b.village||'')+' '+(b.city||'')).toLowerCase();
+  // "Cement", "sand", "tiles" jaisi cheezein business ke TYPE mein kabhi nahi hoti (woh Hardware/Construction
+  // hi rahega), asli mein sirf description mein likhi milti hain — isliye description ko bhi search mein
+  // shaamil kiya hai, par kam weight ke saath (taaki type/name/place ka seedha match hamesha upar rahe aur
+  // description mein kahin bhi ek shabd mil jaane se galat business top pe na aa jaaye)।
+  const primary = (b.type+' '+b.name+' '+(b.place||'')+' '+(b.village||'')+' '+(b.city||'')).toLowerCase();
+  const full = primary+' '+(b.description||'').toLowerCase();
   let score = 0;
-  if(hay.includes(q)) score += 10;
-  qWords.forEach(w => { if(new RegExp('\\b'+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b').test(hay)) score += 1; });
+  if(primary.includes(q)) score += 10;
+  qWords.forEach(w => {
+   const re = new RegExp('\\b'+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b');
+   if(re.test(primary)) score += 1;
+   else if(re.test(full)) score += 0.5;
+  });
   return {b, score};
  }).filter(x => x.score>0).sort((a,b) => b.score-a.score);
  // Paid/promoted business hamesha pehle — baaki relevance ke hisaab se uske baad
