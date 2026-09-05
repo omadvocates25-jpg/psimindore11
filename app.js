@@ -353,10 +353,12 @@ function setupRealtimeListeners(){
 async function saveMeta(){ await db.collection('meta').doc('site').set(siteMeta); }
 
 // ================= ROUTING (login-gated) =================
-// बिना login दिखने वाले pages — Home/News/Pratibha/Events/Gallery + Rozgaar व OLX (सिर्फ browsing) खुले हैं
-// बाकी सब (Community, Business, Garba, Cricket, Blood, Property, Shaadi) के लिए पहले Community member बनना जरूरी है
-const OPEN_PAGES = ['home','news','register','events','gallery','pratibha','rozgaar','olditems','suggestions','obituaries'];
-const LOCKED_PAGES = ['community','business','garba','cricket','blood','property','shaadi','dharamshala','hospitals','students','meregaanv','patidarai'];
+// बिना login दिखने वाले pages — Home/News/Pratibha/Events/Gallery + Rozgaar व OLX (सिर्फ browsing), साथ ही
+// Business directory aur Patidar AI (dono publicly-listed business data hi dikhate hain, kisi member ki
+// personal profile nahi — isliye guests ke liye khula rakha gaya hai)।
+// बाकी सब (Community, Garba, Cricket, Blood, Property, Shaadi) के लिए पहले Community member बनना जरूरी है
+const OPEN_PAGES = ['home','news','register','events','gallery','pratibha','rozgaar','olditems','suggestions','obituaries','business','patidarai'];
+const LOCKED_PAGES = ['community','garba','cricket','blood','property','shaadi','dharamshala','hospitals','students','meregaanv'];
 function goPage(p){
  if(!currentUser && LOCKED_PAGES.includes(p)){
   showRegisterPrompt('यह सुविधा सिर्फ रजिस्टर्ड सदस्यों के लिए है — Community से जुड़ने के लिए Register करो।');
@@ -2490,7 +2492,7 @@ const AI_SYNONYMS = {
 };
 // Home page पर सबसे ऊपर, सबको दिखता है (guests भी) — biggest attraction है, isliye chhupana nahi।
 // Chhota/compact rakha hai jaanbhoojkar — scroll na karna pade, sirf ek nazar mein attract kare aur click karaye।
-// पूछने के लिए login जरूरी है — guest click kare to normal register-prompt अपने आप आ जाता है (goPage locked-page check से)।
+// Guests bhi seedhe click karke AI use kar sakte hain — koi login prompt nahi (dekho OPEN_PAGES)।
 function patidarAIHomeHeroHTML(){
  // हल्का, खेत-जैसा हरा-सुनहरा theme + हल्का circuit pattern पीछे — "गाँव वाला AI से जुड़कर smart हो गया" वाला भाव
  return '<div onclick="goPage(\'patidarai\')" class="relative overflow-hidden bg-gradient-to-br from-amber-50 via-lime-50 to-emerald-100 border-2 border-emerald-400 rounded-2xl shadow-lg px-6 py-5 mb-6 text-center cursor-pointer hover:shadow-2xl transform hover:scale-[1.01] transition-all">'+
@@ -2551,7 +2553,8 @@ function aiThinkingBubble(){
 function askPatidarAISample(q){ const inp=document.getElementById('ai_question'); if(inp){ inp.value=q; askPatidarAI(); } }
 function scrollAiChatToBottom(){ setTimeout(()=>{ const box=document.getElementById('aiChatBox'); if(box) box.scrollTop = box.scrollHeight; }, 30); }
 function askPatidarAI(){
- if(!currentUser){ showRegisterPrompt('Patidar AI इस्तेमाल करने के लिए पहले login करो।'); return; }
+ // Guests (bina login) bhi Patidar AI use kar sakte hain — yeh sirf publicly-listed business/samaj data
+ // par jawab deta hai, kisi member ki personal/private profile kabhi nahi deta (dekho aiExecuteTool)।
  const inp = document.getElementById('ai_question');
  const q = (inp && inp.value || '').trim();
  if(!q || aiThinking) return;
